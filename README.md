@@ -56,11 +56,6 @@ The mobile artifacts are currently unsigned development distributions. Store or 
 - `src/lib`: CSDB access, registry settings, task synchronization, and domain utilities.
 - `electron`: Desktop main process and preload bridge.
 - `templates`: Starter CSDB databases.
-- `docs`: Static product site for GitHub Pages.
-
-## GitHub Pages
-
-The product website is a dependency-free static site in `docs/`. In the repository Pages settings, deploy from the default branch and select `/docs` as the folder.
 
 ## Verification
 
