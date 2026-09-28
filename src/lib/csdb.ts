@@ -1,8 +1,11 @@
+import "./csdb-browser";
 import { validateDocument } from "../../node_modules/@csdb/javascript/dist/catalog.js";
 import { Executor } from "../../node_modules/@csdb/javascript/dist/executor.js";
 import { parseSQL } from "../../node_modules/@csdb/javascript/dist/sql/parser.js";
 import { parseDocument, serializeDocument } from "../../node_modules/@csdb/javascript/dist/storage/document.js";
 import { TableQuery } from "../../node_modules/@csdb/javascript/dist/table.js";
+import { keyFor } from "../../node_modules/@csdb/javascript/dist/util/identifiers.js";
+import type { IndexManager } from "../../node_modules/@csdb/javascript/dist/indexes.js";
 import type { ParseOptions, SerializeOptions } from "../../node_modules/@csdb/javascript/dist/storage/document.d.ts";
 import type { CSDBDocument, QueryPlan, Row, RowValue, SQLResult, TableSchema } from "../../node_modules/@csdb/javascript/dist/types.d.ts";
 
@@ -12,7 +15,22 @@ export class CSDBDatabase {
   readonly executor: Executor;
 
   constructor(readonly document: CSDBDocument) {
-    this.executor = new Executor(document);
+    // The renderer holds live rows in memory; CSDB's file index manager needs Node APIs.
+    const indexes: Pick<IndexManager, "readRows" | "candidateOrdinals" | "findRelationship"> = {
+      readRows: (name) => document.tables.get(name)?.rows ?? [],
+      candidateOrdinals: () => undefined,
+      findRelationship: (table, relationship, row) => {
+        const foreignKey = table.schema.foreign_keys.find((key) => key.relationship === relationship || key.name === relationship);
+        if (!foreignKey) return { table: relationship };
+        const values = foreignKey.columns.map((column) => row[column] ?? null);
+        const related = values.some((value) => value === null)
+          ? undefined
+          : this.findByColumns(foreignKey.references.table, foreignKey.references.columns, values);
+        return { table: foreignKey.references.table, ...(related ? { row: related } : {}) };
+      }
+    };
+    // Executor uses only these three lookup methods, with predicates applied to scanned rows.
+    this.executor = new Executor(document, indexes as IndexManager);
   }
 
   static parse(text: string, options: ParseOptions = {}): CSDBDatabase {
@@ -21,6 +39,17 @@ export class CSDBDatabase {
 
   table(name: string): TableQuery {
     return new TableQuery(this as never, name);
+  }
+
+  byPrimaryKey(tableName: string, values: RowValue[]): Row | undefined {
+    const columns = this.document.tables.get(tableName)?.schema.primary_key?.columns;
+    return columns ? this.findByColumns(tableName, columns, values) : undefined;
+  }
+
+  private findByColumns(tableName: string, columns: string[], values: RowValue[]): Row | undefined {
+    return this.document.tables.get(tableName)?.rows.find((row) =>
+      keyFor(columns.map((column) => row[column] ?? null)) === keyFor(values)
+    );
   }
 
   sql(statement: string, params: RowValue[] = []): SQLResult {
