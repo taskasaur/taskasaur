@@ -145,12 +145,24 @@ jobs:
           path: release/*-android-unsigned.apk
           if-no-files-found: error
 
+  container:
+    name: Verify and publish the container release
+    needs: [desktop, ios, android]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container.yml
+    with:
+      ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      publish: true
+
   publish:
     name: Publish GitHub release
     needs:
       - desktop
       - ios
       - android
+      - container
     runs-on: ubuntu-24.04
     steps:
       - name: Check out release tag

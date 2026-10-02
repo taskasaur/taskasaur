@@ -31,6 +31,8 @@ Open `http://localhost:3000`, create an account and enable the feature plugins y
 
 The public gateway routes app/API requests and `/device-stream`. App and worker use the same versioned image and durable plugin volume. The migration job must succeed before either starts; the web health check confirms schema availability. Office engine provisioning is separate persistent release data; see [office-engine.md](office-engine.md) for current engine readiness and platform limitations.
 
+Database/Auth/Storage health checks allow first-boot migrations to finish. Explicit Compose database updates restart dependent APIs and the migration/app chain so they re-establish database connections, using [Compose's dependency restart behavior](https://docs.docker.com/compose/how-tos/startup-order/). The public gateway resolves app/worker addresses through Docker DNS after container replacement.
+
 ## Development
 
 ```sh
@@ -50,6 +52,8 @@ Set `TASKASAUR_IMAGE` to an existing, tested version or digest. The default `tas
 docker compose pull
 docker compose up -d
 ```
+
+The Container GitHub Actions workflow builds the image and starts this complete Compose deployment on pull requests and manual runs. It checks worker/terminal operations, installs a signed plugin into the running image, and verifies saved data and the installed package across app/worker replacement. The release pipeline invokes it directly; a published GitHub release or explicit manual publish can also trigger publication. It builds Linux amd64/arm64 images and publishes version and commit tags to `ghcr.io/<owner>/<repository>`, with provenance and an SBOM. It does not publish on pull requests or ordinary manual test runs. Set `TASKASAUR_IMAGE` to that registry's tested version or digest after publication. This checkout has not published an image; remote CI and verification across both architectures remain release checks. Its image actions follow [Docker's documented GitHub Actions setup](https://docs.docker.com/build/ci/github-actions/multi-platform/).
 
 Back up before an upgrade: stop app/worker writes, take a PostgreSQL custom-format dump, snapshot storage/plugin/office volumes and securely copy `.env`. Retain the previous image digest. Restore into an isolated project and verify credentials decrypt, file versions download and queued work retains its original device. Selecting an older app image does not reverse database migrations. Do not delete data volumes as an upgrade step.
 

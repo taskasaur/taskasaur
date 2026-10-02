@@ -28,6 +28,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+        restart: true
     restart: no
     init: true
   app:
@@ -58,6 +59,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+        restart: true
       auth:
         condition: service_healthy
       storage:
@@ -98,6 +100,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+        restart: true
     restart: unless-stopped
     init: true
   gateway:
@@ -159,6 +162,10 @@ services:
       - ./deploy/supabase/upstream/volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       - db-config:/etc/postgresql-custom
   storage:
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
     healthcheck:
       start_period: 90s
       retries: 12
@@ -174,8 +181,17 @@ services:
     volumes:
       - storage-data:/var/lib/storage
   auth:
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
     healthcheck:
       start_period: 60s
+  rest:
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
 volumes:
   db-data: {}
   db-config: {}

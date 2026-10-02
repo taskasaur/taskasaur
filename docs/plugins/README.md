@@ -38,6 +38,19 @@ npm run plugins -- install ./my-plugin.zip ./trusted-publishers.json example.not
 
 The trust file maps publisher IDs to Ed25519 public PEM keys. Do not place private signing keys in the plugin directory. Installation verifies a signed file index, SHA-256 hashes, expanded size limits, safe paths, API compatibility, dependencies and explicit permissions. It stages immutable version directories before atomically replacing the inventory. Packages and grants persist in `PLUGIN_PATH` (default `.taskasaur/plugins`). Workspace owners then install/enable the package through Plugins. Removing a plugin preserves its records; required dependencies cannot be removed while installed dependents remain.
 
+For Docker installations, run the installer inside the app so it uses the shared plugin volume and database settings. For the bundled Notes example, after signing the package and preparing the public trust file:
+
+```sh
+docker compose cp ./example-notes.zip app:/tmp/example-notes.zip
+docker compose cp ./trusted-publishers.json app:/tmp/trusted-publishers.json
+docker compose exec -T app node --import tsx scripts/plugins.ts install \
+  /tmp/example-notes.zip /tmp/trusted-publishers.json \
+  example.notes.read example.notes.write example.notes.count \
+  core.records core.storage.local core.ui example_notes_entries.changed
+```
+
+The archive and public trust file must be readable by the container's `node` user. Grant only the declarations you have reviewed. Open Plugins in the workspace and install/enable Example Notes. The running hosts discover the verified package without rebuilding the application image. Its package, grants and records persist across app/worker replacement; container integration tests exercise this path.
+
 Additive external schema upgrades preserve existing records and add validated nullable/defaulted fields transactionally. Removing collections/fields, incompatible native types or nullability changes stop for a reviewed migration. Keep the prior artifact and a database backup; automatic rollback of arbitrary third-party migrations is not provided.
 
 ## PostgreSQL fields and shared UI

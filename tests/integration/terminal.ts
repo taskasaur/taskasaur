@@ -9,7 +9,12 @@ const config = await pairNativeHost(client.base, enrollment.code, null, {
   terminal: true,
   automation: false,
 });
-config.gatewayUrl = "ws://localhost:3000/device-stream";
+const gateway = new URL(
+  "/device-stream",
+  process.env.TEST_GATEWAY_URL ?? "http://localhost:3000",
+);
+gateway.protocol = gateway.protocol === "https:" ? "wss:" : "ws:";
+config.gatewayUrl = gateway.href;
 const host = connectNativeHost(config);
 let socket: WebSocket | undefined;
 try {
@@ -23,8 +28,8 @@ try {
   const ticket = await client.request("terminal/open", {
     deviceId: config.deviceId,
   });
-  socket = new WebSocket("ws://localhost:3000/device-stream", {
-    origin: "http://127.0.0.1:3210",
+  socket = new WebSocket(gateway, {
+    origin: new URL(client.base).origin,
   });
   const marker = "TASKASAUR_PTY_" + crypto.randomUUID().replaceAll("-", "");
   await new Promise<void>((resolve, reject) => {
