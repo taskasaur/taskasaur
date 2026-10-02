@@ -12,7 +12,10 @@ if (!match) {
 }
 
 function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8", stdio: ["inherit", "pipe", "inherit"] }).trim();
+  return execFileSync("git", args, {
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "inherit"],
+  }).trim();
 }
 
 if (git("status", "--porcelain")) {
@@ -28,16 +31,26 @@ if (!branch) {
 }
 
 execFileSync("git", ["fetch", "origin", branch], { stdio: "inherit" });
-const upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
+const upstream = git(
+  "rev-parse",
+  "--abbrev-ref",
+  "--symbolic-full-name",
+  "@{u}",
+);
 const localHead = git("rev-parse", "HEAD");
 const upstreamHead = git("rev-parse", upstream);
 if (localHead !== upstreamHead) {
-  console.error(`The local branch must exactly match ${upstream} before releasing.`);
+  console.error(
+    `The local branch must exactly match ${upstream} before releasing.`,
+  );
   process.exit(1);
 }
 
 const tag = `v${version}`;
-if (git("tag", "--list", tag) || git("ls-remote", "--tags", "origin", `refs/tags/${tag}`)) {
+if (
+  git("tag", "--list", tag) ||
+  git("ls-remote", "--tags", "origin", `refs/tags/${tag}`)
+) {
   console.error(`Tag ${tag} already exists.`);
   process.exit(1);
 }
@@ -67,7 +80,10 @@ writeFileSync(androidPath, androidBuild);
 
 const iosPath = "ios/App/App.xcodeproj/project.pbxproj";
 const iosProject = readFileSync(iosPath, "utf8")
-  .replace(/CURRENT_PROJECT_VERSION = \d+;/g, `CURRENT_PROJECT_VERSION = ${buildNumber};`)
+  .replace(
+    /CURRENT_PROJECT_VERSION = \d+;/g,
+    `CURRENT_PROJECT_VERSION = ${buildNumber};`,
+  )
   .replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
 writeFileSync(iosPath, iosProject);
 
@@ -77,7 +93,13 @@ execFileSync(
   { stdio: "inherit" },
 );
 execFileSync("git", ["commit", "-m", `release: ${tag}`], { stdio: "inherit" });
-execFileSync("git", ["tag", "-a", tag, "-m", `Taskasaur ${version}`], { stdio: "inherit" });
-execFileSync("git", ["push", "--atomic", "origin", branch, tag], { stdio: "inherit" });
+execFileSync("git", ["tag", "-a", tag, "-m", `Taskasaur ${version}`], {
+  stdio: "inherit",
+});
+execFileSync("git", ["push", "--atomic", "origin", branch, tag], {
+  stdio: "inherit",
+});
 
-console.log(`Pushed ${tag}. GitHub Actions will build and publish the release.`);
+console.log(
+  `Pushed ${tag}. GitHub Actions will build and publish the release.`,
+);

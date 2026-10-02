@@ -1,0 +1,11 @@
+services:
+  db:
+    ports: ['127.0.0.1:58532:5432']
+  api-gw:
+    ports: ['127.0.0.1:58521:8000']
+  worker:
+    environment:
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3210,http://localhost:3210
+    volumes:
+      - ./server:/app/server:ro
+      - ./packages:/app/packages:ro

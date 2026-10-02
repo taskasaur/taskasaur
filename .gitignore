@@ -17,3 +17,12 @@ vite.config.js
 vite.config.d.ts
 .DS_Store
 .idea/
+.next/
+.next-dev/
+.env
+.env.local
+.taskasaur/
+playwright-report/
+test-results/
+public/offline-assets.json
+public/sw.js

@@ -1,4 +1,4 @@
-SHELL := /bin/zsh
+SHELL := /bin/sh
 
 .PHONY: help install test clean build-web build-electron build-macos build-windows \
 	build-linux build-ios build-android sync-ios sync-android open-ios open-android \
@@ -37,7 +37,7 @@ build-web:
 	npm run build:web
 
 build-electron:
-	npm run build:web
+	npm run build:desktop
 
 build-macos:
 	npm run build:macos

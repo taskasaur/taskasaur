@@ -1,0 +1,16 @@
+node_modules
+.next
+.next-dev
+.git
+.env*
+.taskasaur
+dist
+dist-electron
+data
+databases.csdb
+release
+ios
+android
+test-results
+playwright-report
+*.tsbuildinfo

@@ -1,65 +1,51 @@
 # Taskasaur
 
-Taskasaur brings time tracking, tasks, and focus sessions into one CSDB-backed workspace. It runs as an Electron desktop app.
+Taskasaur is being rebuilt as a local-first TypeScript workspace with one shared React interface for web/PWA, Electron and Capacitor. Records use PostgreSQL field definitions, shared form/table controls and a per-account Dexie outbox. Twelve required core providers supply storage, credentials, authorization, devices and communication to installable feature plugins.
 
-## Features
+The working implementation includes tasks, Track/time/focus, calendar/reminders, email, visual TypeScript automation, remote terminals, shared files and an offline office integration. The full rebuild is still in progress; office presentation/mobile support and other platform acceptance gates remain unfinished. See the local implementation ledger for current verification.
 
-- Track live and manual sessions, including interval metadata and breaks.
-- Review sessions in list, week, and month views with persisted filters and sorting.
-- Manage multiple internal or path-based CSDB databases and start from built-in templates.
-- Store database content in user-selected `.csdb` files. Database references and application preferences live in `databases.csdb`; UI settings use one JSON object per settings-table row.
-- Define custom metadata fields, selection options, attribute references, and task-source filters.
-- Sync tasks from internal, Markdown, GitHub, and mail sources.
-- Turn synced mail into actionable tasks alongside the rest of your work.
-- Organize Tasks with table or Kanban views, grouping, configurable fields, filters, and multi-column sorting.
-- Run configurable Focus or Break timers with sound and vibration alerts.
-- Restore UI preferences from the registry `settings` table.
-- Use desktop tray controls for timers, entries, tasks, and settings.
-- Follow the guided onboarding flow or restart it from Settings → Information.
+## Run locally
 
-## Development
+Use Node.js 24 and npm. Local-only workspaces can run without a server:
 
-Requirements: Node.js and npm. Local CSDB packages referenced by `package.json` must be available beside this repository.
-
-```bash
-npm install
+```sh
+npm ci
 npm run dev
 ```
 
-Useful commands:
+For the connected app, install Docker with Compose v2 and run:
 
-```bash
-npm run electron:dev  # Desktop development
-npm run build:web     # Type-check and build the web app
-npm run package:dir   # Build an unpacked desktop application
-npm run cap:sync      # Sync web assets into Capacitor
-npm test              # Run the Vitest suite
+```sh
+npm run setup
+docker compose build app
+docker compose up -d
 ```
 
-### Releases
+Open `http://localhost:3000`. Setup creates private installation secrets and never rotates existing secrets when adding missing settings. The deployment starts from the **unmodified official Supabase Docker release**, recorded in [UPSTREAM.json](deploy/supabase/UPSTREAM.json). [Self-hosting](docs/self-hosting.md) explains the overlay, ports, persistent data, development setup and upgrades.
 
-Create a release from a clean, fully pushed branch:
+## Develop and verify
 
-```bash
-make release version=1.1.1
-```
-
-The command runs tests and the web build, updates the desktop, Android, and iOS version metadata, commits the version, creates a `v1.1.1` tag, and atomically pushes the commit and tag. The release workflow then builds macOS, Windows, Linux, iOS, and Android artifacts on native GitHub runners and publishes them in a generated GitHub release. GitHub automatically includes source ZIP and tarball downloads.
-
-The mobile artifacts are currently unsigned development distributions. Store or broadly distributed builds require Apple and Android signing credentials.
-
-## Project Structure
-
-- `src/pages`: Track, Tasks, Focus, Settings, Files, and onboarding screens.
-- `src/features`: Reusable feature sections and dialogs.
-- `src/store`: Zustand application state and actions.
-- `src/lib`: CSDB access, registry settings, task synchronization, and domain utilities.
-- `electron`: Desktop main process and preload bridge.
-- `templates`: Starter CSDB databases.
-
-## Verification
-
-```bash
+```sh
+npm run typecheck
 npm test
+npm run compose:verify
 npm run build:web
+npm run build:desktop
 ```
+
+`npm run dev:native` runs the shared client with Vite. `npm run electron:dev` starts Electron; `npm run prepare:ios` and `npm run prepare:android` sync the shared client into the native projects. Packaging a shell does not establish that every native integration has passed its platform tests.
+
+## Code and interfaces
+
+- `app`: Next.js host and authenticated API routes.
+- `packages/app-ui`, `packages/ui`: shared views and locally maintained shadcn primitives.
+- `packages/core`, `packages/plugin-sdk`, `plugins/core`: required providers and plugin contracts.
+- `packages/field-types`, `packages/data-dexie`, `packages/sync-supabase`: typed values, local persistence and synchronization.
+- `server`: PostgreSQL repositories, credential/file brokers, jobs, plugin hosts and device runners.
+- `electron`, `ios`, `android`: native hosts for the shared interface.
+- `deploy`: official Supabase sources, Taskasaur overlay and image builds.
+- `tests`: unit, PostgreSQL/protocol integration and browser acceptance checks.
+
+The [plugin interface](docs/plugins/README.md), [automation guide](docs/plugins/automation.md), [terminal guide](docs/plugins/remote-terminal.md) and [office engine guide](docs/office-engine.md) describe the integration boundaries. Legacy Markdown/CSDB application code has been replaced; historical data and starter files are retained for migration work.
+
+Releases are created with `make release version=X.Y.Z` from a clean, synchronized branch. That command commits version metadata, tags and pushes; it is an explicit publishing operation. This checkout has not been published.

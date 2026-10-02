@@ -1,0 +1,175 @@
+# Taskasaur changes over the exact upstream Supabase Docker release.
+# Mappings merge; lists replace; null removes a key. Run npm run compose:generate.
+services:
+  migrate:
+    image: ${TASKASAUR_IMAGE:-taskasaur/taskasaur:0.2.0}
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    command:
+      - node
+      - --import
+      - tsx
+      - server/migrate.ts
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${PUBLIC_APP_URL:-http://localhost:3000}
+      OFFICE_ASSET_PATH: /var/lib/taskasaur/office/wasm
+      PLUGIN_PATH: /var/lib/taskasaur/plugins
+      SERVER_WORKER_ID: ${SERVER_WORKER_ID}
+      NODE_ENV: production
+    volumes:
+      - plugin-data:/var/lib/taskasaur/plugins
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: no
+    init: true
+  app:
+    image: ${TASKASAUR_IMAGE:-taskasaur/taskasaur:0.2.0}
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    command:
+      - node
+      - .next/standalone/server.js
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${PUBLIC_APP_URL:-http://localhost:3000}
+      OFFICE_ASSET_PATH: /var/lib/taskasaur/office/wasm
+      PLUGIN_PATH: /var/lib/taskasaur/plugins
+      SERVER_WORKER_ID: ${SERVER_WORKER_ID}
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    volumes:
+      - plugin-data:/var/lib/taskasaur/plugins
+      - office-assets:/var/lib/taskasaur/office
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      auth:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    init: true
+  worker:
+    image: ${TASKASAUR_IMAGE:-taskasaur/taskasaur:0.2.0}
+    command:
+      - node
+      - --import
+      - tsx
+      - server/worker.ts
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
+      ALLOWED_ORIGINS: ${PUBLIC_APP_URL:-http://localhost:3000}
+      OFFICE_ASSET_PATH: /var/lib/taskasaur/office/wasm
+      PLUGIN_PATH: /var/lib/taskasaur/plugins
+      SERVER_WORKER_ID: ${SERVER_WORKER_ID}
+      NODE_ENV: production
+      GATEWAY_PORT: 8787
+    volumes:
+      - plugin-data:/var/lib/taskasaur/plugins
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    init: true
+  gateway:
+    image: nginx:1.28-alpine
+    ports:
+      - ${APP_PORT:-3000}:8080
+    volumes:
+      - ./deploy/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    restart: unless-stopped
+  api-gw:
+    depends_on:
+      studio: null
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      storage:
+        condition: service_healthy
+    ports: []
+  studio:
+    profiles:
+      - tools
+    volumes:
+      - snippets-data:/app/snippets
+      - ./deploy/supabase/upstream/volumes/functions:/app/edge-functions:ro,z
+  meta:
+    profiles:
+      - tools
+  realtime:
+    profiles:
+      - tools
+  functions:
+    profiles:
+      - tools
+  supavisor:
+    profiles:
+      - tools
+    ports:
+      - 127.0.0.1:${POOLER_PORT:-5433}:5432
+      - 127.0.0.1:${POOLER_PROXY_PORT_TRANSACTION:-6543}:6543
+  db:
+    volumes:
+      - ./deploy/supabase/upstream/volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./deploy/supabase/upstream/volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./deploy/supabase/upstream/volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./deploy/supabase/upstream/volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - db-data:/var/lib/postgresql/data
+      - ./deploy/supabase/upstream/volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./deploy/supabase/upstream/volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
+      - ./deploy/supabase/upstream/volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      - db-config:/etc/postgresql-custom
+  storage:
+    volumes:
+      - storage-data:/var/lib/storage
+    environment:
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-file}
+      GLOBAL_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      GLOBAL_S3_FORCE_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: ${STORAGE_S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_S3_SECRET_KEY:-}
+  imgproxy:
+    volumes:
+      - storage-data:/var/lib/storage
+volumes:
+  db-data: {}
+  db-config: {}
+  storage-data: {}
+  plugin-data: {}
+  office-assets: {}
+  snippets-data: {}
