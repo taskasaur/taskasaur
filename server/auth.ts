@@ -21,6 +21,14 @@ export async function authenticatedUser(request: Request) {
   invariant(token, "UNAUTHENTICATED", "Sign in to connect to the server");
   const { data, error } = await supabaseAuth().auth.getUser(token);
   invariant(
+    !error ||
+      (error.status !== undefined &&
+        error.status < 500 &&
+        error.status !== 429),
+    "AUTH_SERVICE_UNAVAILABLE",
+    "Sign-in service is temporarily unavailable; retry shortly",
+  );
+  invariant(
     !error && data.user,
     "UNAUTHENTICATED",
     "Session expired; sign in again",

@@ -744,17 +744,19 @@ async function handle(request: Request, context: Context) {
           ? "VALIDATION_FAILED"
           : "INTERNAL_ERROR";
     const status =
-      kind === "UNAUTHENTICATED"
-        ? 401
-        : kind === "PERMISSION_DENIED"
-          ? 403
-          : kind === "NOT_FOUND"
-            ? 404
-            : kind === "REVISION_CONFLICT"
-              ? 409
-              : kind === "INTERNAL_ERROR"
-                ? 500
-                : 400;
+      kind === "AUTH_SERVICE_UNAVAILABLE"
+        ? 503
+        : kind === "UNAUTHENTICATED"
+          ? 401
+          : kind === "PERMISSION_DENIED"
+            ? 403
+            : kind === "NOT_FOUND"
+              ? 404
+              : kind === "REVISION_CONFLICT"
+                ? 409
+                : kind === "INTERNAL_ERROR"
+                  ? 500
+                  : 400;
     return NextResponse.json(
       {
         error: {
