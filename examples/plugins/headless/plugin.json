@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "platformApi": "^1.0.0",
+  "fieldSchemaApi": "^1.0.0",
+  "publisher": "example",
+  "license": "MIT",
+  "dependencies": [],
+  "features": {},
+  "consumes": {
+    "commands": [],
+    "events": []
+  },
+  "id": "example.health",
+  "name": "Headless Health",
+  "description": "A stateless plugin using only standard messaging.",
+  "entrypoints": {
+    "server": "server.mjs"
+  },
+  "ui": {
+    "mode": "none",
+    "surfaces": []
+  },
+  "storage": {
+    "local": {
+      "mode": "none",
+      "collections": []
+    }
+  },
+  "permissions": ["example.health.check"],
+  "sharedServices": [],
+  "provides": {
+    "commands": ["example.health.check"],
+    "events": []
+  }
+}

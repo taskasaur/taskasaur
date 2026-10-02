@@ -1,0 +1,62 @@
+{
+  "version": "1.0.0",
+  "platformApi": "^1.0.0",
+  "fieldSchemaApi": "^1.0.0",
+  "publisher": "example",
+  "license": "MIT",
+  "dependencies": [],
+  "features": {},
+  "consumes": {
+    "commands": ["example.notes.count"],
+    "events": ["example_notes_entries.changed"]
+  },
+  "id": "example.notes",
+  "name": "Example Notes",
+  "description": "A signed package with shared tables, browser UI, server commands, and durable events.",
+  "entrypoints": {
+    "browser": "browser.mjs",
+    "server": "server.mjs"
+  },
+  "ui": {
+    "mode": "shared",
+    "apiVersion": "^1.0.0",
+    "surfaces": ["notes"]
+  },
+  "storage": {
+    "local": {
+      "mode": "dexie",
+      "collections": ["example_notes_entries"]
+    }
+  },
+  "permissions": [
+    "example.notes.read",
+    "example.notes.write",
+    "example.notes.count"
+  ],
+  "sharedServices": [
+    {
+      "id": "core.records",
+      "version": "^1",
+      "optional": false
+    },
+    {
+      "id": "core.storage.local",
+      "version": "^1",
+      "optional": false
+    },
+    {
+      "id": "core.ui",
+      "version": "^1",
+      "optional": false
+    }
+  ],
+  "provides": {
+    "commands": [
+      "example_notes_entries.list",
+      "example_notes_entries.put",
+      "example_notes_entries.delete",
+      "example.notes.count"
+    ],
+    "events": ["example_notes_entries.changed"]
+  }
+}

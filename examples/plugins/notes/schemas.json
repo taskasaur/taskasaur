@@ -1,0 +1,23 @@
+[
+  {
+    "id": "example_notes_entries",
+    "pluginId": "example.notes",
+    "name": "Notes",
+    "version": 1,
+    "fields": [
+      {
+        "id": "title",
+        "label": "Title",
+        "pgType": "text",
+        "required": true,
+        "nullable": false
+      },
+      {
+        "id": "body",
+        "label": "Body",
+        "pgType": "text",
+        "control": "textarea"
+      }
+    ]
+  }
+]
