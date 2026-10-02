@@ -1,17 +1,21 @@
 import { randomBytes, createHmac, randomUUID } from "node:crypto";
-import { readFile, writeFile, access } from "node:fs/promises";
+import { readFile, writeFile, access, rename, unlink } from "node:fs/promises";
 import { parseEnv } from "node:util";
 const mergeExisting = process.argv.includes("--merge");
 const filename =
   process.argv.slice(2).find((arg) => arg !== "--merge") ?? ".env";
 let existing = {};
+let existingText = "";
+let foundExisting = false;
 try {
   await access(filename);
   if (!mergeExisting)
     throw new Error(
       `${filename} already exists; setup will not overwrite it. Use --merge to add missing settings while retaining existing values.`,
     );
-  existing = parseEnv(await readFile(filename, "utf8"));
+  existingText = await readFile(filename, "utf8");
+  foundExisting = true;
+  existing = parseEnv(existingText);
 } catch (error) {
   if (error.code !== "ENOENT") throw error;
 }
@@ -99,14 +103,29 @@ const values = {
 const compose = await readFile("compose.yaml", "utf8");
 const variables = [...compose.matchAll(/\$\{([A-Z_0-9]+)/g)].map((m) => m[1]);
 for (const name of variables) if (!(name in values)) values[name] = "";
-for (const [name, value] of Object.entries(existing)) values[name] = value;
-await writeFile(
-  filename,
-  Object.entries(values)
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n") + "\n",
-  { mode: 0o600 },
-);
+// Keep the original quoting, comments and dollar escapes of every existing
+// setting. Re-serializing parsed values would change Docker's interpolation.
+const additions = Object.entries(values)
+  .filter(([key]) => !Object.hasOwn(existing, key))
+  .map(([key, value]) => `${key}=${value}`)
+  .join("\n");
+const output =
+  existingText +
+  (existingText && !existingText.endsWith("\n") ? "\n" : "") +
+  (additions ? additions + "\n" : "");
+if (mergeExisting && foundExisting) {
+  const temporary = `${filename}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, output, { mode: 0o600, flag: "wx" });
+    await rename(temporary, filename);
+  } finally {
+    await unlink(temporary).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+} else {
+  await writeFile(filename, output, { mode: 0o600, flag: "wx" });
+}
 console.log(
   `${mergeExisting ? "Updated missing settings in" : "Created"} ${filename}; existing secrets are preserved. Keep it with encrypted backups.`,
 );
