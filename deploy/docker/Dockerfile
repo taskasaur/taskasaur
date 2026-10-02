@@ -1,13 +1,17 @@
 # Taskasaur's application image augments the pinned official Supabase Compose stack.
-FROM node:24-bookworm-slim AS build
+FROM node:24-bookworm-slim AS dependencies
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 COPY scripts/native-prepare.mjs ./scripts/native-prepare.mjs
 RUN npm ci && node -e "require('node-pty')"
+
+FROM dependencies AS build
 COPY . .
 RUN npm run typecheck && npm run core:verify && npm run build:web -- --webpack
+
+FROM dependencies AS production-dependencies
 RUN npm prune --omit=dev --ignore-scripts
 
 FROM node:24-bookworm-slim
@@ -22,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /app/.next/standalone ./.next/standalone
 COPY --from=build /app/.next/static ./.next/standalone/.next/static
 COPY --from=build /app/public ./.next/standalone/public
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/server ./server
 COPY --from=build /app/packages ./packages

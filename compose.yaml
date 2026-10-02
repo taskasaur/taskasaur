@@ -59,6 +59,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 30s
     depends_on:
       auth:
         condition: service_healthy
@@ -99,6 +100,7 @@ services:
       timeout: 5s
       interval: 5s
       retries: 3
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -215,8 +217,8 @@ services:
         - http://storage:5000/status
       timeout: 5s
       interval: 5s
-      retries: 3
-      start_period: 10s
+      retries: 12
+      start_period: 90s
     environment:
       ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
@@ -332,6 +334,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 90s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: ${POSTGRES_PORT}

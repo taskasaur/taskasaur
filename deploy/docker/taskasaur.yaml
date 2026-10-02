@@ -113,6 +113,8 @@ services:
         condition: service_started
     restart: unless-stopped
   api-gw:
+    healthcheck:
+      start_period: 30s
     depends_on:
       studio: null
       auth:
@@ -144,6 +146,8 @@ services:
       - 127.0.0.1:${POOLER_PORT:-5433}:5432
       - 127.0.0.1:${POOLER_PROXY_PORT_TRANSACTION:-6543}:6543
   db:
+    healthcheck:
+      start_period: 90s
     volumes:
       - ./deploy/supabase/upstream/volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       - ./deploy/supabase/upstream/volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -155,6 +159,9 @@ services:
       - ./deploy/supabase/upstream/volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       - db-config:/etc/postgresql-custom
   storage:
+    healthcheck:
+      start_period: 90s
+      retries: 12
     volumes:
       - storage-data:/var/lib/storage
     environment:
@@ -166,6 +173,9 @@ services:
   imgproxy:
     volumes:
       - storage-data:/var/lib/storage
+  auth:
+    healthcheck:
+      start_period: 60s
 volumes:
   db-data: {}
   db-config: {}
