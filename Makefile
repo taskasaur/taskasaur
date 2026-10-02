@@ -9,7 +9,7 @@ help:
 	@echo "  make install         Install project dependencies"
 	@echo "  make test            Run the test suite"
 	@echo "  make clean           Remove generated build output"
-	@echo "  make build-web       Build the shared React app and Electron bundles"
+	@echo "  make build-web       Build the static React client"
 	@echo "  make build-electron  Build the shared React app and Electron bundles"
 	@echo "  make build-macos     Package macOS DMG and ZIP files"
 	@echo "  make build-windows   Package a Windows NSIS installer"

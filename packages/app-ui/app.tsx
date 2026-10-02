@@ -1,5 +1,5 @@
 "use client";
-import { serverFetch } from "./network";
+import { defaultServerUrl, serverFetch } from "./network";
 import {
   useEffect,
   useState,
@@ -46,7 +46,7 @@ import {
 } from "./runtime";
 import { RecordTable } from "./record-table";
 import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
-import { field } from "../field-types";
+import { field } from "@taskasaur/platform/field-types";
 import { SharingView } from "./sharing-view";
 import { SyncConflicts } from "./sync-conflicts";
 import {
@@ -56,7 +56,7 @@ import {
   RemindersView,
   download,
 } from "./productivity";
-import { catalog, isRequiredCore } from "../core/catalog";
+import { catalog, isRequiredCore } from "@taskasaur/platform/core/catalog";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
 import { Badge } from "../ui/primitives/badge";
@@ -183,7 +183,7 @@ function Welcome({
     setBusy(true);
     setError("");
     try {
-      const base = server || location.origin;
+      const base = server || defaultServerUrl();
       const result = await serverFetch(
         new URL(`/api/auth/${signup ? "signup" : "login"}`, base),
         {
@@ -264,7 +264,7 @@ function Welcome({
                 placeholder={
                   typeof location === "undefined"
                     ? "https://taskasaur.example"
-                    : location.origin
+                    : defaultServerUrl()
                 }
                 value={server}
                 onChange={(e) => setServer(e.target.value)}

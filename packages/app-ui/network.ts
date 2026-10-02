@@ -28,6 +28,12 @@ declare global {
   }
 }
 const refreshing = new Map<string, Promise<boolean>>();
+export function defaultServerUrl() {
+  return (
+    (import.meta.env.VITE_SERVER_URL as string | undefined)?.trim() ||
+    location.origin
+  );
+}
 async function transport(url: URL, options: RequestInit) {
   const host = window.taskasaurNative;
   if (!host) return fetch(url, { ...options, credentials: "include" });
@@ -52,7 +58,7 @@ export async function serverFetch(
   input: string | URL,
   options: RequestInit = {},
 ) {
-  const url = new URL(input, location.origin);
+  const url = new URL(input, defaultServerUrl());
   let response = await transport(url, options);
   if (response.status === 401 && !url.pathname.startsWith("/api/auth/")) {
     let refresh = refreshing.get(url.origin);

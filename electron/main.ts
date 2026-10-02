@@ -17,7 +17,7 @@ import {
   connectNativeHost,
   pairNativeHost,
   type HostConfig,
-} from "../server/native-host";
+} from "@taskasaur/platform/device-host/native-host";
 const here = path.dirname(fileURLToPath(import.meta.url));
 protocol.registerSchemesAsPrivileged([
   {

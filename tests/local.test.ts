@@ -1,8 +1,8 @@
 import "fake-indexeddb/auto";
 import { it, expect } from "vitest";
 import { LocalDatabase } from "../packages/data-dexie";
-import { PluginRegistry } from "../packages/core/registry";
-import { requiredCoreIds } from "../packages/core/catalog";
+import { PluginRegistry } from "@taskasaur/platform/core/registry";
+import { requiredCoreIds } from "@taskasaur/platform/core/catalog";
 const user = crypto.randomUUID(),
   workspace = crypto.randomUUID();
 const principal = {

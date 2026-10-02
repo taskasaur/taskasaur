@@ -1,6 +1,6 @@
 import type { LocalDatabase } from "../data-dexie";
-import type { Mutation, ResourceRecord } from "../plugin-sdk";
-import { CoreError } from "../core/errors";
+import type { Mutation, ResourceRecord } from "@taskasaur/platform/plugin-sdk";
+import { CoreError } from "@taskasaur/platform/core/errors";
 import { SyncQueue } from "./queue";
 export interface SyncTransport {
   push(mutation: Mutation): Promise<ResourceRecord>;

@@ -5,7 +5,7 @@ import {
   connectNativeHost,
   pairNativeHost,
   type HostConfig,
-} from "../server/native-host";
+} from "@taskasaur/platform/device-host/native-host";
 const directory =
   process.env.TASKASAUR_DEVICE_DIR ??
   path.join(os.homedir(), ".taskasaur-device");

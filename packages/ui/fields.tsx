@@ -6,7 +6,7 @@ import {
   type Field,
   type Value,
   type RecordSchema,
-} from "../field-types";
+} from "@taskasaur/platform/field-types";
 import { Input } from "./primitives/input";
 import { Button } from "./primitives/button";
 import { Label } from "./primitives/label";

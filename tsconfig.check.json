@@ -2,20 +2,5 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "incremental": false
-  },
-  "include": [
-    "types/**/*.d.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
-    "packages/**/*.ts",
-    "packages/**/*.tsx",
-    "plugins/**/*.ts",
-    "server/**/*.ts",
-    "tests/**/*.ts",
-    "tests/**/*.tsx",
-    "src/**/*.tsx",
-    "electron/**/*.ts",
-    "scripts/**/*.ts"
-  ],
-  "exclude": ["node_modules", "dist", "dist-electron", ".next", ".next-dev"]
+  }
 }

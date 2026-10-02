@@ -1,7 +1,7 @@
 {
   "name": "taskasaur",
   "version": "0.2.0",
-  "description": "A local-first TypeScript workspace with required core services and installable plugins.",
+  "description": "Taskasaur web, desktop and mobile client",
   "author": {
     "name": "Taskasaur Contributors",
     "email": "taskasaur@users.noreply.github.com"
@@ -11,9 +11,9 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "npm run typecheck && npm run build:web && npm run build:client",
-    "build:web": "next build --webpack",
+    "dev": "vite",
+    "build": "npm run typecheck && npm run build:web",
+    "build:web": "vite build --config vite.config.ts",
     "build:macos": "npm run build:desktop && electron-builder --mac dmg zip --arm64",
     "build:windows": "npm run build:desktop && electron-builder --win nsis --x64",
     "build:linux": "npm run build:desktop && electron-builder --linux AppImage deb --x64",
@@ -34,22 +34,17 @@
     "dev:native": "vite",
     "build:client": "vite build --config vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "start": "next start",
-    "worker": "tsx server/worker.ts",
-    "db:migrate": "tsx server/migrate.ts",
-    "plugins": "tsx scripts/plugins.ts",
-    "setup": "node scripts/setup.mjs",
+    "start": "vite preview --host 0.0.0.0",
     "office:prepare": "node scripts/office-prepare.mjs",
     "device": "tsx scripts/device.ts",
-    "format": "prettier --write app packages server scripts tests electron docs/plugins compose.yaml",
+    "format": "prettier --write packages src electron scripts tests docs",
     "build:desktop": "node scripts/desktop.mjs",
-    "dev:stack": "node scripts/dev-server.mjs",
     "postinstall": "node scripts/native-prepare.mjs",
-    "prebuild:web": "node --import tsx scripts/core-release.ts",
+    "prebuild:web": "npm run sdk:verify && npm run core:verify",
     "postbuild:web": "node scripts/offline-assets.mjs",
-    "core:verify": "node --import tsx scripts/core-release.ts",
-    "compose:generate": "node scripts/compose.mjs",
-    "compose:verify": "node scripts/compose.mjs --check"
+    "core:verify": "node scripts/core-release.mjs",
+    "postbuild:client": "node scripts/offline-assets.mjs",
+    "sdk:verify": "node scripts/verify-sdk.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -57,38 +52,24 @@
     "@capacitor/core": "^7.1.0",
     "@capacitor/ios": "^7.1.0",
     "@fontsource-variable/geist": "^5.2.9",
-    "@js-temporal/polyfill": "0.5.1",
-    "@octokit/rest": "^22.0.1",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@supabase/supabase-js": "2.117.2",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "@xyflow/react": "12.12.0",
     "class-variance-authority": "^0.7.1",
-    "cloudevents": "10.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
     "dompurify": "3.4.16",
-    "ical.js": "2.2.1",
-    "imapflow": "2.2.1",
-    "jose": "6.2.12",
-    "json-rpc-2.0": "1.8.1",
-    "jszip": "3.10.2",
     "lucide-react": "^0.511.0",
-    "mailparser": "3.9.33",
-    "next": "16.3.8",
     "next-themes": "^0.4.6",
-    "nodemailer": "10.0.13",
     "openworkflow": "0.10.1",
-    "pg": "8.23.1",
-    "postgres": "3.4.9",
     "react": "^19.1.0",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.1.0",
@@ -98,21 +79,18 @@
     "tsx": "4.23.15",
     "typescript": "^5.9.3",
     "ws": "8.22.0",
-    "zod": "^3.25.42"
+    "zod": "^3.25.42",
+    "@taskasaur/platform": "file:vendor/taskasaur-platform-0.2.0.tgz"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.1.0",
-    "@electric-sql/pglite": "0.5.8",
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.3.3",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/mailparser": "3.9.0",
     "@types/node": "^24.0.1",
-    "@types/nodemailer": "8.0.2",
-    "@types/pg": "8.23.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@types/ssh2": "1.15.6",
@@ -129,8 +107,7 @@
     "vite": "^6.3.5",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "5.0.3",
-    "yaml": "2.9.1"
+    "vitest": "5.0.3"
   },
   "build": {
     "appId": "com.taskasaur.app",
@@ -183,5 +160,8 @@
     "cloudevents": {
       "uuid": "11.1.1"
     }
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { AppRuntime } from "./runtime";
-import { getSchema } from "../core/catalog";
+import { getSchema } from "@taskasaur/platform/core/catalog";
 import { displayValue } from "../ui/fields";
 import { Button } from "../ui/primitives/button";
 import { download } from "./productivity";
@@ -179,7 +179,7 @@ export function SyncConflicts({ runtime }: { runtime: AppRuntime }) {
                     recoveryFileId: copy.id,
                   });
                   const server = await runtime.api<
-                    import("../plugin-sdk").ResourceRecord
+                    import("@taskasaur/platform/plugin-sdk").ResourceRecord
                   >("records/get?id=" + version.fileId);
                   await runtime.db.ingest(
                     [server],

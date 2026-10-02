@@ -1,13 +1,25 @@
 import Dexie, { liveQuery, type Table } from "dexie";
-import type { Mutation, Principal, ResourceRecord } from "../plugin-sdk";
-import { getSchema, manifestById, isRequiredCore } from "../core/catalog";
-import { invariant } from "../core/errors";
-import { validateRecord, queryRecords, type Query } from "../field-types";
-import type { PluginState } from "../core/registry";
+import type {
+  Mutation,
+  Principal,
+  ResourceRecord,
+} from "@taskasaur/platform/plugin-sdk";
+import {
+  getSchema,
+  manifestById,
+  isRequiredCore,
+} from "@taskasaur/platform/core/catalog";
+import { invariant } from "@taskasaur/platform/core/errors";
+import {
+  validateRecord,
+  queryRecords,
+  type Query,
+} from "@taskasaur/platform/field-types";
+import type { PluginState } from "@taskasaur/platform/core/registry";
 import {
   validateDynamicData,
   validateTableValues,
-} from "../core/dynamic-fields";
+} from "@taskasaur/platform/core/dynamic-fields";
 
 export interface PendingMutation extends Mutation {
   sequence?: number;
@@ -132,7 +144,10 @@ export class LocalDatabase extends Dexie {
           );
           return record;
         },
-        put: async (input: unknown, resourceId = crypto.randomUUID()) => {
+        put: async (
+          input: unknown,
+          resourceId: string = crypto.randomUUID(),
+        ) => {
           invariant(
             sync !== "cache",
             "READ_ONLY",

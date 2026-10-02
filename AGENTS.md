@@ -1,9 +1,3 @@
-<!-- BEGIN:nextjs-agent-rules -->
+# Taskasaur client
 
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
+This is the Vite/React web, Electron and Capacitor frontend. Backend API, PostgreSQL, Supabase, workers and authoritative SDK sources live in the sibling `taskasaur-server` repository. Do not import server source files or load server credentials in the client. Shared contracts come from the pinned `@taskasaur/platform` archive under `vendor/`. Run `npm run sdk:verify`, `npm run typecheck`, `npm test` and the relevant web/native build after changes. Preserve uncommitted planning documents.

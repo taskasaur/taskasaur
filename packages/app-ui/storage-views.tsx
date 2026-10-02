@@ -38,9 +38,9 @@ import {
   type Field,
   type RecordSchema,
   type Value,
-} from "../field-types";
+} from "@taskasaur/platform/field-types";
 import { RecordForm, displayValue } from "../ui/fields";
-import type { ResourceRecord } from "../plugin-sdk";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 
 export function FilesView({ runtime }: { runtime: AppRuntime }) {
   const [error, setError] = useState(""),

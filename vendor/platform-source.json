@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/taskasaur/taskasaur-server",
+  "package": "@taskasaur/platform",
+  "version": "0.2.0",
+  "filename": "taskasaur-platform-0.2.0.tgz",
+  "sha256": "89e619637bb3899523786c3d9fad1d3fe20cf418c52eef859a2f3655f81e3bb4",
+  "sourceSha256": "09604a1ff36be7b7eca4d86547acbe65298922a88903dfd16944e44bf4f5bd4a"
+}

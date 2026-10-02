@@ -10,7 +10,7 @@ import {
   Download,
 } from "lucide-react";
 import type { AppRuntime } from "./runtime";
-import type { ResourceRecord } from "../plugin-sdk";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import { RecordTable } from "./record-table";
 import { download } from "./productivity";
 import { Button } from "../ui/primitives/button";

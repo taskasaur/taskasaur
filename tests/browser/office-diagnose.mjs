@@ -11,7 +11,7 @@ try {
     )
       console.log(message.text());
   });
-  await page.goto("http://127.0.0.1:3210");
+  await page.goto("http://localhost:8080");
   if (await page.getByText("Internal Server Error").count())
     await page.reload();
   await page

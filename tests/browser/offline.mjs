@@ -6,7 +6,7 @@ try {
     page = await context.newPage(),
     errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:3211");
+  await page.goto(process.env.TEST_APP_URL ?? "http://localhost:8080");
   await page
     .getByRole("button", { name: "Create local workspace", exact: true })
     .click();

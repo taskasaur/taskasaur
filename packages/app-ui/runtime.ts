@@ -1,24 +1,28 @@
-import { serverFetch } from "./network";
+import { defaultServerUrl, serverFetch } from "./network";
 import Dexie, { type Table } from "dexie";
 import { LocalDatabase } from "../data-dexie";
-import { PluginRegistry } from "../core/registry";
-import { getSchema, manifestById, registerExtension } from "../core/catalog";
-import { CoreError, invariant } from "../core/errors";
+import { PluginRegistry } from "@taskasaur/platform/core/registry";
+import {
+  getSchema,
+  manifestById,
+  registerExtension,
+} from "@taskasaur/platform/core/catalog";
+import { CoreError, invariant } from "@taskasaur/platform/core/errors";
 import type {
   Principal,
   ResourceRecord,
   Mutation,
   PluginEvent,
-} from "../plugin-sdk";
+} from "@taskasaur/platform/plugin-sdk";
 import { SyncEngine } from "../sync-supabase";
 import { SyncQueue } from "../sync-supabase/queue";
-import type { PluginState } from "../core/registry";
+import type { PluginState } from "@taskasaur/platform/core/registry";
 import {
   createBrowserPluginHost,
   type ExtensionContract,
   type Surface,
 } from "./plugin-host";
-import type { PluginHost } from "../core/host";
+import type { PluginHost } from "@taskasaur/platform/core/host";
 
 export interface WorkspaceProfile {
   id: string;
@@ -126,7 +130,7 @@ export class AppRuntime {
     );
     const url = new URL(
       `/api/${path}`,
-      this.profile.serverUrl || location.origin,
+      this.profile.serverUrl || defaultServerUrl(),
     );
     url.searchParams.set("workspaceId", this.profile.workspaceId);
     const response = await serverFetch(url, {
@@ -262,7 +266,7 @@ export class AppRuntime {
         try {
           const url = new URL(
             "/api/files",
-            this.profile.serverUrl || location.origin,
+            this.profile.serverUrl || defaultServerUrl(),
           );
           url.searchParams.set("workspaceId", this.profile.workspaceId);
           url.searchParams.set("id", version.fileId);
@@ -325,7 +329,7 @@ export class AppRuntime {
     );
     const url = new URL(
       "/api/files",
-      this.profile.serverUrl || location.origin,
+      this.profile.serverUrl || defaultServerUrl(),
     );
     url.searchParams.set("workspaceId", this.profile.workspaceId);
     url.searchParams.set("id", fileId);

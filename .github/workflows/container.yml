@@ -25,12 +25,12 @@ permissions:
 
 jobs:
   verify:
-    name: Build and exercise the Supabase deployment
+    name: Build and exercise the static client
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       TASKASAUR_IMAGE: taskasaur-ci:local
-      TEST_APP_URL: http://localhost:3000
+      TEST_APP_URL: http://localhost:8080
     outputs:
       version: ${{ steps.version.outputs.version }}
       revision: ${{ steps.version.outputs.revision }}
@@ -44,7 +44,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run compose:verify
+      - run: npm run sdk:verify
+      - run: npm run typecheck
       - name: Read image version
         id: version
         run: |
@@ -73,28 +74,17 @@ jobs:
           build-args: |
             TASKASAUR_VERSION=${{ steps.version.outputs.version }}
             SOURCE_REVISION=${{ steps.version.outputs.revision }}
-          cache-from: type=gha,scope=taskasaur-amd64
-          cache-to: type=gha,scope=taskasaur-amd64,mode=max
-      - run: npm run setup
-      - run: docker compose config --quiet
-      - name: Start the official Supabase stack and Taskasaur
-        run: docker compose up -d --no-build --wait --wait-timeout 240
-      - name: Exercise worker dispatch and terminal gateway
-        run: |
-          node --import tsx tests/integration/automation.ts
-          node --import tsx tests/integration/terminal.ts
-      - name: Check persistence across application replacement
-        run: |
-          node --import tsx tests/integration/container-plugin.ts
-          node tests/integration/container-upgrade.mjs prepare
-          docker compose up -d --no-build --no-deps --force-recreate --wait --wait-timeout 120 app worker
-          node tests/integration/container-upgrade.mjs verify
-      - name: Show service health
+          cache-from: type=gha,scope=taskasaur-client-amd64
+          cache-to: type=gha,scope=taskasaur-client-amd64,mode=max
+      - name: Start the static client
+        run: docker run -d --name taskasaur-client-ci -p 8080:8080 taskasaur-ci:local
+      - name: Install browser
+        run: npx playwright install --with-deps chrome
+      - name: Check offline startup and local storage
+        run: node tests/browser/offline.mjs
+      - name: Stop the client
         if: always()
-        run: docker compose ps --all
-      - name: Stop the isolated CI stack
-        if: always()
-        run: docker compose down --volumes --remove-orphans
+        run: docker rm -f taskasaur-client-ci
 
   publish:
     name: Publish versioned amd64 and arm64 image
@@ -131,6 +121,6 @@ jobs:
           build-args: |
             TASKASAUR_VERSION=${{ needs.verify.outputs.version }}
             SOURCE_REVISION=${{ needs.verify.outputs.revision }}
-          cache-from: type=gha,scope=taskasaur-amd64
+          cache-from: type=gha,scope=taskasaur-client-amd64
           provenance: true
           sbom: true

@@ -1,16 +1,20 @@
 "use client";
 import * as React from "react";
-import { PluginHost } from "../core/host";
-import { getSchema, isRequiredCore } from "../core/catalog";
-import { field, decodeField, validateRecord } from "../field-types";
-import { invariant } from "../core/errors";
+import { PluginHost } from "@taskasaur/platform/core/host";
+import { getSchema, isRequiredCore } from "@taskasaur/platform/core/catalog";
+import {
+  field,
+  decodeField,
+  validateRecord,
+} from "@taskasaur/platform/field-types";
+import { invariant } from "@taskasaur/platform/core/errors";
 import type {
   PluginManifest,
   PluginModule,
   PluginEvent,
   Mutation,
   ResourceRecord,
-} from "../plugin-sdk";
+} from "@taskasaur/platform/plugin-sdk";
 import type { AppRuntime } from "./runtime";
 import { RecordTable } from "./record-table";
 import { RecordForm, FieldInput } from "../ui/fields";

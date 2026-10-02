@@ -2,14 +2,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, Trash2, Pencil, ArrowUp, ArrowDown } from "lucide-react";
-import { getSchema } from "../core/catalog";
+import { getSchema } from "@taskasaur/platform/core/catalog";
 import {
   queryRecords,
   type Query,
   type Value,
   type RecordSchema,
-} from "../field-types";
-import type { ResourceRecord } from "../plugin-sdk";
+} from "@taskasaur/platform/field-types";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import type { AppRuntime } from "./runtime";
 import {
   Table,

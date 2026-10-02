@@ -112,7 +112,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: "Geist Variable", sans-serif;
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -152,56 +152,157 @@
 
 @layer components {
   tbody > tr[data-slot="table-row"]:hover {
-    background-color: color-mix(in srgb, var(--primary) 12%, transparent) !important;
+    background-color: color-mix(
+      in srgb,
+      var(--primary) 12%,
+      transparent
+    ) !important;
   }
 }
 
 @layer components {
-  .app-shell { @apply min-h-dvh bg-background flex; }
-  .sidebar { @apply fixed inset-y-0 left-0 z-40 w-56 border-r bg-sidebar flex flex-col px-3 py-5; }
-  .brand { @apply flex items-center gap-2 px-3 mb-7 text-lg font-semibold tracking-tight; }
-  .workspace-label { @apply px-3 mb-3 text-xs text-muted-foreground truncate; }
-  .sidebar nav { @apply flex-1 overflow-y-auto space-y-1; }
-  .nav-item { @apply w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors; }
-  .nav-item.active { @apply bg-primary/10 text-primary font-semibold; }
-  .sidebar-bottom { @apply pt-4 mt-4 border-t space-y-1; }
-  .local-status { @apply flex items-center gap-2 text-xs text-muted-foreground px-3 pt-4; }
-  .main-content { @apply ml-56 flex-1 min-w-0 px-8 pb-10; }
-  .page-header { @apply flex justify-between items-center py-8 mb-4; }
-  .page-header h1 { @apply text-3xl font-semibold tracking-tight; }
-  .eyebrow { @apply uppercase text-[10px] font-semibold text-muted-foreground tracking-[0.16em] mb-2; }
-  .page-description { @apply text-sm leading-6 text-muted-foreground max-w-3xl; }
-  .section-heading { @apply flex items-center justify-between mb-3; }
-  .section-heading h2 { @apply text-base font-semibold; }
-  .section-heading span { @apply text-xs text-muted-foreground; }
-  .core-select { @apply border-input bg-background border rounded-md h-9 px-3 text-sm w-full outline-none focus:ring-2 focus:ring-ring; }
-  .core-textarea { @apply border-input bg-background border rounded-md p-3 text-sm w-full min-h-24 outline-none focus:ring-2 focus:ring-ring; }
-  .field-row { @apply grid gap-2 text-sm; }
-  .query-panel { @apply bg-muted/30 border rounded-lg p-3 space-y-3; }
-  .empty-state { @apply border border-dashed rounded-xl p-12 text-center space-y-3; }
-  .empty-state h3 { @apply font-semibold; }
-  .empty-state p { @apply text-sm text-muted-foreground; }
-  .error-banner { @apply bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg; }
-  .notice { @apply border rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground; }
-  .timer-card { @apply border rounded-xl p-6 flex flex-wrap gap-6 items-center justify-between bg-card; }
-  .settings-card { @apply border rounded-xl p-6 space-y-2; }
-  .settings-card h2 { @apply font-semibold mb-4; }
-  .upload-button { @apply inline-flex gap-2 justify-center items-center rounded-md border bg-background px-4 h-9 text-sm font-medium cursor-pointer hover:bg-accent; }
-  .boot-screen { @apply min-h-dvh grid place-content-center text-sm text-muted-foreground; }
-  .welcome-shell { @apply min-h-dvh grid md:grid-cols-2; }
-  .welcome-card { @apply px-8 py-12 md:px-16 lg:px-24 flex flex-col justify-center max-w-3xl; }
-  .welcome-card h1 { @apply text-4xl md:text-5xl font-semibold leading-tight tracking-tight; }
-  .welcome-art { @apply hidden md:grid place-items-center overflow-hidden relative bg-[#0b2f4a] text-[#bce6ff]; }
-  .orbit { @apply absolute rounded-full border border-white/10; }
-  .orbit.one { width: 230px; height: 230px; }
-  .orbit.two { width: 400px; height: 400px; }
-  .orbit.three { width: 590px; height: 590px; }
-  .orbit-center { @apply bg-white/10 border border-white/20 rounded-3xl p-8 rotate-[-12deg] shadow-xl; }
-  .art-caption { @apply absolute bottom-16 font-medium text-white/60; }
+  .app-shell {
+    @apply min-h-dvh bg-background flex;
+  }
+  .sidebar {
+    @apply fixed inset-y-0 left-0 z-40 w-56 border-r bg-sidebar flex flex-col px-3 py-5;
+  }
+  .brand {
+    @apply flex items-center gap-2 px-3 mb-7 text-lg font-semibold tracking-tight;
+  }
+  .workspace-label {
+    @apply px-3 mb-3 text-xs text-muted-foreground truncate;
+  }
+  .sidebar nav {
+    @apply flex-1 overflow-y-auto space-y-1;
+  }
+  .nav-item {
+    @apply w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors;
+  }
+  .nav-item.active {
+    @apply bg-primary/10 text-primary font-semibold;
+  }
+  .sidebar-bottom {
+    @apply pt-4 mt-4 border-t space-y-1;
+  }
+  .local-status {
+    @apply flex items-center gap-2 text-xs text-muted-foreground px-3 pt-4;
+  }
+  .main-content {
+    @apply ml-56 flex-1 min-w-0 px-8 pb-10;
+  }
+  .page-header {
+    @apply flex justify-between items-center py-8 mb-4;
+  }
+  .page-header h1 {
+    @apply text-3xl font-semibold tracking-tight;
+  }
+  .eyebrow {
+    @apply uppercase text-[10px] font-semibold text-muted-foreground tracking-[0.16em] mb-2;
+  }
+  .page-description {
+    @apply text-sm leading-6 text-muted-foreground max-w-3xl;
+  }
+  .section-heading {
+    @apply flex items-center justify-between mb-3;
+  }
+  .section-heading h2 {
+    @apply text-base font-semibold;
+  }
+  .section-heading span {
+    @apply text-xs text-muted-foreground;
+  }
+  .core-select {
+    @apply border-input bg-background border rounded-md h-9 px-3 text-sm w-full outline-none focus:ring-2 focus:ring-ring;
+  }
+  .core-textarea {
+    @apply border-input bg-background border rounded-md p-3 text-sm w-full min-h-24 outline-none focus:ring-2 focus:ring-ring;
+  }
+  .field-row {
+    @apply grid gap-2 text-sm;
+  }
+  .query-panel {
+    @apply bg-muted/30 border rounded-lg p-3 space-y-3;
+  }
+  .empty-state {
+    @apply border border-dashed rounded-xl p-12 text-center space-y-3;
+  }
+  .empty-state h3 {
+    @apply font-semibold;
+  }
+  .empty-state p {
+    @apply text-sm text-muted-foreground;
+  }
+  .error-banner {
+    @apply bg-destructive/10 border border-destructive/20 text-destructive text-sm p-3 rounded-lg;
+  }
+  .notice {
+    @apply border rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground;
+  }
+  .timer-card {
+    @apply border rounded-xl p-6 flex flex-wrap gap-6 items-center justify-between bg-card;
+  }
+  .settings-card {
+    @apply border rounded-xl p-6 space-y-2;
+  }
+  .settings-card h2 {
+    @apply font-semibold mb-4;
+  }
+  .upload-button {
+    @apply inline-flex gap-2 justify-center items-center rounded-md border bg-background px-4 h-9 text-sm font-medium cursor-pointer hover:bg-accent;
+  }
+  .boot-screen {
+    @apply min-h-dvh grid place-content-center text-sm text-muted-foreground;
+  }
+  .welcome-shell {
+    @apply min-h-dvh grid md:grid-cols-2;
+  }
+  .welcome-card {
+    @apply px-8 py-12 md:px-16 lg:px-24 flex flex-col justify-center max-w-3xl;
+  }
+  .welcome-card h1 {
+    @apply text-4xl md:text-5xl font-semibold leading-tight tracking-tight;
+  }
+  .welcome-art {
+    @apply hidden md:grid place-items-center overflow-hidden relative bg-[#0b2f4a] text-[#bce6ff];
+  }
+  .orbit {
+    @apply absolute rounded-full border border-white/10;
+  }
+  .orbit.one {
+    width: 230px;
+    height: 230px;
+  }
+  .orbit.two {
+    width: 400px;
+    height: 400px;
+  }
+  .orbit.three {
+    width: 590px;
+    height: 590px;
+  }
+  .orbit-center {
+    @apply bg-white/10 border border-white/20 rounded-3xl p-8 rotate-[-12deg] shadow-xl;
+  }
+  .art-caption {
+    @apply absolute bottom-16 font-medium text-white/60;
+  }
 }
 @media (max-width: 767px) {
-  .sidebar { transform: translateX(-100%); transition: transform 160ms; box-shadow: 10px 0 40px #0002; }
-  .sidebar.is-open { transform: translateX(0); }
-  .main-content { margin-left: 0; padding-left: 16px; padding-right: 16px; }
-  .page-header { padding-top: max(24px, env(safe-area-inset-top)); }
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 160ms;
+    box-shadow: 10px 0 40px #0002;
+  }
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+  .main-content {
+    margin-left: 0;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .page-header {
+    padding-top: max(24px, env(safe-area-inset-top));
+  }
 }

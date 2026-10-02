@@ -15,7 +15,7 @@ import type {
   Query,
   Sort,
   Value,
-} from "../field-types";
+} from "@taskasaur/platform/field-types";
 import { FieldInput } from "./fields";
 import { Button } from "./primitives/button";
 import { Input } from "./primitives/input";

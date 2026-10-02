@@ -1,38 +1,20 @@
-# Taskasaur's application image augments the pinned official Supabase Compose stack.
-FROM node:24-bookworm-slim AS dependencies
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 COPY package.json package-lock.json ./
-COPY scripts/native-prepare.mjs ./scripts/native-prepare.mjs
-RUN npm ci && node -e "require('node-pty')"
-
-FROM dependencies AS build
+COPY vendor ./vendor
+RUN npm ci --ignore-scripts
 COPY . .
-RUN npm run typecheck && npm run core:verify && npm run build:web -- --webpack
+RUN npm run typecheck && npm run build:web
 
-FROM dependencies AS production-dependencies
-RUN npm prune --omit=dev --ignore-scripts
-
-FROM node:24-bookworm-slim
+FROM nginx:1.28-alpine
 ARG TASKASAUR_VERSION=0.2.0
 ARG SOURCE_REVISION=unknown
-LABEL org.opencontainers.image.title="Taskasaur" \
+LABEL org.opencontainers.image.title="Taskasaur client" \
       org.opencontainers.image.version=$TASKASAUR_VERSION \
       org.opencontainers.image.revision=$SOURCE_REVISION
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=build /app/.next/standalone ./.next/standalone
-COPY --from=build /app/.next/static ./.next/standalone/.next/static
-COPY --from=build /app/public ./.next/standalone/public
-COPY --from=production-dependencies /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/server ./server
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/plugins ./plugins
-COPY --from=build /app/scripts ./scripts
-RUN mkdir -p /var/lib/taskasaur/plugins /var/lib/taskasaur/office && chown -R node:node /var/lib/taskasaur
-USER node
-EXPOSE 3000 8787
-CMD ["node", ".next/standalone/server.js"]
+ENV TASKASAUR_SERVER_URL=http://host.docker.internal:3000
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY deploy/docker/nginx.conf /etc/nginx/templates/default.conf.template
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s CMD wget -q --spider http://127.0.0.1:8080/ || exit 1

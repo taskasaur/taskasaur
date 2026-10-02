@@ -1,11 +1,14 @@
 {
-	"folders": [
-		{
-			"path": "."
-		},
-		{
-			"path": "../website"
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "../taskasaur-server"
+    },
+    {
+      "path": "../website"
+    }
+  ],
+  "settings": {}
 }

@@ -16,7 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { Play, Save, Plus, ArrowLeft } from "lucide-react";
 import type { AppRuntime } from "./runtime";
-import type { ResourceRecord } from "../plugin-sdk";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import { RecordTable } from "./record-table";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
@@ -24,10 +24,10 @@ import {
   validateGraph,
   nodeSchemas,
   type WorkflowGraph,
-} from "../core/workflows";
+} from "@taskasaur/platform/core/workflows";
 import { RecordForm, FieldInput } from "../ui/fields";
-import { field, type Value } from "../field-types";
-import { getSchema } from "../core/catalog";
+import { field, type Value } from "@taskasaur/platform/field-types";
+import { getSchema } from "@taskasaur/platform/core/catalog";
 export default function AutomationView({ runtime }: { runtime: AppRuntime }) {
   const [selected, setSelected] = useState<ResourceRecord | null>(null),
     [run, setRun] = useState<ResourceRecord | null>(null),

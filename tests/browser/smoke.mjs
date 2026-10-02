@@ -6,7 +6,7 @@ const context = await browser.newContext({
   page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
-await page.goto("http://127.0.0.1:3210/");
+await page.goto("http://localhost:8080/");
 await page
   .getByRole("button", { name: "Create local workspace", exact: true })
   .click();

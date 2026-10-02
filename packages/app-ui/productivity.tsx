@@ -17,11 +17,11 @@ import {
   calendarExport,
   calendarImport,
   importedReminders,
-} from "../core/calendar";
-import { calendarOccurrences } from "../core/calendar-values";
-import { field } from "../field-types";
+} from "@taskasaur/platform/core/calendar";
+import { calendarOccurrences } from "@taskasaur/platform/core/calendar-values";
+import { field } from "@taskasaur/platform/field-types";
 import { FieldInput } from "../ui/fields";
-import type { ResourceRecord } from "../plugin-sdk";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 export function TasksView({ runtime }: { runtime: AppRuntime }) {
   const [view, setView] = useState("table");
   const tasks =

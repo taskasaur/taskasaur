@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { AppRuntime } from "./runtime";
-import type { ResourceRecord } from "../plugin-sdk";
-import { field, type RecordSchema } from "../field-types";
+import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
+import { field, type RecordSchema } from "@taskasaur/platform/field-types";
 import { RecordForm } from "../ui/fields";
 import { Button } from "../ui/primitives/button";
 import {

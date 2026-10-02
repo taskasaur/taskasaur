@@ -6,7 +6,7 @@ page.on("console", (m) => {
   if (m.type() === "error" || /abort|assert|exception/i.test(m.text()))
     console.log(m.type(), m.text());
 });
-await page.goto("http://127.0.0.1:3210/");
+await page.goto("http://localhost:8080/");
 await page
   .getByRole("button", { name: "Create local workspace", exact: true })
   .click();

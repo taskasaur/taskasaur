@@ -19,7 +19,7 @@ env:
 
 jobs:
   verify:
-    name: Verify platform and Supabase provenance
+    name: Verify frontend and platform SDK
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -33,8 +33,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run core:verify
-      - run: npm run compose:verify
-      - run: npm run setup
+      - run: npm run sdk:verify
       - run: docker compose config --quiet
   desktop:
     name: ${{ matrix.name }}
