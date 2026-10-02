@@ -1,16 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ThemeProvider } from "next-themes";
-import { BrowserRouter } from "react-router-dom";
-import App from "@/App";
-import "@/index.css";
-
+import Application from "../packages/app-ui/app";
+import "./index.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-        <App />
-      </ThemeProvider>
-    </BrowserRouter>
-  </React.StrictMode>
+    <Application />
+  </React.StrictMode>,
 );
