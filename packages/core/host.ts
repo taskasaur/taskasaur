@@ -20,6 +20,7 @@ export interface HostAdapters {
     options?: { mutationId?: string; targetDeviceId?: string },
   ): Promise<unknown>;
   publish(event: PluginEvent, principal: Principal): Promise<void>;
+  cleanup?(pluginId: string): void;
   log?(
     pluginId: string,
     message: string,
@@ -35,6 +36,10 @@ export class PluginHost {
     Set<{ pluginId: string; handler: (event: PluginEvent) => Promise<void> }>
   >();
   private grants = new Map<string, Set<string>>();
+  private active = new Set<string>();
+  private activations = new Map<string, object>();
+  private disposers = new Map<string, Set<() => void>>();
+  readonly failures = new Map<string, string>();
   constructor(
     readonly registry: PluginRegistry,
     readonly principal: Principal,
@@ -45,10 +50,61 @@ export class PluginHost {
     this.router = router ?? new MessageRouter();
   }
   register(module: PluginModule, grants: string[]) {
-    this.registry.addVerifiedModule(module);
+    const id = module.manifest.id;
+    this.registry.addVerifiedModule({
+      ...module,
+      activate: async (context) => {
+        const activation = this.activations.get(id)!;
+        this.active.add(id);
+        const dispose = () => this.release(id, activation);
+        context.signal.addEventListener("abort", dispose, { once: true });
+        try {
+          const cleanup = await module.activate(context);
+          return async () => {
+            try {
+              await cleanup?.();
+            } finally {
+              dispose();
+              context.signal.removeEventListener("abort", dispose);
+            }
+          };
+        } catch (error) {
+          dispose();
+          throw error;
+        }
+      },
+    });
     this.grants.set(module.manifest.id, new Set(grants));
   }
+  private release(id: string, activation?: object) {
+    if (activation && this.activations.get(id) !== activation) return;
+    this.active.delete(id);
+    this.activations.delete(id);
+    const disposers = this.disposers.get(id);
+    for (const dispose of disposers ?? []) dispose();
+    disposers?.clear();
+    this.disposers.delete(id);
+    this.adapters.cleanup?.(id);
+  }
+  private track(id: string, dispose: () => void) {
+    const set = this.disposers.get(id) ?? new Set<() => void>();
+    set.add(dispose);
+    this.disposers.set(id, set);
+    return () => {
+      if (set.delete(dispose)) dispose();
+    };
+  }
+  unavailable(id: string, error: unknown) {
+    this.release(id);
+    const kind =
+      error instanceof CoreError ? error.kind : "PLUGIN_ACTIVATION_FAILED";
+    this.failures.set(id, kind);
+    const state = this.registry.states.get(id);
+    if (state) this.registry.states.set(id, { ...state, error: kind });
+  }
   context(manifest: PluginManifest): Omit<CoreContext, "signal"> {
+    const activation = {};
+    this.activations.set(manifest.id, activation);
     const actor = {
         ...this.principal,
         pluginId: manifest.id,
@@ -57,7 +113,9 @@ export class PluginHost {
       granted = this.grants.get(manifest.id) ?? new Set<string>();
     const requireActive = () =>
       invariant(
-        this.registry.enabled(manifest.id),
+        this.registry.enabled(manifest.id) &&
+          this.active.has(manifest.id) &&
+          this.activations.get(manifest.id) === activation,
         "FEATURE_DISABLED",
         "Plugin is disabled",
       );
@@ -67,21 +125,36 @@ export class PluginHost {
       granted,
       this.registry.states.get(manifest.id)?.features,
     );
+    const scopedHandle = <T>(handle: T): T => {
+      if (!handle || typeof handle !== "object") return handle;
+      return new Proxy(handle as object, {
+        get(target, key, receiver) {
+          const value = Reflect.get(target, key, receiver);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            requireActive();
+            const result = Reflect.apply(value, target, args);
+            return key === "collection" ? scopedHandle(result) : result;
+          };
+        },
+      }) as T;
+    };
     return {
       principal: Object.freeze(actor),
       runtime: this.runtime,
       services: {
         require: <T>(id: string) => {
           requireActive();
-          return resolver.require(id) as T;
+          return scopedHandle(resolver.require(id)) as T;
         },
         optional: <T>(id: string) => {
           requireActive();
-          return resolver.optional(id) as T | undefined;
+          return scopedHandle(resolver.optional(id)) as T | undefined;
         },
       },
       messages: {
         handle: (command, contract, execute) => {
+          requireActive();
           invariant(
             manifest.provides.commands.includes(command),
             "UNDECLARED_COMMAND",
@@ -95,7 +168,7 @@ export class PluginHost {
               return execute(input as Record<string, Value>, ctx.signal);
             },
           });
-          return () => this.router.unregister(command);
+          return this.track(manifest.id, () => this.router.unregister(command));
         },
         call: async <T>(
           command: string,
@@ -140,6 +213,7 @@ export class PluginHost {
           await this.adapters.publish(envelope, actor);
         },
         subscribe: (event, handler) => {
+          requireActive();
           invariant(
             manifest.consumes.events.includes(event),
             "UNDECLARED_EVENT",
@@ -154,9 +228,9 @@ export class PluginHost {
             set = this.subscriptions.get(event) ?? new Set();
           set.add(subscription);
           this.subscriptions.set(event, set);
-          return () => {
+          return this.track(manifest.id, () => {
             set.delete(subscription);
-          };
+          });
         },
       },
       log: (message, metadata) =>
@@ -164,9 +238,18 @@ export class PluginHost {
     };
   }
   async activate(id: string) {
+    if (this.active.has(id)) return;
     const manifest = this.registry.manifests.get(id);
     invariant(manifest, "PLUGIN_NOT_FOUND", "Unknown plugin");
-    await this.registry.activate(id, this.context(manifest));
+    try {
+      await this.registry.activate(id, this.context(manifest));
+      this.failures.delete(id);
+      const state = this.registry.states.get(id);
+      if (state) this.registry.states.set(id, { ...state, error: undefined });
+    } catch (error) {
+      this.unavailable(id, error);
+      throw error;
+    }
   }
   subscribers(event: PluginEvent) {
     const name = event.type.replace(/^taskasaur\./, "").replace(/\.v1$/, "");
@@ -189,13 +272,22 @@ export class PluginHost {
     for (const subscriber of this.subscriptions.get(name) ?? [])
       if (
         this.registry.enabled(subscriber.pluginId) &&
+        this.active.has(subscriber.pluginId) &&
         (!onlyPlugin || onlyPlugin === subscriber.pluginId)
       )
         await subscriber.handler(event);
   }
   async close() {
-    for (const id of this.registry.states.keys())
-      await this.registry.deactivate(id);
+    const ids = [...this.active];
+    await Promise.allSettled(
+      ids.map(async (id) => {
+        try {
+          await this.registry.deactivate(id);
+        } finally {
+          this.release(id);
+        }
+      }),
+    );
     this.subscriptions.clear();
   }
 }

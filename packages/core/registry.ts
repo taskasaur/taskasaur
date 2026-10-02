@@ -6,7 +6,7 @@ import {
   isRequiredCore,
   requiredCoreIds,
 } from "./catalog";
-import { invariant } from "./errors";
+import { CoreError, invariant } from "./errors";
 import { verifyCoreRelease } from "./release";
 export interface PluginState {
   id: string;
@@ -211,23 +211,67 @@ export class PluginRegistry {
     if (!module || this.controllers.has(id)) return;
     const controller = new AbortController();
     this.controllers.set(id, controller);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const cleanup = await module.activate({
+      const activation = module.activate({
         ...context,
         signal: controller.signal,
       });
+      void activation
+        .then((cleanup) => {
+          if (controller.signal.aborted && cleanup)
+            return Promise.resolve(cleanup()).catch(() => undefined);
+        })
+        .catch(() => undefined);
+      const cleanup = await Promise.race([
+        activation,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new CoreError(
+                  "PLUGIN_ACTIVATION_TIMEOUT",
+                  "Plugin activation exceeded 30 seconds",
+                ),
+              ),
+            30000,
+          );
+        }),
+      ]);
       if (cleanup) this.cleanups.set(id, cleanup);
     } catch (error) {
       controller.abort();
       this.controllers.delete(id);
       throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   async deactivate(id: string) {
     this.controllers.get(id)?.abort();
-    await this.cleanups.get(id)?.();
+    const cleanup = this.cleanups.get(id);
     this.controllers.delete(id);
     this.cleanups.delete(id);
+    if (cleanup) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve().then(cleanup),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error("Cleanup timed out")),
+              5000,
+            );
+          }),
+        ]);
+      } catch {
+        const state = this.states.get(id);
+        if (state)
+          this.states.set(id, { ...state, error: "PLUGIN_CLEANUP_FAILED" });
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
   }
   resolveServices<T>(
     manifest: PluginManifest,

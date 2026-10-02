@@ -742,6 +742,16 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
                           <div className="text-xs text-muted-foreground mt-1 whitespace-normal max-w-lg">
                             {plugin.description}
                           </div>
+                          {state?.error && (
+                            <p
+                              className="text-xs text-destructive mt-2"
+                              role="status"
+                            >
+                              This plugin could not start ({state.error}).
+                              Disable and enable it to retry; other plugins
+                              remain available.
+                            </p>
+                          )}
                           {state?.installed &&
                             Object.keys(plugin.features).length > 0 && (
                               <div className="flex flex-wrap gap-4 mt-3">

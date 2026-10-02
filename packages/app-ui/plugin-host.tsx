@@ -36,6 +36,11 @@ export async function createBrowserPluginHost(
   const local = runtime.db,
     actor = runtime.principal;
   const host: PluginHost = new PluginHost(runtime.registry, actor, "browser", {
+    cleanup: (id) => {
+      for (const [key, surface] of runtime.surfaces)
+        if (surface.pluginId === id) runtime.surfaces.delete(key);
+      runtime.notifySurfaces();
+    },
     services: (principal) => {
       const id = principal.pluginId,
         manifest = runtime.registry.manifests.get(id)!;
@@ -169,9 +174,11 @@ export async function createBrowserPluginHost(
                 "CONTRACT_COLLISION",
                 "UI surface is already registered",
               );
-              runtime.surfaces.set(key, { ...surface, id: key, pluginId: id });
+              const registered = { ...surface, id: key, pluginId: id };
+              runtime.surfaces.set(key, registered);
               runtime.notifySurfaces();
               return () => {
+                if (runtime.surfaces.get(key) !== registered) return;
                 runtime.surfaces.delete(key);
                 runtime.notifySurfaces();
               };
@@ -282,49 +289,61 @@ export async function createBrowserPluginHost(
     const manifest = extension.manifest;
     if (!runtime.registry.enabled(manifest.id) || !manifest.entrypoints.browser)
       continue;
-    const key = `extension.source.${extension.digest}`;
-    let source = await local.getMetadata<string>(key);
-    if (!source && runtime.profile.connected) {
-      const result = await runtime.api<{ source: string }>(
-        "plugins/source?id=" + encodeURIComponent(manifest.id),
-      );
-      source = result.source;
-    }
-    invariant(
-      source && extension.browserDigest,
-      "INVALID_PACKAGE",
-      "Browser module is unavailable on this device",
-    );
-    const bytes = new TextEncoder().encode(source),
-      hash = Array.from(
-        new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
-      )
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    invariant(
-      hash === extension.browserDigest,
-      "INTEGRITY_FAILED",
-      "Browser module integrity check failed",
-    );
-    await local.setMetadata(key, source);
-    const url = URL.createObjectURL(
-      new Blob([source], { type: "text/javascript" }),
-    );
     try {
-      const imported = await import(
-        /* webpackIgnore: true */ /* @vite-ignore */ url
-      );
-      const module: PluginModule = { ...imported.default, manifest };
+      const key = `extension.source.${extension.digest}`;
+      let source = await local.getMetadata<string>(key);
+      if (!source && runtime.profile.connected) {
+        const result = await runtime.api<{ source: string }>(
+          "plugins/source?id=" + encodeURIComponent(manifest.id),
+        );
+        source = result.source;
+      }
       invariant(
-        typeof module.activate === "function",
+        source && extension.browserDigest,
         "INVALID_PACKAGE",
-        "Browser entrypoint must export activate(context)",
+        "Browser module is unavailable on this device",
       );
-      host.register(module, extension.grants);
-      await host.activate(manifest.id);
-    } finally {
-      URL.revokeObjectURL(url);
+      const bytes = new TextEncoder().encode(source),
+        hash = Array.from(
+          new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+        )
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+      invariant(
+        hash === extension.browserDigest,
+        "INTEGRITY_FAILED",
+        "Browser module integrity check failed",
+      );
+      await local.setMetadata(key, source);
+      const url = URL.createObjectURL(
+        new Blob([source], { type: "text/javascript" }),
+      );
+      try {
+        const imported = await import(
+          /* webpackIgnore: true */ /* @vite-ignore */ url
+        );
+        const module: PluginModule = { ...imported.default, manifest };
+        invariant(
+          typeof module.activate === "function",
+          "INVALID_PACKAGE",
+          "Browser entrypoint must export activate(context)",
+        );
+        host.register(module, extension.grants);
+        await host.activate(manifest.id);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      host.unavailable(manifest.id, error);
     }
+  }
+  for (const extension of extensions) {
+    const state = runtime.registry.states.get(extension.manifest.id);
+    if (state)
+      await local.plugins.put({
+        ...state,
+        error: host.failures.get(extension.manifest.id),
+      });
   }
   return host;
 }

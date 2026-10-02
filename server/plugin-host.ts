@@ -283,21 +283,25 @@ export async function serverPluginHost(
       registry.enabled(entry.manifest.id) &&
       entry.manifest.entrypoints.server
     ) {
-      const url = pathToFileURL(
-        entry.directory + "/" + entry.manifest.entrypoints.server,
-      ).href;
-      const imported = await import(/* webpackIgnore: true */ url);
-      const module: PluginModule = {
-        ...imported.default,
-        manifest: entry.manifest,
-      };
-      invariant(
-        typeof module.activate === "function",
-        "INVALID_PACKAGE",
-        "Plugin must export activate(context)",
-      );
-      host.register(module, entry.grants);
-      await host.activate(entry.manifest.id);
+      try {
+        const url = pathToFileURL(
+          entry.directory + "/" + entry.manifest.entrypoints.server,
+        ).href;
+        const imported = await import(/* webpackIgnore: true */ url);
+        const module: PluginModule = {
+          ...imported.default,
+          manifest: entry.manifest,
+        };
+        invariant(
+          typeof module.activate === "function",
+          "INVALID_PACKAGE",
+          "Plugin must export activate(context)",
+        );
+        host.register(module, entry.grants);
+        await host.activate(entry.manifest.id);
+      } catch (error) {
+        host.unavailable(entry.manifest.id, error);
+      }
     }
   return host;
 }

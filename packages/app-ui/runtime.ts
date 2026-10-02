@@ -11,6 +11,7 @@ import type {
   PluginEvent,
 } from "../plugin-sdk";
 import { SyncEngine } from "../sync-supabase";
+import { SyncQueue } from "../sync-supabase/queue";
 import type { PluginState } from "../core/registry";
 import {
   createBrowserPluginHost,
@@ -39,7 +40,7 @@ export class AppRuntime {
   readonly registry: PluginRegistry;
   readonly principal: Principal;
   readonly sync: SyncEngine;
-  private syncing: Promise<void> | undefined;
+  private syncQueue = new SyncQueue();
   readonly surfaces = new Map<string, Surface>();
   readonly surfaceListeners = new Set<() => void>();
   surfacesVersion = 0;
@@ -215,11 +216,18 @@ export class AppRuntime {
   }
   async synchronize() {
     if (!this.profile.connected || !navigator.onLine) return;
-    if (this.syncing) return this.syncing;
     const work = async () => {
       const inventory =
         await this.api<Array<{ state: PluginState }>>("plugins");
       for (const { state } of inventory) {
+        const previous = this.registry.states.get(state.id);
+        if (
+          previous?.error &&
+          previous.version === state.version &&
+          previous.enabled === state.enabled &&
+          JSON.stringify(previous.features) === JSON.stringify(state.features)
+        )
+          state.error = previous.error;
         this.registry.states.set(state.id, state);
         await this.db.plugins.put(state);
       }
@@ -298,10 +306,7 @@ export class AppRuntime {
         (await this.db.getMetadata<string>("sync.cursor")) ?? "0",
       );
     };
-    this.syncing = work().finally(() => {
-      this.syncing = undefined;
-    });
-    return this.syncing;
+    return this.syncQueue.run(work);
   }
   async fileBytes(fileId: string) {
     const file = await this.db.records.get(fileId);

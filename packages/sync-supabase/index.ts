@@ -1,6 +1,7 @@
 import type { LocalDatabase } from "../data-dexie";
 import type { Mutation, ResourceRecord } from "../plugin-sdk";
 import { CoreError } from "../core/errors";
+import { SyncQueue } from "./queue";
 export interface SyncTransport {
   push(mutation: Mutation): Promise<ResourceRecord>;
   pull(cursor: string): Promise<{
@@ -13,15 +14,13 @@ export interface SyncTransport {
   }>;
 }
 export class SyncEngine {
-  private running = false;
+  private queue = new SyncQueue();
   constructor(
     private db: LocalDatabase,
     private transport: SyncTransport,
   ) {}
   async synchronize() {
-    if (this.running) return;
-    this.running = true;
-    try {
+    return this.queue.run(async () => {
       const blocked = new Set<string>();
       for (const entry of await this.db.outbox.orderBy("sequence").toArray()) {
         if (blocked.has(entry.resourceId)) continue;
@@ -69,8 +68,6 @@ export class SyncEngine {
           });
         if (!result.hasMore) break;
       }
-    } finally {
-      this.running = false;
-    }
+    });
   }
 }

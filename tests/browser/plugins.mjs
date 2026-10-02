@@ -53,6 +53,27 @@ try {
   await page
     .getByRole("button", { name: "Plugin browser fixture", exact: true })
     .waitFor();
+  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  await row.getByRole("button", { name: "Disable", exact: true }).click();
+  await expect(
+    page
+      .getByRole("navigation")
+      .getByRole("button", { name: "Example notes", exact: true }),
+  ).toHaveCount(0);
+  await row.getByRole("button", { name: "Enable", exact: true }).click();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Example notes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Plugin browser fixture", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Count server notes", exact: true })
+    .click();
+  await page
+    .getByText("1 notes synchronized to the server", { exact: true })
+    .waitFor();
   assert.equal(errors.length, 0, errors.join("\n"));
   console.log(
     "Installed browser module, host-provided React/UI, offline persistence, and core-routed command passed",
