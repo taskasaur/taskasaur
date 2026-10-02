@@ -41,3 +41,5 @@ npm run build:web
 ```
 
 See [repository separation](docs/repository-separation.md) for ownership, SDK updates and existing installation migration. See [plugin interface](docs/plugins/README.md) for plugin development.
+
+See [downloadable plugins](docs/plugin-inventory.md) for independent plugin repositories, inventory configuration and the authoring specification.

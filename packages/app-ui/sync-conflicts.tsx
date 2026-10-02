@@ -5,7 +5,7 @@ import type { AppRuntime } from "./runtime";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import { displayValue } from "../ui/fields";
 import { Button } from "../ui/primitives/button";
-import { download } from "./productivity";
+import { download } from "./download";
 export function SyncConflicts({ runtime }: { runtime: AppRuntime }) {
   const entries =
       useLiveQuery(

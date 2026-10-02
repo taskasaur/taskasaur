@@ -1,4 +1,5 @@
-"use client";
+import { pluginWorkspace, pluginModules } from "./plugin-modules";
+("use client");
 import * as React from "react";
 import { PluginHost } from "@taskasaur/platform/core/host";
 import { getSchema, isRequiredCore } from "@taskasaur/platform/core/catalog";
@@ -43,11 +44,16 @@ export async function createBrowserPluginHost(
     cleanup: (id) => {
       for (const [key, surface] of runtime.surfaces)
         if (surface.pluginId === id) runtime.surfaces.delete(key);
+      for (const style of document.querySelectorAll<HTMLStyleElement>(
+        "style[data-taskasaur-plugin]",
+      ))
+        if (style.dataset.taskasaurPlugin === id) style.remove();
       runtime.notifySurfaces();
     },
     services: (principal) => {
       const id = principal.pluginId,
         manifest = runtime.registry.manifests.get(id)!;
+      const grants = extensions.find((e) => e.manifest.id === id)?.grants ?? [];
       const scoped = () =>
         local.scoped(
           principal,
@@ -68,6 +74,7 @@ export async function createBrowserPluginHost(
           local.setMetadata(`settings.${id}.${key}`, value),
       });
       return new Map<string, unknown>([
+        ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
         ["core.records", { collection }],
         [
           "core.storage.local",
@@ -149,6 +156,14 @@ export async function createBrowserPluginHost(
           "core.ui",
           {
             React,
+            modules: pluginModules(runtime, manifest, grants),
+            addStyles: (css: string) => {
+              const style = document.createElement("style");
+              style.dataset.taskasaurPlugin = id;
+              style.textContent = css;
+              document.head.append(style);
+              return () => style.remove();
+            },
             Button,
             Input,
             RecordForm,

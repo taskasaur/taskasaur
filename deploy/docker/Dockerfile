@@ -5,6 +5,8 @@ COPY package.json package-lock.json ./
 COPY vendor ./vendor
 RUN npm ci --ignore-scripts
 COPY . .
+ARG VITE_PLUGIN_INVENTORY_URL
+ENV VITE_PLUGIN_INVENTORY_URL=$VITE_PLUGIN_INVENTORY_URL
 RUN npm run typecheck && npm run build:web
 
 FROM nginx:1.28-alpine

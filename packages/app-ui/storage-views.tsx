@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type { AppRuntime } from "./runtime";
 import { RecordTable } from "./record-table";
-import { download } from "./productivity";
+import { download } from "./download";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
 import {

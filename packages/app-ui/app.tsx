@@ -47,16 +47,17 @@ import {
 import { RecordTable } from "./record-table";
 import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
 import { field } from "@taskasaur/platform/field-types";
-import { SharingView } from "./sharing-view";
 import { SyncConflicts } from "./sync-conflicts";
-import {
-  TasksView,
-  TimeView,
-  CalendarView,
-  RemindersView,
-  download,
-} from "./productivity";
+import { download } from "./download";
 import { catalog, isRequiredCore } from "@taskasaur/platform/core/catalog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../ui/primitives/dialog";
+import type { InventoryEntry } from "@taskasaur/platform/plugin-sdk/inventory";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
 import { Badge } from "../ui/primitives/badge";
@@ -74,29 +75,13 @@ import {
   TablesView,
   DevicesView,
 } from "./storage-views";
-const EmailView = lazy(() => import("./email-view"));
-const AutomationView = lazy(() => import("./automation-view"));
-const OfficeView = lazy(() => import("./office-view"));
-const TerminalView = lazy(() => import("./terminal-view"));
-const GithubView = lazy(() => import("./github-view"));
 const navigation = [
-  { id: "tasks", label: "Tasks", icon: CheckSquare },
-  { id: "track", label: "Track", icon: Activity },
-  { id: "time", label: "Time", icon: Clock3 },
-  { id: "calendar", label: "Calendar", icon: CalendarDays },
-  { id: "reminders", label: "Reminders", icon: Bell },
-  { id: "email-client", label: "Mail", icon: Mail },
-  { id: "automation-editor", label: "Automations", icon: Workflow },
-  { id: "remote-terminal", label: "Terminal", icon: Terminal },
-  { id: "office-editor", label: "Office", icon: FileText },
   { id: "files", label: "Files", icon: Folder },
   { id: "tables", label: "Tables", icon: Table2 },
   { id: "variables", label: "Variables", icon: Braces },
   { id: "credentials", label: "Credentials", icon: KeyRound },
   { id: "devices", label: "Devices", icon: Monitor },
   { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "sharing", label: "Sharing", icon: Cloud },
-  { id: "connector-github", label: "GitHub", icon: Blocks },
   { id: "jobs", label: "Jobs", icon: Workflow },
 ];
 export default function Application() {
@@ -360,7 +345,8 @@ function Shell({
     ...[...runtime.registry.manifests.values()]
       .filter(
         (m) =>
-          m.publisher !== "taskasaur" &&
+          !isRequiredCore(m.id) &&
+          !contributed.some((surface) => surface.pluginId === m.id) &&
           m.ui.mode === "shared" &&
           m.storage.local.collections.length,
       )
@@ -443,23 +429,11 @@ function Shell({
       </div>
     );
   else if (view === "plugins") content = <PluginsView runtime={runtime} />;
-  else if (view === "tasks") content = <TasksView runtime={runtime} />;
-  else if (view === "time") content = <TimeView runtime={runtime} />;
-  else if (view === "calendar") content = <CalendarView runtime={runtime} />;
-  else if (view === "reminders") content = <RemindersView runtime={runtime} />;
   else if (view === "files") content = <FilesView runtime={runtime} />;
   else if (view === "credentials")
     content = <CredentialsView runtime={runtime} />;
   else if (view === "tables") content = <TablesView runtime={runtime} />;
   else if (view === "devices") content = <DevicesView runtime={runtime} />;
-  else if (view === "email-client") content = <EmailView runtime={runtime} />;
-  else if (view === "automation-editor")
-    content = <AutomationView runtime={runtime} />;
-  else if (view === "office-editor") content = <OfficeView runtime={runtime} />;
-  else if (view === "remote-terminal")
-    content = <TerminalView runtime={runtime} />;
-  else if (view === "connector-github")
-    content = <GithubView runtime={runtime} />;
   else if (view === "jobs")
     content = (
       <RecordTable
@@ -484,7 +458,6 @@ function Shell({
     );
   else if (view === "settings")
     content = <SettingsView runtime={runtime} onSwitch={onSwitch} />;
-  else if (view === "sharing") content = <SharingView runtime={runtime} />;
   else if (runtime.surfaces.has(view)) {
     const Surface = runtime.surfaces.get(view)!.render;
     content = (
@@ -492,7 +465,7 @@ function Shell({
         <Surface />
       </PluginBoundary>
     );
-  } else if (runtime.registry.manifests.get(view)?.publisher !== "taskasaur")
+  } else if (!isRequiredCore(view))
     content = <ExtensionCollections key={view} runtime={runtime} id={view} />;
   else content = <RecordTable runtime={runtime} collection={view} />;
   return (
@@ -681,10 +654,53 @@ function ExtensionCollections({
   );
 }
 function PluginsView({ runtime }: { runtime: AppRuntime }) {
+  const [review, setReview] = useState<{
+    id: string;
+    entries: InventoryEntry[];
+  } | null>(null);
+  function reviewInstall(id: string) {
+    try {
+      const pending: InventoryEntry[] = [],
+        visiting = new Set<string>(),
+        seen = new Set<string>();
+      const collect = (id: string) => {
+        if (isRequiredCore(id) || seen.has(id)) return;
+        if (visiting.has(id))
+          throw Error("Plugin dependencies contain a cycle");
+        visiting.add(id);
+        const entry = runtime.availablePlugins.find((p) => p.id === id);
+        if (entry) {
+          for (const dep of entry.dependencies)
+            if (!runtime.registry.enabled(dep)) collect(dep);
+          pending.push(structuredClone(entry));
+        }
+        visiting.delete(id);
+        seen.add(id);
+      };
+      collect(id);
+      if (pending.length) setReview({ id, entries: pending });
+      else void action(id, "install");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  }
   const states =
     useLiveQuery(() => runtime.db.plugins.toArray(), [runtime]) ?? [];
   const [busy, setBusy] = useState(""),
     [error, setError] = useState("");
+  const entries = new Map(
+    runtime.availablePlugins.map((entry) => [entry.id, entry]),
+  );
+  const displayed = new Map(
+    [...runtime.registry.manifests.values()].map((plugin) => [
+      plugin.id,
+      plugin,
+    ]),
+  );
+  for (const entry of runtime.availablePlugins)
+    if (!displayed.has(entry.id))
+      displayed.set(entry.id, { ...entry, features: {} } as never);
+  const plugins = [...displayed.values()];
   async function action(
     id: string,
     kind: "install" | "disable" | "enable" | "uninstall",
@@ -711,12 +727,83 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
           {error}
         </p>
       )}
+      {runtime.inventoryError && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {runtime.inventoryError} Installed plugins remain available.
+        </p>
+      )}
+      <Button variant="outline" onClick={() => void runtime.refreshInventory()}>
+        Refresh inventory
+      </Button>
+      <Dialog
+        open={Boolean(review)}
+        onOpenChange={(open) => {
+          if (!busy && !open) setReview(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Review plugin installation</DialogTitle>
+            <DialogDescription>
+              Review the publisher and capabilities for these packages. Optional
+              features remain off until enabled.
+            </DialogDescription>
+          </DialogHeader>
+          {review?.entries.map((entry) => (
+            <section key={entry.id} className="space-y-2 border rounded-lg p-3">
+              <h3 className="font-medium">
+                {entry.name} · {entry.version}
+              </h3>
+              <p>{entry.description}</p>
+              <p className="text-sm">
+                {entry.publisher} · {entry.license}
+              </p>
+              <a
+                className="text-xs underline break-all"
+                href={entry.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {entry.downloadUrl}
+              </a>
+              <p className="text-sm break-words">
+                Capabilities: {entry.grants.join(", ") || "None"}
+              </p>
+              {entry.grants.includes("core.server") && (
+                <p className="text-sm">
+                  Includes trusted code that runs on your server.
+                </p>
+              )}
+            </section>
+          ))}
+          <Button
+            disabled={Boolean(busy)}
+            onClick={() => {
+              if (!review) return;
+              if (
+                review.entries.some(
+                  (entry) =>
+                    runtime.availablePlugins.find((p) => p.id === entry.id)
+                      ?.sha256 !== entry.sha256,
+                )
+              ) {
+                setError("The inventory changed. Review this release again.");
+                setReview(null);
+                return;
+              }
+              void action(review.id, "install").then(() => setReview(null));
+            }}
+          >
+            {busy ? "Installing…" : "Confirm install"}
+          </Button>
+        </DialogContent>
+      </Dialog>
       {[false, true].map((required) => (
         <section key={String(required)}>
           <div className="section-heading">
             <h2>{required ? "Required core" : "Optional features"}</h2>
             <span>
-              {catalog.filter((p) => isRequiredCore(p.id) === required).length}{" "}
+              {plugins.filter((p) => isRequiredCore(p.id) === required).length}{" "}
               plugins
             </span>
           </div>
@@ -731,7 +818,7 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {catalog
+                {plugins
                   .filter((p) => isRequiredCore(p.id) === required)
                   .map((plugin) => {
                     const state = states.find((s) => s.id === plugin.id);
@@ -742,6 +829,47 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
                           <div className="text-xs text-muted-foreground mt-1 whitespace-normal max-w-lg">
                             {plugin.description}
                           </div>
+                          {!required && entries.get(plugin.id) && (
+                            <details className="mt-2 text-xs">
+                              <summary>Package details and permissions</summary>
+                              <p className="mt-2">
+                                Publisher: {plugin.publisher} · {plugin.license}
+                              </p>
+                              <p className="break-all">
+                                Download:{" "}
+                                <a
+                                  className="underline"
+                                  href={entries.get(plugin.id)!.downloadUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {entries.get(plugin.id)!.downloadUrl}
+                                </a>
+                              </p>
+                              <p>
+                                Dependencies:{" "}
+                                {entries
+                                  .get(plugin.id)!
+                                  .dependencies.join(", ") || "Core only"}
+                              </p>
+                              <p>
+                                Installing grants:{" "}
+                                {entries.get(plugin.id)!.grants.join(", ")}
+                              </p>
+                              {entries.get(plugin.id)!.documentationUrl && (
+                                <a
+                                  className="underline"
+                                  href={
+                                    entries.get(plugin.id)!.documentationUrl
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Documentation
+                                </a>
+                              )}
+                            </details>
+                          )}
                           {state?.error && (
                             <p
                               className="text-xs text-destructive mt-2"
@@ -825,14 +953,26 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
                               <Button
                                 size="sm"
                                 disabled={busy === plugin.id}
-                                onClick={() =>
-                                  void action(plugin.id, "install")
-                                }
+                                onClick={() => reviewInstall(plugin.id)}
                               >
                                 Install
                               </Button>
                             ) : (
                               <>
+                                {entries.get(plugin.id) &&
+                                  (entries.get(plugin.id)!.version !==
+                                    state.version ||
+                                    !runtime.registry.manifests.has(
+                                      plugin.id,
+                                    )) && (
+                                    <Button
+                                      size="sm"
+                                      disabled={busy === plugin.id}
+                                      onClick={() => reviewInstall(plugin.id)}
+                                    >
+                                      Update
+                                    </Button>
+                                  )}
                                 <Button
                                   size="sm"
                                   variant="outline"

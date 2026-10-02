@@ -52,7 +52,14 @@ export default defineConfig(({ mode }) => {
           ]
         : []),
     ],
-    resolve: { alias: { "@": path.resolve("packages") } },
+    resolve: {
+      alias: {
+        "@": path.resolve("packages"),
+        cloudevents: path.resolve(
+          "node_modules/cloudevents/bundles/cloudevents.js",
+        ),
+      },
+    },
     server: { host: "127.0.0.1", port: 5173, headers, proxy },
     preview: { host: "127.0.0.1", port: 4173, headers, proxy },
     build: { outDir: "dist", sourcemap: true, manifest: true },

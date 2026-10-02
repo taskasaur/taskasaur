@@ -1,3 +1,15 @@
+import {
+  defaultInventoryUrl,
+  readInventory,
+  boundedDownload,
+  type PluginInventory,
+  type InventoryEntry,
+} from "@taskasaur/platform/plugin-sdk/inventory";
+import {
+  verifyArtifact,
+  artifactHash,
+} from "@taskasaur/platform/plugin-sdk/artifact";
+import { isRequiredCore } from "@taskasaur/platform/core/catalog";
 import { defaultServerUrl, serverFetch } from "./network";
 import Dexie, { type Table } from "dexie";
 import { LocalDatabase } from "../data-dexie";
@@ -51,20 +63,157 @@ export class AppRuntime {
   private host?: PluginHost;
   private hostState = "";
   private extensions: ExtensionContract[] = [];
+  availablePlugins: InventoryEntry[] = [];
+  inventoryError = "";
+  private inventory?: PluginInventory;
+  private closed = false;
+  async refreshInventory() {
+    try {
+      const inventory = this.profile.connected
+        ? await this.api<PluginInventory>("plugins/inventory?refresh=1")
+        : await readInventory(
+            import.meta.env.VITE_PLUGIN_INVENTORY_URL || defaultInventoryUrl,
+            { allowHttp: import.meta.env.DEV, followRedirects: true },
+          );
+      if (this.closed) return;
+      this.inventory = inventory;
+      this.availablePlugins = inventory.plugins;
+      this.inventoryError = "";
+      await this.db.setMetadata("core.inventory", inventory);
+    } catch (error) {
+      this.inventoryError =
+        error instanceof Error ? error.message : "Plugin inventory unavailable";
+    }
+    this.notifySurfaces();
+  }
+  private registerPackages(extensions: ExtensionContract[]) {
+    for (const extension of extensions) {
+      const { manifest } = registerExtension(
+        extension.manifest,
+        extension.schemas,
+      );
+      this.registry.manifests.set(manifest.id, manifest);
+    }
+    this.extensions = extensions;
+  }
+  private async ensurePackage(id: string) {
+    if (isRequiredCore(id)) return;
+    const existing = this.extensions.find((e) => e.manifest.id === id);
+    const entry = this.availablePlugins.find((p) => p.id === id);
+    if (existing && (!entry || existing.digest === entry.sha256)) return;
+    invariant(
+      entry && this.inventory,
+      "PLUGIN_NOT_FOUND",
+      "Refresh the inventory to find this plugin",
+    );
+    if (this.profile.connected) {
+      await this.api("plugins/install", {
+        id: entry.id,
+        version: entry.version,
+        sha256: entry.sha256,
+        grants: entry.grants,
+      });
+      this.registerPackages(
+        await this.api<ExtensionContract[]>("plugins/packages"),
+      );
+    } else {
+      const bytes = await boundedDownload(entry.downloadUrl, 50 * 1024 * 1024, {
+        allowHttp: import.meta.env.DEV,
+        followRedirects: true,
+      });
+      const verified = await verifyArtifact(
+        bytes,
+        this.inventory.publishers,
+        entry,
+      );
+      const browser = verified.manifest.entrypoints.browser;
+      const extension: ExtensionContract = {
+        manifest: verified.manifest,
+        schemas: verified.contracts,
+        grants: entry.grants,
+        digest: verified.digest,
+        browserDigest: browser
+          ? await artifactHash(verified.files[browser])
+          : undefined,
+      };
+      if (browser)
+        await this.db.setMetadata(
+          `extension.source.${extension.digest}`,
+          new TextDecoder().decode(verified.files[browser]),
+        );
+      this.registerPackages([
+        ...this.extensions.filter((e) => e.manifest.id !== id),
+        extension,
+      ]);
+    }
+    await this.db.setMetadata("core.extensions", this.extensions);
+  }
+  async callPluginCommand(pluginId: string, command: string, input: unknown) {
+    const manifest = this.registry.manifests.get(pluginId),
+      extension = this.extensions.find((e) => e.manifest.id === pluginId);
+    invariant(
+      manifest && this.registry.enabled(pluginId),
+      "FEATURE_DISABLED",
+      "Plugin is disabled",
+    );
+    invariant(
+      manifest.provides.commands.includes(command) ||
+        (manifest.consumes.commands.includes(command) &&
+          extension?.grants.includes(command)),
+      "UNDECLARED_COMMAND",
+      "Declare and grant this command",
+    );
+    invariant(this.host, "PLUGIN_UNAVAILABLE", "Plugin host is unavailable");
+    const principal = {
+      ...this.principal,
+      pluginId,
+      permissions: [
+        ...manifest.permissions,
+        this.host.router.permissionFor(command) ?? command,
+      ],
+    };
+    const request = {
+      jsonrpc: "2.0" as const,
+      id: crypto.randomUUID(),
+      method: command,
+      params: input,
+    };
+    const response = this.host.router.has(command)
+      ? await this.host.router.receive(request, {
+          principal,
+          signal: AbortSignal.timeout(30000),
+        })
+      : await this.api<{ result?: unknown; error?: { message: string } }>(
+          "rpc",
+          {
+            context: { workspaceId: this.profile.workspaceId, pluginId },
+            request,
+          },
+        );
+    invariant(
+      response && "result" in response,
+      "COMMAND_FAILED",
+      response && "error" in response
+        ? (response.error?.message ?? "Core command failed")
+        : "Core command failed",
+    );
+    return response.result;
+  }
   notifySurfaces() {
     this.surfacesVersion++;
     for (const listener of this.surfaceListeners) listener();
   }
   private async refreshHost() {
-    const key = JSON.stringify(
+    const key = JSON.stringify([
       [...this.registry.states.values()].map((s) => [
         s.id,
         s.version,
         s.enabled,
         s.features,
       ]),
-    );
-    if (this.host && key === this.hostState) return;
+      this.extensions.map((e) => e.digest),
+    ]);
+    if (this.closed || (this.host && key === this.hostState)) return;
     await this.host?.close();
     this.surfaces.clear();
     this.notifySurfaces();
@@ -96,16 +245,37 @@ export class AppRuntime {
         if (!extensions.length && !(error instanceof TypeError)) throw error;
       }
     }
-    for (const extension of extensions) {
-      const { manifest } = registerExtension(
-        extension.manifest,
-        extension.schemas,
-      );
-      this.registry.manifests.set(manifest.id, manifest);
-    }
+    this.registerPackages(extensions);
+    this.inventory =
+      await this.db.getMetadata<PluginInventory>("core.inventory");
+    this.availablePlugins = this.inventory?.plugins ?? [];
     await this.registry.initialize();
     this.extensions = extensions;
     await this.refreshHost();
+    void this.refreshInventory()
+      .then(async () => {
+        if (this.closed) return;
+        // Former built-ins keep their installed/enabled state and stored records.
+        for (const state of this.registry.states.values())
+          if (
+            state.installed &&
+            !isRequiredCore(state.id) &&
+            !this.extensions.some((e) => e.manifest.id === state.id)
+          ) {
+            try {
+              await this.ensurePackage(state.id);
+            } catch (error) {
+              this.inventoryError =
+                error instanceof Error ? error.message : String(error);
+            }
+          }
+        await this.refreshHost();
+        this.notifySurfaces();
+      })
+      .catch((error) => {
+        this.inventoryError = String(error);
+        this.notifySurfaces();
+      });
     return this;
   }
   collection(id: string) {
@@ -196,6 +366,7 @@ export class AppRuntime {
     id: string,
     action: "install" | "enable" | "disable" | "uninstall",
   ) {
+    if (action === "install") await this.ensurePackage(id);
     if (this.profile.connected) await this.api("plugins", { id, action });
     const result = await this.registry[action](id);
     await this.refreshHost();
@@ -206,9 +377,22 @@ export class AppRuntime {
       });
     return result;
   }
-  async installAndEnable(id: string) {
-    for (const dep of manifestById.get(id)?.dependencies ?? [])
-      if (!this.registry.enabled(dep)) await this.installAndEnable(dep);
+  async installAndEnable(id: string, visiting = new Set<string>()) {
+    invariant(
+      !visiting.has(id),
+      "DEPENDENCY_CYCLE",
+      "Plugin dependency cycle detected",
+    );
+    visiting.add(id);
+    if (!this.inventory) await this.refreshInventory();
+    const entry = this.availablePlugins.find((p) => p.id === id);
+    const dependencies =
+      entry?.dependencies ??
+      this.registry.manifests.get(id)?.dependencies ??
+      [];
+    for (const dep of dependencies)
+      if (!this.registry.enabled(dep))
+        await this.installAndEnable(dep, new Set(visiting));
     await this.pluginAction(id, "install");
     await this.pluginAction(id, "enable");
   }
@@ -221,6 +405,10 @@ export class AppRuntime {
   async synchronize() {
     if (!this.profile.connected || !navigator.onLine) return;
     const work = async () => {
+      this.registerPackages(
+        await this.api<ExtensionContract[]>("plugins/packages"),
+      );
+      await this.db.setMetadata("core.extensions", this.extensions);
       const inventory =
         await this.api<Array<{ state: PluginState }>>("plugins");
       for (const { state } of inventory) {
@@ -348,6 +536,7 @@ export class AppRuntime {
     return value;
   }
   async close() {
+    this.closed = true;
     await this.host?.close();
     this.surfaces.clear();
     this.notifySurfaces();

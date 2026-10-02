@@ -1,0 +1,810 @@
+[
+  {
+    "manifest": {
+      "id": "tasks",
+      "name": "Tasks",
+      "description": "Tasks, subtasks, dependencies, and boards.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": ["tasks"]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": ["tasks"]
+        }
+      },
+      "permissions": ["tasks.read", "tasks.write"],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": ["tasks.list", "tasks.put", "tasks.delete"],
+        "events": ["tasks.changed"]
+      },
+      "consumes": {
+        "commands": [],
+        "events": []
+      }
+    },
+    "schemas": [
+      {
+        "id": "tasks",
+        "pluginId": "tasks",
+        "name": "Tasks",
+        "version": 1,
+        "fields": [
+          {
+            "id": "title",
+            "label": "Title",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "status",
+            "label": "Status",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["open", "in-progress", "done", "cancelled"],
+            "default": "open",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "description",
+            "label": "Description",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "due_date",
+            "label": "Due date",
+            "pgType": "date",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "due_at",
+            "label": "Due at",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "priority",
+            "label": "Priority",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 0,
+            "max": 4,
+            "default": 0,
+            "sensitive": false
+          },
+          {
+            "id": "parent_id",
+            "label": "Parent task",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "tasks",
+            "control": "reference"
+          },
+          {
+            "id": "tags",
+            "label": "Tags",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "dependencies",
+            "label": "Dependencies",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "calendar",
+      "name": "Calendar",
+      "description": "Events, recurrence, and standards-based calendar import/export.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": ["calendar"]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": ["calendar"]
+        }
+      },
+      "permissions": ["calendar.read", "calendar.write"],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": ["calendar.list", "calendar.put", "calendar.delete"],
+        "events": ["calendar.changed"]
+      },
+      "consumes": {
+        "commands": ["reminders.list", "reminders.put", "reminders.delete"],
+        "events": []
+      }
+    },
+    "schemas": [
+      {
+        "id": "calendar",
+        "pluginId": "calendar",
+        "name": "Calendar",
+        "version": 1,
+        "fields": [
+          {
+            "id": "uid",
+            "label": "UID",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "dtstamp",
+            "label": "DTSTAMP",
+            "pgType": "timestamp with time zone",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "dtstart",
+            "label": "DTSTART",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "summary",
+            "label": "Title",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "description",
+            "label": "Description",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "dtend",
+            "label": "End",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "duration",
+            "label": "Duration",
+            "pgType": "interval",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "timezone",
+            "label": "Time zone",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "location",
+            "label": "Location",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "rrule",
+            "label": "Recurrence rule",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "exdates",
+            "label": "Exceptions",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "rdates",
+            "label": "Additional dates",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "recurrence_id",
+            "label": "Recurrence instance",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "attendees",
+            "label": "Attendees",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "alarms",
+            "label": "Embedded iCalendar alarms",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "organizer",
+            "label": "Organizer",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "url",
+            "label": "URL",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "url",
+            "sensitive": false
+          },
+          {
+            "id": "sequence",
+            "label": "Sequence",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 0,
+            "default": 0,
+            "sensitive": false
+          },
+          {
+            "id": "transp",
+            "label": "Availability",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["OPAQUE", "TRANSPARENT"],
+            "default": "OPAQUE",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "status",
+            "label": "Status",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["CONFIRMED", "TENTATIVE", "CANCELLED"],
+            "default": "CONFIRMED",
+            "control": "select",
+            "sensitive": false
+          }
+        ],
+        "standard": "ical-event"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "reminders",
+      "name": "Reminders",
+      "description": "Scheduled reminders with required iCalendar fields.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs",
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": ["reminders"]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": ["reminders"]
+        }
+      },
+      "permissions": ["reminders.read", "reminders.write"],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.jobs",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.schedules",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.notifications",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": ["reminders.list", "reminders.put", "reminders.delete"],
+        "events": ["reminders.changed"]
+      },
+      "consumes": {
+        "commands": [],
+        "events": []
+      },
+      "server": {
+        "routes": [],
+        "background": true,
+        "mutationHooks": false
+      }
+    },
+    "schemas": [
+      {
+        "id": "reminders",
+        "pluginId": "reminders",
+        "name": "Reminders",
+        "version": 1,
+        "fields": [
+          {
+            "id": "action",
+            "label": "ACTION",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["DISPLAY", "EMAIL", "AUDIO"],
+            "default": "DISPLAY",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "trigger",
+            "label": "TRIGGER",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "description",
+            "label": "DESCRIPTION",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "summary",
+            "label": "SUMMARY",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "attendees",
+            "label": "ATTENDEE",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "parent_id",
+            "label": "Parent event/task",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "resources",
+            "control": "reference"
+          },
+          {
+            "id": "related",
+            "label": "Trigger relative to",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["START", "END"],
+            "default": "START",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "mail_account_id",
+            "label": "Sending mail account",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "reference",
+            "reference": "mail_accounts",
+            "sensitive": false
+          },
+          {
+            "id": "repeat",
+            "label": "REPEAT",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 0,
+            "max": 1000,
+            "sensitive": false
+          },
+          {
+            "id": "duration",
+            "label": "DURATION",
+            "pgType": "interval",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "enabled",
+            "label": "Enabled",
+            "pgType": "boolean",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": true,
+            "sensitive": false
+          },
+          {
+            "id": "acknowledged_at",
+            "label": "Acknowledged",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "snoozed_until",
+            "label": "Snoozed until",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          }
+        ],
+        "standard": "ical-alarm"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "time",
+      "name": "Time",
+      "description": "Timers, intervals, focus, and breaks.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs",
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": ["time"]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": ["time"]
+        }
+      },
+      "permissions": ["time.read", "time.write"],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": ["time.list", "time.put", "time.delete"],
+        "events": ["time.changed"]
+      },
+      "consumes": {
+        "commands": [
+          "notifications.list",
+          "notifications.put",
+          "notifications.delete"
+        ],
+        "events": []
+      },
+      "server": {
+        "routes": [],
+        "background": true,
+        "mutationHooks": true
+      }
+    },
+    "schemas": [
+      {
+        "id": "time",
+        "pluginId": "time",
+        "name": "Time",
+        "version": 1,
+        "fields": [
+          {
+            "id": "title",
+            "label": "Activity",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "started_at",
+            "label": "Started",
+            "pgType": "timestamp with time zone",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "ended_at",
+            "label": "Ended",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "kind",
+            "label": "Kind",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": ["work", "break", "focus"],
+            "default": "work",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "task_id",
+            "label": "Task",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "tasks",
+            "control": "reference"
+          },
+          {
+            "id": "notes",
+            "label": "Notes",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "paused_ms",
+            "label": "Paused milliseconds",
+            "pgType": "bigint",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": "0",
+            "sensitive": false
+          },
+          {
+            "id": "paused_at",
+            "label": "Paused at",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "target_seconds",
+            "label": "Timer duration (seconds)",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 1,
+            "max": 86400,
+            "sensitive": false
+          }
+        ],
+        "standard": "time-interval"
+      }
+    ]
+  }
+]
