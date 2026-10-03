@@ -27,7 +27,7 @@ export const coreServices: Record<string, string[]> = {
   "access-control": ["core.access"],
   records: ["core.records", "core.fields", "core.modules"],
   "data-dexie": ["core.storage.local"],
-  "peer-sync": ["core.sync"],
+  "peer-sync": ["core.sync", "core.storage.placement"],
   settings: ["core.settings"],
   variables: ["core.variables"],
   tables: ["core.tables"],

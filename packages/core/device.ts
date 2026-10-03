@@ -85,7 +85,10 @@ export class WorkspaceNode {
   async synchronize() {
     if (this.synchronization) return this.synchronization;
     const work = async () => {
-      if (!this.sync) return;
+      if (!this.sync) {
+        await this.protocol.storage.reconcile(async () => false);
+        return;
+      }
       const errors: string[] = [];
       for (const address of new Set([
         ...this.link.peers,
@@ -108,6 +111,34 @@ export class WorkspaceNode {
         } catch (error) {
           errors.push(error instanceof Error ? error.message : String(error));
         }
+      await this.protocol.storage.reconcile(async (item, version) => {
+        for (const peer of this.peerDevices.values()) {
+          if (
+            Date.now() - peer.lastSeen >= 45000 ||
+            !peer.capabilities.includes("storage.placement") ||
+            !this.protocol.storage.wanted(item, peer.deviceId)
+          )
+            continue;
+          try {
+            const receipt = await this.sync!.request<{
+              deviceId: string;
+              token: string;
+            }>(
+              peer.address,
+              { kind: "storage-retain", item, version },
+              peer.deviceId,
+            );
+            if (
+              receipt.deviceId === peer.deviceId &&
+              receipt.token === version.token
+            )
+              return true;
+          } catch {
+            /* Keep the local copy until a peer can confirm this exact version. */
+          }
+        }
+        return false;
+      });
       this.replica.peers = [...this.peerDevices.values()].filter(
         (p) => Date.now() - p.lastSeen < 45000,
       ).length;
@@ -285,6 +316,8 @@ export class DeviceCore {
       handler,
     );
     this.workspaces.set(id, node);
+    await node.protocol.files.initialize();
+    await node.protocol.storage.bootstrap();
     this.protocols.set(id, node.protocol);
     if (this.transport) node.sync = new PeerSync(node.protocol, this.transport);
     replica.policyListeners.add(() => {

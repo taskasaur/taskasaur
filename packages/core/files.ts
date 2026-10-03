@@ -14,6 +14,7 @@ export interface FileManifest {
 }
 export const CHUNK_BYTES = 256 * 1024;
 export class ReplicaFiles {
+  wantsVersion: (id: string) => boolean = () => true;
   constructor(readonly replica: Replica) {}
   private key(hash: string) {
     invariant(
@@ -110,11 +111,73 @@ export class ReplicaFiles {
   }
   async missing() {
     const missing: string[] = [];
-    for (const hash of new Set(this.manifests().flatMap((m) => m.chunks)))
+    for (const hash of new Set(
+      this.manifests()
+        .filter((m) => this.wantsVersion(m.id))
+        .flatMap((m) => m.chunks),
+    ))
       if (!(await this.replica.storage.get(this.key(hash)))) missing.push(hash);
     return missing;
   }
-  async read(versionId: string) {
+  async evictVersion(id: string) {
+    const manifest = this.manifests().find((m) => m.id === id);
+    if (!manifest) return;
+    // Shared chunks stay until every version referencing them is safely released.
+    const retained = new Set(
+      this.manifests()
+        .filter((m) => m.id !== id && !this.released.has(m.id))
+        .flatMap((m) => m.chunks),
+    );
+    const key = `workspace/${this.replica.workspaceId}/released-files/${id}`;
+    await this.replica.storage.set(key, utf8.encode("1"));
+    this.released.add(id);
+    this.verified.delete(id);
+    for (const hash of manifest.chunks)
+      if (!retained.has(hash))
+        await this.replica.storage.delete(this.key(hash));
+  }
+  private verified = new Set<string>();
+  private released = new Set<string>();
+  async hasVersion(id: string) {
+    if (this.released.has(id)) return false;
+    if (this.verified.has(id)) return true;
+    try {
+      await this.read(id);
+      return true;
+    } catch (error) {
+      if (
+        ["OFFLINE_UNAVAILABLE", "NOT_FOUND"].includes(
+          (error as { kind?: string }).kind ?? "",
+        )
+      )
+        return false;
+      throw error;
+    }
+  }
+  async initialize() {
+    const prefix = `workspace/${this.replica.workspaceId}/released-files/`;
+    this.released = new Set(
+      (await this.replica.storage.keys(prefix)).map((k) =>
+        k.slice(prefix.length),
+      ),
+    );
+    for (const id of this.released) await this.evictVersion(id);
+  }
+  async markRetained(id: string) {
+    await this.replica.storage.delete(
+      `workspace/${this.replica.workspaceId}/released-files/${id}`,
+    );
+    this.released.delete(id);
+  }
+  retainedVersion(id: string) {
+    return !this.released.has(id);
+  }
+  async read(versionId: string, includeReleased = false) {
+    invariant(
+      includeReleased || !this.released.has(versionId),
+      "OFFLINE_UNAVAILABLE",
+      "This version is stored on another device",
+    );
     const manifest = this.replica.read<FileManifest>("file/" + versionId);
     invariant(manifest, "NOT_FOUND", "File version does not exist");
     invariant(
@@ -140,6 +203,7 @@ export class ReplicaFiles {
       "INTEGRITY_FAILED",
       "File checksum mismatch",
     );
+    this.verified.add(versionId);
     return { manifest, bytes };
   }
 }

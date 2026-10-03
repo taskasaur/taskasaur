@@ -111,6 +111,10 @@
     "./core/collection-tables": {
       "types": "./dist/core/collection-tables.d.ts",
       "import": "./dist/core/collection-tables.js"
+    },
+    "./plugin-sdk/storage-placement": {
+      "types": "./dist/plugin-sdk/storage-placement.d.ts",
+      "import": "./dist/plugin-sdk/storage-placement.js"
     }
   },
   "dependencies": {

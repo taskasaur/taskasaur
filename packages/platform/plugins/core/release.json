@@ -172,7 +172,7 @@
           "events": []
         }
       },
-      "services": ["core.sync"]
+      "services": ["core.sync", "core.storage.placement"]
     },
     {
       "manifest": {
@@ -441,7 +441,12 @@
           "events": []
         }
       },
-      "services": ["core.devices", "core.peers", "core.streams", "core.execution"]
+      "services": [
+        "core.devices",
+        "core.peers",
+        "core.streams",
+        "core.execution"
+      ]
     },
     {
       "manifest": {

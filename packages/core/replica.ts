@@ -1,3 +1,4 @@
+import { catalogKey, validateStorageControl } from "./storage-placement";
 import * as A from "@automerge/automerge";
 import type { DurableStorage } from "../storage";
 import {
@@ -47,6 +48,9 @@ export interface ReplicaStatus {
 }
 /** One replica per workspace/device. Changes are signed individually so untrusted relays cannot forge forwarded edits. */
 export class Replica {
+  wantsDocument: (id: string, deviceId?: string) => boolean = () => true;
+  private evicted = new Set<string>();
+  private coldDocuments = new Map<string, Uint8Array>();
   private documents = new Map<string, A.Doc<DocumentValue>>();
   private changes = new Map<string, SignedChange>();
   private pending = new Map<string, SignedChange>();
@@ -89,6 +93,8 @@ export class Replica {
         this.prefix() + "access",
         utf8.encode(canonical(this.access.policies)),
       );
+    for (const key of await this.storage.keys(this.prefix() + "evicted/"))
+      this.evicted.add(key.slice((this.prefix() + "evicted/").length));
     for (const key of await this.storage.keys(this.prefix() + "changes/")) {
       try {
         const saved = JSON.parse(
@@ -103,6 +109,10 @@ export class Replica {
             ),
           ),
         ) as SignedChange;
+        if (this.evicted.has(entry.documentId)) {
+          await this.storage.delete(key);
+          continue;
+        }
         await this.acceptInternal(entry, false);
       } catch (error) {
         this.quarantined++;
@@ -111,9 +121,84 @@ export class Replica {
     }
     return this;
   }
+  private document(id: string) {
+    let doc = this.documents.get(id);
+    const cold = this.coldDocuments.get(id);
+    if (!doc && cold) {
+      doc = A.load<DocumentValue>(cold, { actor: this.identity.id });
+      this.coldDocuments.delete(id);
+      this.documents.set(id, doc);
+    }
+    return doc;
+  }
+  heads(id: string) {
+    const doc = this.document(id);
+    return doc ? A.getHeads(doc) : [];
+  }
+  hasHeads(id: string, heads: string[]) {
+    return (
+      heads.length > 0 &&
+      heads.every((h) => this.changes.get(h)?.documentId === id)
+    );
+  }
+  /** Move inactive documents into Automerge's compressed binary format. The journal stays indexed. */
+  compact(maxLoaded = 128) {
+    for (const [id, doc] of this.documents) {
+      if (this.documents.size <= maxLoaded) break;
+      if (id.startsWith("setting/storage.")) continue;
+      this.coldDocuments.set(id, A.save(doc));
+      this.documents.delete(id);
+      A.free(doc);
+    }
+  }
+  private async publishCatalogInternal(id: string) {
+    const record = this.read<ResourceRecord>(id);
+    if (!record) return;
+    await this.updateInternal(catalogKey(record.id), {
+      id: record.id,
+      pluginId: record.managedBy ?? record.pluginId,
+      collection: record.collection,
+      label: String(
+        record.data.title ??
+          record.data.name ??
+          record.data.subject ??
+          record.data.summary ??
+          record.id,
+      ).slice(0, 200),
+      heads: this.heads(id),
+    });
+  }
+  publishCatalog(id: string) {
+    return this.serial(() => this.publishCatalogInternal(id));
+  }
+  evictDocument(id: string, reviewedHeads: string[]) {
+    return this.serial(async () => {
+      invariant(
+        id.startsWith("record/") &&
+          canonical(this.heads(id).sort()) ===
+            canonical([...reviewedHeads].sort()),
+        "STORAGE_CHANGED",
+        "The record changed before handoff completed",
+      );
+      // A durable marker prevents partial cleanup from resurrecting an item after a crash.
+      await this.storage.set(this.prefix() + "evicted/" + id, utf8.encode("1"));
+      this.evicted.add(id);
+      for (const [hash, change] of [...this.changes, ...this.pending])
+        if (change.documentId === id) {
+          await this.storage.delete(this.prefix() + "changes/" + hash);
+          this.changes.delete(hash);
+          this.pending.delete(hash);
+        }
+      const doc = this.documents.get(id);
+      if (doc) A.free(doc);
+      this.documents.delete(id);
+      this.coldDocuments.delete(id);
+      for (const listener of this.listeners) listener(id);
+    });
+  }
   status(): ReplicaStatus {
     return {
-      documents: this.documents.size,
+      documents: this.ids().length,
       changes: this.changes.size,
       quarantined: this.quarantined,
       pending: this.pending.size,
@@ -122,14 +207,16 @@ export class Replica {
     };
   }
   ids(prefix = "") {
-    return [...this.documents.keys()].filter((id) => id.startsWith(prefix));
+    return [
+      ...new Set([...this.documents.keys(), ...this.coldDocuments.keys()]),
+    ].filter((id) => id.startsWith(prefix));
   }
   read<T = Record<string, unknown>>(id: string): T | undefined {
-    const doc = this.documents.get(id);
+    const doc = this.document(id);
     return doc?.value ? (structuredClone(A.toJS(doc).value) as T) : undefined;
   }
   conflicts(id: string, field: string, nested = false) {
-    const doc = this.documents.get(id);
+    const doc = this.document(id);
     if (!doc?.value) return {};
     const object = nested
       ? (doc.value.data as Record<string, unknown>)
@@ -143,89 +230,118 @@ export class Replica {
   ) {
     return this.serial(async () => {
       invariant(
-        this.member && this.member.role !== "viewer",
-        "PERMISSION_DENIED",
-        "This device cannot edit this workspace",
+        !this.evicted.has(id) &&
+          !(
+            id.startsWith("record/") &&
+            this.read(catalogKey(id.slice(7))) &&
+            !this.heads(id).length
+          ),
+        "NOT_LOCAL",
+        "Retain this item on the device before editing it",
       );
+      const catalog = id.startsWith("record/")
+        ? this.read<{ heads: string[] }>(catalogKey(id.slice(7)))
+        : undefined;
       invariant(
-        /^(record|setting|file|event|job|vault)\/[a-zA-Z0-9_.:-]{1,256}$/.test(
-          id,
-        ),
-        "INVALID_DOCUMENT",
-        "Invalid document identifier",
+        !catalog || catalog.heads.every((h) => this.changes.has(h)),
+        "COPY_PENDING",
+        "Wait for the complete record history before editing",
       );
-      invariant(
-        utf8.encode(canonical(value)).length <= 2 * 1024 * 1024,
-        "PAYLOAD_TOO_LARGE",
-        "Store large content through the file service",
-      );
-      const previous =
-        this.documents.get(id) ??
-        A.init<DocumentValue>({ actor: this.identity.id });
-      const draft = A.clone(previous, { actor: this.identity.id });
-      const next = A.change(draft, { message: id }, (doc) => {
-        if (!doc.value) doc.value = {};
-        // Patch fields individually: replacing the entire record discards concurrent independent edits.
-        for (const key of new Set([
-          ...Object.keys(doc.value),
-          ...Object.keys(value),
-        ])) {
-          if (!(key in value)) {
-            delete doc.value[key];
-            continue;
-          }
-          if (
-            key === "data" &&
-            value.data &&
-            typeof value.data === "object" &&
-            !Array.isArray(value.data)
-          ) {
-            if (!doc.value.data) doc.value.data = {};
-            const target = doc.value.data as Record<string, unknown>,
-              incoming = value.data as Record<string, unknown>;
-            for (const field of new Set([
-              ...Object.keys(target),
-              ...Object.keys(incoming),
-            ])) {
-              if (!(field in incoming)) delete target[field];
-              else if (
-                canonical(target[field]) !== canonical(incoming[field]) ||
-                resolveFields.includes("data." + field)
-              )
-                target[field] = structuredClone(incoming[field]);
-            }
-          } else if (
-            canonical(doc.value[key]) !== canonical(value[key]) ||
-            resolveFields.includes(key)
-          )
-            doc.value[key] = structuredClone(value[key]);
-        }
-      });
-      const change = A.getLastLocalChange(next);
-      if (!change || A.getHeads(previous).join() === A.getHeads(next).join())
-        return;
-      const decoded = A.decodeChange(change);
-      const body: ChangeBody = {
-        version: 1,
-        workspaceId: this.workspaceId,
-        documentId: id,
-        author: this.identity.id,
-        epoch: currentPolicy(this.access).epoch,
-        hash: decoded.hash!,
-        change: base64(change),
-      };
-      const entry = {
-        ...body,
-        signature: await sign(this.identity.privateKey, body),
-      };
-      await this.acceptInternal(entry, true);
-      for (const listener of this.outgoing) listener(entry);
+      await this.updateInternal(id, value, resolveFields);
+      if (id.startsWith("record/")) await this.publishCatalogInternal(id);
     });
+  }
+  private async updateInternal(
+    id: string,
+    value: Record<string, unknown>,
+    resolveFields: string[] = [],
+  ) {
+    invariant(
+      this.member && this.member.role !== "viewer",
+      "PERMISSION_DENIED",
+      "This device cannot edit this workspace",
+    );
+    invariant(
+      /^(record|setting|file|event|job|vault)\/[a-zA-Z0-9_.:-]{1,256}$/.test(
+        id,
+      ),
+      "INVALID_DOCUMENT",
+      "Invalid document identifier",
+    );
+    invariant(
+      utf8.encode(canonical(value)).length <= 2 * 1024 * 1024,
+      "PAYLOAD_TOO_LARGE",
+      "Store large content through the file service",
+    );
+    const previous =
+      this.document(id) ?? A.init<DocumentValue>({ actor: this.identity.id });
+    const draft = A.clone(previous, { actor: this.identity.id });
+    const next = A.change(draft, { message: id }, (doc) => {
+      if (!doc.value) doc.value = {};
+      // Patch fields individually: replacing the entire record discards concurrent independent edits.
+      for (const key of new Set([
+        ...Object.keys(doc.value),
+        ...Object.keys(value),
+      ])) {
+        if (!(key in value)) {
+          delete doc.value[key];
+          continue;
+        }
+        if (
+          key === "data" &&
+          value.data &&
+          typeof value.data === "object" &&
+          !Array.isArray(value.data)
+        ) {
+          if (!doc.value.data) doc.value.data = {};
+          const target = doc.value.data as Record<string, unknown>,
+            incoming = value.data as Record<string, unknown>;
+          for (const field of new Set([
+            ...Object.keys(target),
+            ...Object.keys(incoming),
+          ])) {
+            if (!(field in incoming)) delete target[field];
+            else if (
+              canonical(target[field]) !== canonical(incoming[field]) ||
+              resolveFields.includes("data." + field)
+            )
+              target[field] = structuredClone(incoming[field]);
+          }
+        } else if (
+          canonical(doc.value[key]) !== canonical(value[key]) ||
+          resolveFields.includes(key)
+        )
+          doc.value[key] = structuredClone(value[key]);
+      }
+    });
+    const change = A.getLastLocalChange(next);
+    if (!change || A.getHeads(previous).join() === A.getHeads(next).join())
+      return;
+    const decoded = A.decodeChange(change);
+    const body: ChangeBody = {
+      version: 1,
+      workspaceId: this.workspaceId,
+      documentId: id,
+      author: this.identity.id,
+      epoch: currentPolicy(this.access).epoch,
+      hash: decoded.hash!,
+      change: base64(change),
+    };
+    const entry = {
+      ...body,
+      signature: await sign(this.identity.privateKey, body),
+    };
+    await this.acceptInternal(entry, true, true);
+    for (const listener of this.outgoing) listener(entry);
   }
   async accept(entry: SignedChange) {
     return this.serial(() => this.acceptInternal(entry, true));
   }
-  private async acceptInternal(entry: SignedChange, persist: boolean) {
+  private async acceptInternal(
+    entry: SignedChange,
+    persist: boolean,
+    localWrite = false,
+  ) {
     invariant(
       entry.version === 1 &&
         entry.workspaceId === this.workspaceId &&
@@ -234,6 +350,7 @@ export class Replica {
       "Invalid change envelope",
     );
     if (this.changes.has(entry.hash)) return;
+    if (persist && !localWrite && !this.wantsDocument(entry.documentId)) return;
     invariant(
       /^(record|setting|file|event|job|vault)\/[a-zA-Z0-9_.:-]{1,256}$/.test(
         entry.documentId,
@@ -269,6 +386,10 @@ export class Replica {
       "INVALID_CHANGE",
       "Change identity, document binding or hash mismatch",
     );
+    if (this.evicted.has(entry.documentId)) {
+      await this.storage.delete(this.prefix() + "evicted/" + entry.documentId);
+      this.evicted.delete(entry.documentId);
+    }
     // Dependencies cannot cross record boundaries, even when their hashes are valid.
     for (const dep of decoded.deps)
       invariant(
@@ -288,7 +409,7 @@ export class Replica {
       return;
     }
     const previous =
-      this.documents.get(entry.documentId) ??
+      this.document(entry.documentId) ??
       A.init<DocumentValue>({ actor: this.identity.id });
     const [next] = A.applyChanges(
       A.clone(previous, { actor: this.identity.id }),
@@ -383,6 +504,12 @@ export class Replica {
             "INVALID_EVENT",
             "Events are immutable",
           );
+      } else if (entry.documentId.startsWith("setting/storage.")) {
+        await validateStorageControl(
+          entry.documentId,
+          next.value,
+          entry.author,
+        );
       } else if (entry.documentId.startsWith("setting/workflow.")) {
         if (previous.value)
           invariant(
@@ -565,6 +692,7 @@ export class Replica {
         "pluginId",
         "collection",
         "createdAt",
+        "managedBy",
       ] as const)
         invariant(
           record[field] === previous[field],
@@ -604,6 +732,7 @@ export class Replica {
       // Membership changes are owner-signed; never merge them as ordinary editable records.
       const entries = [...this.changes.values(), ...this.pending.values()];
       this.documents.clear();
+      this.coldDocuments.clear();
       this.changes.clear();
       this.pending.clear();
       this.quarantined = 0;

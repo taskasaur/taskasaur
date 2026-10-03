@@ -1,3 +1,8 @@
+import { StoragePlacement } from "../core/storage-placement";
+import type {
+  StorageItem,
+  StorageVersion,
+} from "@taskasaur/platform/plugin-sdk/storage-placement";
 import {
   canonical,
   utf8,
@@ -27,6 +32,7 @@ export interface PeerPacket {
 }
 export interface PeerRequest {
   kind:
+    | "storage-retain"
     | "inventory"
     | "changes"
     | "accept"
@@ -35,6 +41,9 @@ export interface PeerRequest {
     | "missing-blobs"
     | "rpc"
     | "capabilities";
+  scope?: "control" | "content";
+  item?: StorageItem;
+  version?: StorageVersion;
   cursor?: number;
   hashes?: string[];
   changes?: SignedChange[];
@@ -56,6 +65,7 @@ export type CommandHandler = (
 ) => Promise<unknown>;
 export class PeerProtocol {
   readonly files: ReplicaFiles;
+  readonly storage: StoragePlacement;
   private nonces = new Map<string, number>();
   private commands: Promise<unknown> = Promise.resolve();
   readonly connections = new Set<(deviceId: string, address: string) => void>();
@@ -65,6 +75,7 @@ export class PeerProtocol {
     private execute?: CommandHandler,
   ) {
     this.files = new ReplicaFiles(replica);
+    this.storage = new StoragePlacement(replica, this.files);
   }
   localCall(
     command: string,
@@ -183,8 +194,18 @@ export class PeerProtocol {
           "INVALID_CURSOR",
           "Invalid replica cursor",
         );
-        const all = this.replica.hashes();
+        const all = this.replica
+          .entries()
+          .filter(
+            (change) =>
+              (!request.scope ||
+                (request.scope === "content") ===
+                  change.documentId.startsWith("record/")) &&
+              this.replica.wantsDocument(change.documentId, deviceId),
+          )
+          .map((change) => change.hash);
         return {
+          deviceId: this.replica.identity.id,
           hashes: all.slice(cursor, cursor + 512),
           next: cursor + 512 < all.length ? cursor + 512 : null,
         };
@@ -195,7 +216,11 @@ export class PeerProtocol {
           "PAYLOAD_TOO_LARGE",
           "Request at most eight changes",
         );
-        return this.replica.entries(request.hashes);
+        return this.replica
+          .entries(request.hashes)
+          .filter((change) =>
+            this.replica.wantsDocument(change.documentId, deviceId),
+          );
       case "accept":
         invariant(
           Array.isArray(request.changes) && request.changes.length <= 8,
@@ -203,7 +228,21 @@ export class PeerProtocol {
           "Send at most eight changes",
         );
         for (const change of request.changes) await this.replica.accept(change);
-        return { accepted: request.changes.map((c) => c.hash) };
+        return {
+          accepted: request.changes
+            .filter((c) => this.replica.hashes().includes(c.hash))
+            .map((c) => c.hash),
+        };
+      case "storage-retain":
+        invariant(
+          currentPolicy(this.replica.access).members[deviceId].role !==
+            "viewer" &&
+            request.item &&
+            request.version,
+          "PERMISSION_DENIED",
+          "An editor must request retention",
+        );
+        return this.storage.retain(request.item, request.version);
       case "blob": {
         invariant(
           request.hash &&
@@ -225,7 +264,11 @@ export class PeerProtocol {
             request.bytes.length <= 350000 &&
             this.files
               .manifests()
-              .some((m) => m.chunks.includes(request.hash!)),
+              .some(
+                (m) =>
+                  this.files.wantsVersion(m.id) &&
+                  m.chunks.includes(request.hash!),
+              ),
           "INVALID_FILE",
           "Only referenced file chunks may be uploaded",
         );
@@ -236,7 +279,7 @@ export class PeerProtocol {
         return {
           deviceId: this.replica.identity.id,
           name: this.replica.identity.name,
-          capabilities: this.capabilities(),
+          capabilities: [...this.capabilities(), "storage.placement"],
         };
       case "rpc": {
         invariant(
@@ -377,7 +420,11 @@ export class PeerSync {
       "IDENTITY_MISMATCH",
       "The selected device did not answer this command",
     );
-    if (request.kind === "capabilities" && !reply.error)
+    if (
+      (request.kind === "capabilities" || request.kind === "inventory") &&
+      !reply.error &&
+      (reply.result as { deviceId?: string })?.deviceId
+    )
       invariant(
         (reply.result as { deviceId?: string })?.deviceId === response.from,
         "IDENTITY_MISMATCH",
@@ -390,28 +437,52 @@ export class PeerSync {
     return reply.result as T;
   }
   async synchronize(address: string) {
-    const remote = new Set<string>();
-    let cursor: number | null = 0;
-    do {
-      const page: { hashes: string[]; next: number | null } =
-        await this.request(address, { kind: "inventory", cursor });
-      for (const hash of page.hashes) remote.add(hash);
-      cursor = page.next;
-    } while (cursor !== null);
-    const local = new Set(this.protocol.replica.hashes()),
-      download = [...remote].filter((h) => !local.has(h)),
-      upload = [...local].filter((h) => !remote.has(h));
-    for (let i = 0; i < download.length; i += 8)
-      for (const change of await this.request<SignedChange[]>(address, {
-        kind: "changes",
-        hashes: download.slice(i, i + 8),
-      }))
-        await this.protocol.replica.accept(change);
-    for (let i = 0; i < upload.length; i += 8)
-      await this.request(address, {
-        kind: "accept",
-        changes: this.protocol.replica.entries(upload.slice(i, i + 8)),
-      });
+    let uploaded = 0,
+      downloaded = 0;
+    for (const scope of ["control", "content"] as const) {
+      const remote = new Set<string>();
+      let remoteDeviceId: string | undefined;
+      let cursor: number | null = 0;
+      do {
+        const page: {
+          hashes: string[];
+          next: number | null;
+          deviceId?: string;
+        } = await this.request(address, { kind: "inventory", cursor, scope });
+        remoteDeviceId = page.deviceId;
+        for (const hash of page.hashes) remote.add(hash);
+        cursor = page.next;
+      } while (cursor !== null);
+      const local = new Set(
+          this.protocol.replica
+            .entries()
+            .filter(
+              (c) =>
+                (scope === "content") === c.documentId.startsWith("record/") &&
+                (!remoteDeviceId ||
+                  this.protocol.replica.wantsDocument(
+                    c.documentId,
+                    remoteDeviceId,
+                  )),
+            )
+            .map((c) => c.hash),
+        ),
+        download = [...remote].filter((h) => !local.has(h)),
+        upload = [...local].filter((h) => !remote.has(h));
+      for (let i = 0; i < download.length; i += 8)
+        for (const change of await this.request<SignedChange[]>(address, {
+          kind: "changes",
+          hashes: download.slice(i, i + 8),
+        }))
+          await this.protocol.replica.accept(change);
+      for (let i = 0; i < upload.length; i += 8)
+        await this.request(address, {
+          kind: "accept",
+          changes: this.protocol.replica.entries(upload.slice(i, i + 8)),
+        });
+      uploaded += upload.length;
+      downloaded += download.length;
+    }
     for (const hash of await this.protocol.files.missing()) {
       const result = await this.request<{ bytes: string } | null>(address, {
         kind: "blob",
@@ -443,8 +514,8 @@ export class PeerSync {
       });
     }
     return {
-      uploaded: upload.length,
-      downloaded: download.length,
+      uploaded,
+      downloaded,
       missingFiles: (await this.protocol.files.missing()).length,
     };
   }
