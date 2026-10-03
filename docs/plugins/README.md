@@ -10,6 +10,8 @@ All cross-plugin and cross-device communication goes through `context.messages`:
 
 All persisted fields use the shared PostgreSQL-based descriptors in `@taskasaur/platform/field-types`: text, booleans, integer widths, numeric/decimal strings, dates, times, timezone-aware timestamps, intervals, UUIDs, enums, arrays, JSONB and binary references. Use the exported codecs and validation. Int64/numeric values must not silently become floating-point numbers. UI inputs use core `FieldInput`, `RecordForm`, `RecordTable` and the local shared component library. Required fields appear before optional fields. Calendar/reminder schemas retain their iCalendar validation. Markdown parsing is not an application storage layer.
 
+The [complete field mapping](fields.md) specifies every supported type, portable encoding and shared input, including nullability and precision rules.
+
 ## Entrypoints
 
 - `entrypoints.core`: portable TypeScript logic bundled as `core.mjs`, activated on browser/mobile/desktop and headless peers. It must use portable APIs and core services. The build wrapper resolves allowed SDK imports through declared/granted `core.modules`.
@@ -84,3 +86,9 @@ Test clean install, restart, disable/uninstall/re-enable, offline CRUD, a second
 `core.settings.get(key)` returns a promise; `set(key, value)` stores nonsecret replicated JSON under the plugin namespace. `core.sync.synchronize()` exchanges available changes, while `status()` returns local document/change counts, pending dependencies, quarantine count and peer/error state. `core.peers` is typed in `plugin-sdk/peers`.
 
 Record IDs, mutation IDs and CloudEvent IDs are UUIDs. JSON-RPC operation IDs may additionally include a bounded step suffix. Events are immutable; reusing their IDs for different content is rejected. Execute side effects in commands or assigned background services, never in projection callbacks. Moving a background service requires its previous device to stop accepting work, drain and sign a release; an offline device cannot be silently replaced.
+
+## Shared credentials
+
+Declare and obtain a grant for `credentials.use`. Its portable `request(credentialId, destination, { method?, body? })` method performs an HTTPS JSON request with Bearer or Basic authorization supplied by core and returns only the response JSON. Core checks the calling plugin, credential owner, selected device's sealed access and the exact allowed destination. Redirects are disabled, requests time out after 15 seconds and response bodies are limited to 1 MiB. Use `core.peers` and a targeted command to run an integration on a device capable of reaching its provider; browser requests remain subject to CORS.
+
+Store secrets through the Credentials UI, never through record fields, plugin settings or a plugin-owned vault. OAuth secret keys are `access_token`, `refresh_token`, `token_endpoint`, `client_id`, optional `client_secret`, and `expires_at`; ordinary password credentials use `username` and `password`. An API credential uses `api_key`. Native v1 adapters also receive the legacy camel-case aliases. Refresh requires the token endpoint in the approved destination list, runs on the issuing device, is serialized per credential and reseals the result to the approved recipients. The issuer must be online when another device needs a refresh. Enabling an integration on a second computer does not automatically grant that computer the secret.
