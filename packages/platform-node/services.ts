@@ -1,4 +1,13 @@
 import path from "node:path";
+import {
+  requireExecution,
+  executionRecord,
+  executionActive,
+  executionSlots,
+  bindingFor,
+  executionRequirements,
+  executionReady,
+} from "../core/execution";
 import { DeviceCore, type WorkspaceNode } from "../core/device";
 import { deviceRecordId } from "../core/records";
 import { currentPolicy } from "../core/identity";
@@ -62,6 +71,39 @@ export class NativeServices {
   private closeDatabase?: () => Promise<void>;
   private terminal = new NativeTerminal();
   private engines = new Map<string, AutomationEngine>();
+  private itemOperations = new Map<string, Set<Promise<unknown>>>();
+  private async itemOperation<T>(
+    node: WorkspaceNode,
+    routed: ReturnType<typeof executionRecord>,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    if (!routed) return work();
+    const key = node.replica.workspaceId + ":" + routed.record.id;
+    const active = this.itemOperations.get(key) ?? new Set<Promise<unknown>>();
+    this.itemOperations.set(key, active);
+    const operation = (async () => {
+      await requireExecution(node, routed.record, routed.slot);
+      const status = (await this.execute(
+        node.replica.workspaceId,
+        "core.plugins.status",
+        {},
+        { deviceId: this.core.identity.id, requestId: crypto.randomUUID() },
+      )) as import("@taskasaur/platform/plugin-sdk/execution").DevicePluginStatus;
+      invariant(
+        executionReady(routed.record, routed.slot, status),
+        "PLUGIN_NOT_READY",
+        "Enable required plugins and capabilities on this computer",
+      );
+      return work();
+    })();
+    active.add(operation);
+    try {
+      return await operation;
+    } finally {
+      active.delete(operation);
+      if (!active.size) this.itemOperations.delete(key);
+    }
+  }
   private projected = new Map<string, string>();
   private ticking = false;
   private pluginCommands: string[] = [];
@@ -72,6 +114,12 @@ export class NativeServices {
   capabilities() {
     return [
       "core.http",
+      "core.plugins.status",
+      "plugins.native",
+      ...(this.options.background ? ["background.execute"] : []),
+      ...(this.options.automation && this.options.trustedCode
+        ? ["automation.typescript"]
+        : []),
       "core.services.release",
       "credentials.refresh",
       ...this.pluginCommands,
@@ -191,6 +239,25 @@ export class NativeServices {
     context: { deviceId: string; requestId: string },
   ) {
     const node = this.core.workspaces.get(workspaceId)!;
+    if (command === "core.plugins.status") {
+      const registry = registryFor(
+        new Repository(this.db),
+        this.actor(workspaceId, context.deviceId),
+      );
+      await registry.initialize();
+      return {
+        deviceId: this.core.identity.id,
+        capabilities: this.capabilities(),
+        canInstall: this.options.plugins,
+        plugins: registry.list().map(({ manifest, state }) => ({
+          id: manifest.id,
+          version: state.version,
+          installed: state.installed,
+          enabled: state.enabled,
+          ...(state.error ? { error: state.error } : {}),
+        })),
+      };
+    }
     invariant(
       currentPolicy(node.replica.access).members[context.deviceId]?.role !==
         "viewer",
@@ -211,16 +278,65 @@ export class NativeServices {
       return { ok: true };
     }
     if (command === "core.services.release") {
-      const request = input as { id: string; token: string };
+      const request = input as {
+        id: string;
+        token: string;
+        successor?: { deviceId: string; generation: string };
+      };
       invariant(
-        context.deviceId === currentPolicy(node.replica.access).owner.id,
+        request.id.startsWith("execution.") ||
+          context.deviceId === currentPolicy(node.replica.access).owner.id,
         "PERMISSION_DENIED",
         "Only the workspace owner can move a service",
       );
-      await releaseService(node, request.id, request.token, async () => {
-        while (this.ticking)
-          await new Promise((resolve) => setTimeout(resolve, 25));
-      });
+      await releaseService(
+        node,
+        request.id,
+        request.token,
+        async () => {
+          while (this.ticking)
+            await new Promise((resolve) => setTimeout(resolve, 25));
+          if (request.id.startsWith("execution.")) {
+            const resourceId = request.id.split(".")[1];
+            await Promise.allSettled([
+              ...(this.itemOperations.get(workspaceId + ":" + resourceId) ??
+                []),
+            ]);
+            const intents = new LocalState(node.replica, "native-workflows");
+            for (const id of await intents.ids()) {
+              const intent = await intents.get<NativeIntent>(id);
+              const record = node.records.get(id);
+              if (
+                intent?.workflowId === resourceId &&
+                intent.engineRunId &&
+                record &&
+                !["completed", "failed", "cancelled"].includes(
+                  String(record.data.status),
+                )
+              ) {
+                await this.controlEngine(node, (engine) =>
+                  engine.engine.cancelWorkflowRun(intent.engineRunId!),
+                );
+                await node.records.put(
+                  "workflow_runs",
+                  {
+                    ...record.data,
+                    status: "cancelled",
+                    ended_at: new Date().toISOString(),
+                  },
+                  id,
+                );
+              }
+            }
+            const engine = this.engines.get(workspaceId);
+            if (engine) {
+              await engine.stop();
+              this.engines.delete(workspaceId);
+            }
+          }
+        },
+        request.successor,
+      );
       return { ok: true };
     }
     if (command.startsWith("terminal.")) {
@@ -272,36 +388,47 @@ export class NativeServices {
         input as { path: string; body: unknown; method: string },
         context,
       );
-    const actor = this.actor(workspaceId, context.deviceId),
-      repo = new Repository(this.db),
-      router = await routerFor(repo, actor),
-      host = await serverPluginHost(repo, actor, router);
-    try {
-      const result = await router.receive(
-        {
-          jsonrpc: "2.0",
-          id: context.requestId,
-          method: command,
-          params: input,
-        },
-        {
-          principal: {
-            ...actor,
-            permissions: [router.permissionFor(command) ?? command],
+    const routed = executionRecord(node, command, input);
+    if (
+      !routed &&
+      executionSlots().some(
+        (s) =>
+          s.commands.includes(command) || s.background?.command === command,
+      )
+    )
+      throw new Error("The execution item was not found");
+    return this.itemOperation(node, routed, async () => {
+      const actor = this.actor(workspaceId, context.deviceId),
+        repo = new Repository(this.db),
+        router = await routerFor(repo, actor),
+        host = await serverPluginHost(repo, actor, router);
+      try {
+        const result = await router.receive(
+          {
+            jsonrpc: "2.0",
+            id: context.requestId,
+            method: command,
+            params: input,
           },
-          signal: AbortSignal.timeout(30000),
-          mutationId: context.requestId,
-        },
-      );
-      invariant(
-        result && "result" in result,
-        "COMMAND_FAILED",
-        result?.error?.message ?? "Plugin command failed",
-      );
-      return result.result;
-    } finally {
-      await host.close();
-    }
+          {
+            principal: {
+              ...actor,
+              permissions: [router.permissionFor(command) ?? command],
+            },
+            signal: AbortSignal.timeout(30000),
+            mutationId: context.requestId,
+          },
+        );
+        invariant(
+          result && "result" in result,
+          "COMMAND_FAILED",
+          result?.error?.message ?? "Plugin command failed",
+        );
+        return result.result;
+      } finally {
+        await host.close();
+      }
+    });
   }
   async http(
     workspaceId: string,
@@ -336,6 +463,7 @@ export class NativeServices {
         "WRONG_EXECUTION_TARGET",
         "Create this webhook on its selected automation device",
       );
+      await requireExecution(node, workflow);
       const token = base64(crypto.getRandomValues(new Uint8Array(32)))
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
@@ -385,33 +513,40 @@ export class NativeServices {
         }),
       );
     }
-    const request = new Request(url, {
-      method: input.method,
-      ...(input.method !== "GET" && input.method !== "HEAD"
-        ? {
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(input.body),
-          }
-        : {}),
+    const routed = executionRecord(node, route, body);
+    if (!routed && executionSlots().some((s) => s.routes.includes(route)))
+      throw Object.assign(new Error("The execution item was not found"), {
+        kind: "NOT_FOUND",
+      });
+    return this.itemOperation(node, routed, async () => {
+      const request = new Request(url, {
+        method: input.method,
+        ...(input.method !== "GET" && input.method !== "HEAD"
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(input.body),
+            }
+          : {}),
+      });
+      const response = await pluginHttp(
+        request,
+        route,
+        { repo, principal: actor },
+        "workspace",
+      );
+      invariant(
+        response,
+        "NOT_FOUND",
+        "No enabled plugin provides this operation on this device",
+      );
+      const result = await response.json();
+      invariant(
+        response.ok,
+        "PLUGIN_OPERATION_FAILED",
+        result.error?.message ?? "Plugin operation failed",
+      );
+      return result;
     });
-    const response = await pluginHttp(
-      request,
-      route,
-      { repo, principal: actor },
-      "workspace",
-    );
-    invariant(
-      response,
-      "NOT_FOUND",
-      "No enabled plugin provides this operation on this device",
-    );
-    const result = await response.json();
-    invariant(
-      response.ok,
-      "PLUGIN_OPERATION_FAILED",
-      result.error?.message ?? "Plugin operation failed",
-    );
-    return result;
   }
   private async controlEngine<T>(
     node: WorkspaceNode,
@@ -455,6 +590,30 @@ export class NativeServices {
     const engine = await createAutomationEngine(
       {
         deviceId,
+        canRun: async (execution) => {
+          const intent = await new LocalState(
+            node.replica,
+            "native-workflows",
+          ).get<NativeIntent>(execution.id);
+          const record = intent && node.records.get(intent.workflowId);
+          if (
+            !record ||
+            !this.options.automation ||
+            !(await executionActive(node, record))
+          )
+            return false;
+          const status = (await this.execute(
+            workspaceId,
+            "core.plugins.status",
+            {},
+            { deviceId: this.core.identity.id, requestId: crypto.randomUUID() },
+          )) as import("@taskasaur/platform/plugin-sdk/execution").DevicePluginStatus;
+          return executionReady(
+            record,
+            executionSlots("automation-runtime")[0],
+            status,
+          );
+        },
         typescript: async (source, input) => {
           invariant(
             this.options.trustedCode,
@@ -496,6 +655,23 @@ export class NativeServices {
       workflow?.collection === "workflows" && !workflow.deletedAt,
       "NOT_FOUND",
       "Workflow not found",
+    );
+    await requireExecution(node, workflow);
+    const registry = registryFor(
+      new Repository(this.db),
+      this.actor(node.replica.workspaceId, deviceId),
+    );
+    await registry.initialize();
+    const status = (await this.execute(
+      node.replica.workspaceId,
+      "core.plugins.status",
+      {},
+      { deviceId: this.core.identity.id, requestId: crypto.randomUUID() },
+    )) as import("@taskasaur/platform/plugin-sdk/execution").DevicePluginStatus;
+    invariant(
+      executionReady(workflow, executionSlots("automation-runtime")[0], status),
+      "PLUGIN_NOT_READY",
+      "Enable the required plugins and capabilities on the execution computer",
     );
     const target = deviceRecordId(this.core.identity.id);
     invariant(

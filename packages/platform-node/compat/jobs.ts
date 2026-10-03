@@ -1,4 +1,12 @@
 import { deviceRecordId } from "../../core/records";
+import {
+  executionRecord,
+  requireExecution,
+  bindingFor,
+  executionActive,
+  executionRequirements,
+  executionSlots,
+} from "../../core/execution";
 import { randomUUID } from "node:crypto";
 import { Repository } from "./repository";
 import { manifestById } from "@taskasaur/platform/core/catalog";
@@ -12,6 +20,7 @@ type JobPayload = {
   input: Value;
   operationId: string;
   intervalSeconds?: number;
+  execution?: { resourceId: string; slot: string; generation: string };
 };
 export type ClaimedJob = {
   record: ResourceRecord;
@@ -53,15 +62,39 @@ export class JobService {
       "VALIDATION_FAILED",
       "Schedules must be at least 60 seconds apart",
     );
+    const node = this.repo.db.core.workspaces.get(actor.workspaceId)!;
+    const routed = executionRecord(node, command, input);
+    invariant(
+      routed ||
+        !executionSlots().some(
+          (slot) =>
+            slot.commands.includes(command) ||
+            slot.background?.command === command,
+        ),
+      "EXECUTION_UNASSIGNED",
+      "Job command requires a declared execution item",
+    );
+    const binding = routed
+      ? await requireExecution(node, routed.record, routed.slot)
+      : undefined;
     const operationId = options.operationId ?? randomUUID(),
       id = operationUuid(
-        `${actor.workspaceId}:${actor.userId}:${actor.pluginId}:${operationId}`,
+        `${actor.workspaceId}:${actor.userId}:${actor.pluginId}:${operationId}${binding ? ":" + binding.generation : ""}`,
       );
     const payload: JobPayload = {
       pluginId: actor.pluginId,
       command,
       input,
       operationId,
+      ...(binding
+        ? {
+            execution: {
+              resourceId: binding.resourceId,
+              slot: binding.slot,
+              generation: binding.generation,
+            },
+          }
+        : {}),
       ...(options.intervalSeconds
         ? { intervalSeconds: options.intervalSeconds }
         : {}),
@@ -134,13 +167,53 @@ export class JobService {
         plugin = String(
           (candidate.data.payload as unknown as JobPayload).pluginId,
         );
+      const payload = candidate.data.payload as unknown as JobPayload;
+      const routed = executionRecord(node, payload.command, payload.input);
       if (
-        node.replica.read("setting/service." + plugin) &&
-        !(await (
-          await import("../../core/services")
-        ).assignedService(node, plugin))
+        !routed &&
+        (payload.execution ||
+          executionSlots().some(
+            (slot) =>
+              slot.commands.includes(payload.command) ||
+              slot.background?.command === payload.command,
+          ))
       )
         continue;
+      if (
+        routed &&
+        (!payload.execution ||
+          !(await executionActive(node, routed.record, routed.slot)) ||
+          bindingFor(node, routed.slot, routed.record.id)?.generation !==
+            payload.execution.generation)
+      )
+        continue;
+      if (routed) {
+        const requirements = executionRequirements(routed.slot, routed.record);
+        const states = await this.repo.db.query<{
+          id: string;
+          version: string;
+          installed: boolean;
+          enabled: boolean;
+        }>(
+          "SELECT id,version,installed,enabled FROM taskasaur.plugins WHERE workspace_id=$1",
+          [row.workspace_id],
+        );
+        if (
+          !requirements.plugins.every((required) =>
+            states.rows.some(
+              (state) =>
+                state.id === required.id &&
+                state.installed &&
+                state.enabled &&
+                (!required.version || state.version === required.version),
+            ),
+          ) ||
+          !requirements.capabilities.every((capability) =>
+            node.protocol.capabilities().includes(capability),
+          )
+        )
+          continue;
+      }
       const result = await this.repo.db.transaction(async (tx) => {
         await tx.query(
           "SELECT id FROM taskasaur.workspaces WHERE id=$1 FOR UPDATE",

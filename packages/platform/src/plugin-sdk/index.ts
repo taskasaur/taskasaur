@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { executionDefinitionSchema } from "./execution";
 import type { RecordSchema, Value } from "../field-types";
 export const platformApi = "1.0.0";
 export const manifestSchema = z
@@ -36,6 +37,7 @@ export const manifestSchema = z
         mutationHooks: z.boolean().default(false),
       })
       .optional(),
+    execution: z.array(executionDefinitionSchema).optional(),
     ui: z.object({
       mode: z.enum(["none", "shared"]),
       apiVersion: z.string().optional(),

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { executionForResource, executionActive } from "../../core/execution";
 import type { Repository } from "./repository";
 import { JobService } from "./jobs";
 import { routerFor } from "./api";
@@ -87,10 +88,14 @@ export async function processBackground(repo: Repository) {
     );
     for (const row of events.rows) {
       const node = repo.db.core.workspaces.get(row.workspace_id)!;
+      const execution = executionForResource(
+        node,
+        entry.manifest.id,
+        row.event.data.resourceId,
+      );
       if (
-        !(await (
-          await import("../../core/services")
-        ).assignedService(node, entry.manifest.id))
+        !execution ||
+        !(await executionActive(node, execution.record, execution.slot))
       )
         continue;
       const claimed = await repo.db.query<{ attempt: number }>(

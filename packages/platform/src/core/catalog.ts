@@ -32,7 +32,7 @@ export const coreServices: Record<string, string[]> = {
   tables: ["core.tables"],
   files: ["files.access"],
   credentials: ["credentials.use"],
-  devices: ["core.devices", "core.peers", "core.streams"],
+  devices: ["core.devices", "core.peers", "core.streams", "core.execution"],
   jobs: ["core.jobs", "core.schedules"],
   notifications: ["core.notifications"],
 };
@@ -326,6 +326,84 @@ export function validateExtension(input: unknown, contracts: unknown) {
       fields,
     };
   });
+  const executionOperations = new Set<string>();
+  for (const slot of manifest.execution ?? []) {
+    const schema = parsed.find((s) => s.id === slot.collection);
+    invariant(
+      schema,
+      "UNDECLARED_COLLECTION",
+      "Execution slots must belong to a plugin collection",
+    );
+    for (const [id, type] of [
+      [slot.targetField, "uuid"],
+      [slot.enabledField, "boolean"],
+    ])
+      invariant(
+        !id ||
+          schema.fields.some(
+            (f) => f.id === id && f.pgType === type && !f.array,
+          ),
+        "INVALID_EXECUTION",
+        "Execution fields must use UUID/boolean descriptors",
+      );
+    for (const command of [
+      ...slot.commands,
+      ...(slot.background ? [slot.background.command] : []),
+    ])
+      invariant(
+        manifest.provides.commands.includes(command),
+        "UNDECLARED_COMMAND",
+        "Declare execution commands in provides.commands",
+      );
+    for (const operation of new Set([
+      ...slot.commands,
+      ...slot.routes,
+      ...(slot.background ? [slot.background.command] : []),
+    ])) {
+      for (const collection of new Set([
+        slot.collection,
+        ...slot.references.map((ref) => ref.collection),
+      ])) {
+        const key = collection + ":" + operation;
+        invariant(
+          !executionOperations.has(key),
+          "INVALID_EXECUTION",
+          "An operation must resolve to one execution slot per collection",
+        );
+        executionOperations.add(key);
+      }
+    }
+    for (const route of slot.routes)
+      invariant(
+        !route.includes("*") &&
+          manifest.server?.routes.some(
+            (r) =>
+              r.path === route ||
+              (r.path.endsWith("*") && route.startsWith(r.path.slice(0, -1))),
+          ),
+        "UNDECLARED_ROUTE",
+        "Declare execution routes in server.routes",
+      );
+    for (const reference of slot.references)
+      invariant(
+        parsed.some(
+          (s) =>
+            s.id === reference.collection &&
+            s.fields.some(
+              (f) =>
+                f.id === reference.field && f.pgType === "uuid" && !f.array,
+            ),
+        ),
+        "INVALID_EXECUTION",
+        "Execution references must use an owned UUID field",
+      );
+  }
+  invariant(
+    new Set((manifest.execution ?? []).map((s) => s.id)).size ===
+      (manifest.execution ?? []).length,
+    "INVALID_EXECUTION",
+    "Execution slot IDs must be unique",
+  );
   for (const command of manifest.provides.commands)
     invariant(
       command.startsWith(manifest.id + ".") ||

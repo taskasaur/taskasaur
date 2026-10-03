@@ -441,7 +441,7 @@
           "events": []
         }
       },
-      "services": ["core.devices", "core.peers", "core.streams"]
+      "services": ["core.devices", "core.peers", "core.streams", "core.execution"]
     },
     {
       "manifest": {

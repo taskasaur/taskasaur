@@ -16,6 +16,9 @@ export async function interpretV1(
     skipped = new Set<string>();
   let result: Value = execution.input;
   for (const node of orderedNodes(graph)) {
+    let pause = 0;
+    while (host.canRun && !(await host.canRun(execution)))
+      await step.sleep(`${node.id}:execution-paused:${pause++}`, "5s");
     const incoming = graph.edges.filter((e) => e.target === node.id);
     const active = incoming.filter(
       (edge) =>

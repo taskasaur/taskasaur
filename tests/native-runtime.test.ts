@@ -1,3 +1,7 @@
+import { canonical } from "../packages/core/crypto";
+import { configureExecution, slotFor } from "../packages/core/execution";
+import { registryFor } from "../packages/platform-node/compat/api";
+import { Repository } from "../packages/platform-node/compat/repository";
 import { it, expect } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -32,6 +36,21 @@ it("starts native services with an embedded projection and no external database 
     await services.tick();
     expect(node.records.get(record.id)?.data.name).toBe("Portable variable");
     expect(services.capabilities()).not.toContain("terminal.host");
+    const status = await services.execute(
+      node.replica.workspaceId,
+      "core.plugins.status",
+      {},
+      { deviceId: core.identity.id, requestId: crypto.randomUUID() },
+    );
+    expect(() => JSON.parse(canonical(status))).not.toThrow();
+    await expect(
+      services.execute(
+        node.replica.workspaceId,
+        "core.plugins.install",
+        {},
+        { deviceId: core.identity.id, requestId: crypto.randomUUID() },
+      ),
+    ).rejects.toThrow("installation is disabled");
     await expect(
       services.execute(
         node.replica.workspaceId,
@@ -139,6 +158,22 @@ it("executes a published TypeScript graph on the explicitly selected native devi
         edges: [],
       },
     });
+    await configureExecution(
+      node,
+      workflow,
+      slotFor(workflow)!,
+      core.identity.id,
+      true,
+    );
+    const registry = registryFor(new Repository((services as any).db), {
+      workspaceId: node.replica.workspaceId,
+      userId: node.replica.member.userId,
+      pluginId: "automation-runtime",
+      permissions: [],
+    });
+    await registry.initialize();
+    await registry.install("automation-runtime");
+    await registry.enable("automation-runtime");
     const id = crypto.randomUUID();
     await services.execute(
       node.replica.workspaceId,

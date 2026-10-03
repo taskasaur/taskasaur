@@ -124,6 +124,11 @@ export class WorkspaceNode {
     targetDeviceId?: string,
     requestId: string = crypto.randomUUID(),
   ) {
+    if (
+      targetDeviceId === this.replica.identity.id ||
+      targetDeviceId === deviceRecordId(this.replica.identity.id)
+    )
+      return this.protocol.localCall(command, input, requestId);
     invariant(this.sync, "OFFLINE", "Peer networking is unavailable");
     const eligible = [...this.peerDevices.values()].filter(
       (p) =>

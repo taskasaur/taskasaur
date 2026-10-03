@@ -1,4 +1,11 @@
+import { deviceRecordId } from "../../core/records";
 import { credentialHttp } from "../../core/credential-http";
+import {
+  executionService,
+  executionRecord,
+  bindingFor,
+  requireExecution,
+} from "../../core/execution";
 import { coreModules } from "@taskasaur/platform/core/modules";
 import { peerService } from "../../core/peer-service";
 import { serverAdapter } from "./plugin-runtime";
@@ -132,6 +139,15 @@ export async function serverPluginHost(
         };
         return new Map<string, unknown>([
           ["core.server", serverAdapter(repo, actor)],
+          [
+            "core.execution",
+            executionService(
+              repo.db.core.workspaces.get(actor.workspaceId)!,
+              actor.pluginId,
+              packages.find((p) => p.manifest.id === actor.pluginId)?.grants ??
+                [],
+            ),
+          ],
           [
             "core.jobs",
             {
@@ -292,13 +308,33 @@ export async function serverPluginHost(
         ]);
       },
       call: async (command, input, actor, options) => {
+        const node = repo.db.core.workspaces.get(actor.workspaceId)!;
+        const routed = executionRecord(node, command, input),
+          binding = routed && bindingFor(node, routed.slot, routed.record.id);
+        if (routed)
+          invariant(
+            binding?.enabled,
+            "EXECUTION_PAUSED",
+            "Choose a computer and enable execution for this item",
+          );
+        if (binding && options?.targetDeviceId)
+          invariant(
+            [binding.deviceId, deviceRecordId(binding.deviceId)].includes(
+              options.targetDeviceId,
+            ),
+            "WRONG_EXECUTION_TARGET",
+            "Use the item’s assigned computer",
+          );
+        const target = binding?.deviceId ?? options?.targetDeviceId;
         if (
-          options?.targetDeviceId &&
-          options.targetDeviceId !== actor.deviceId
+          target &&
+          ![
+            node.replica.identity.id,
+            deviceRecordId(node.replica.identity.id),
+          ].includes(target)
         )
-          return repo.db.core.workspaces
-            .get(actor.workspaceId)!
-            .call(command, input, options.targetDeviceId, options.mutationId);
+          return node.call(command, input, target, options?.mutationId);
+        if (routed) await requireExecution(node, routed.record, routed.slot);
         const result = await router.receive(
           {
             jsonrpc: "2.0",

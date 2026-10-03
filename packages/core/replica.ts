@@ -392,14 +392,72 @@ export class Replica {
             "Published workflow versions are immutable",
           );
       } else if (entry.documentId.startsWith("setting/service.")) {
+        const item = entry.documentId.startsWith("setting/service.execution.");
         invariant(
-          entry.author === currentPolicy(this.access).owner.id,
+          item || entry.author === currentPolicy(this.access).owner.id,
           "PERMISSION_DENIED",
           "Only the workspace owner assigns background services",
         );
+        if (item) {
+          invariant(
+            typeof next.value.resourceId === "string" &&
+              typeof next.value.slot === "string" &&
+              entry.documentId ===
+                `setting/service.execution.${next.value.resourceId}.${next.value.slot}` &&
+              typeof next.value.enabled === "boolean" &&
+              typeof next.value.generation === "string" &&
+              typeof next.value.deviceId === "string",
+            "INVALID_EXECUTION",
+            "Invalid item execution assignment",
+          );
+          const record = this.read<ResourceRecord>(
+            "record/" + next.value.resourceId,
+          );
+          if (!record) {
+            invariant(
+              !persist || entry.author !== this.identity.id,
+              "NOT_FOUND",
+              "Save the item before choosing its computer",
+            );
+            if (persist) await this.persistChange(entry);
+            this.pending.set(entry.hash, entry);
+            return;
+          }
+          invariant(
+            record.collection === next.value.collection &&
+              record.pluginId === next.value.pluginId,
+            "INVALID_EXECUTION",
+            "Assignment belongs to a different item",
+          );
+          invariant(
+            /^[a-f0-9]{64}$/.test(String(next.value.deviceId)) &&
+              typeof next.value.generation === "string" &&
+              /^[a-f0-9-]{36}$/.test(next.value.generation),
+            "INVALID_EXECUTION",
+            "Invalid execution device or generation",
+          );
+          if (previous.value?.deviceId === next.value.deviceId)
+            invariant(
+              previous.value.generation === next.value.generation,
+              "INVALID_EXECUTION",
+              "A generation changes only when an item moves to another computer",
+            );
+          if (previous.value)
+            invariant(
+              previous.value.resourceId === next.value.resourceId &&
+                previous.value.pluginId === next.value.pluginId &&
+                previous.value.collection === next.value.collection &&
+                previous.value.slot === next.value.slot,
+              "INVALID_EXECUTION",
+              "An execution assignment cannot change its item",
+            );
+        }
         if (previous.value && previous.value.deviceId !== next.value.deviceId) {
           const token = await serviceToken(previous.value),
-            release = this.read<{ deviceId: string }>(
+            release = this.read<{
+              deviceId: string;
+              successor?: { deviceId: string; generation: string };
+            }>(
               `setting/service-release.${entry.documentId.slice(16)}.${token}`,
             );
           if (!release) {
@@ -412,6 +470,13 @@ export class Replica {
             this.pending.set(entry.hash, entry);
             return;
           }
+          if (item)
+            invariant(
+              release.successor?.deviceId === next.value.deviceId &&
+                release.successor?.generation === next.value.generation,
+              "SERVICE_CHANGED",
+              "The previous computer released this item to a different assignment",
+            );
           invariant(
             release.deviceId === previous.value.deviceId,
             "PERMISSION_DENIED",

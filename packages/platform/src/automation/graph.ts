@@ -16,6 +16,7 @@ export interface WorkflowExecution {
 }
 export interface ExecutionHost {
   deviceId: string;
+  canRun?(execution: WorkflowExecution): Promise<boolean>;
   call(command: string, input: unknown, operationId: string): Promise<Value>;
   http?(url: string, init: RequestInit): Promise<Value>;
   typescript?(source: string, input: Value): Promise<Value>;
@@ -60,6 +61,9 @@ export async function interpretGraph(
         "Workflow exceeds 10,000 node executions",
       );
       const name = prefix + node.id;
+      let pause = 0;
+      while (host.canRun && !(await host.canRun(execution)))
+        await step.sleep(`${name}:execution-paused:${pause++}`, "5s");
       const incoming = graph.edges.filter((e) => e.target === node.id);
       const active = incoming.filter(
         (edge) =>

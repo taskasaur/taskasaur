@@ -1,4 +1,10 @@
 import { pathToFileURL } from "node:url";
+import {
+  executionSlots,
+  executionActive,
+  executionRecord,
+} from "../../core/execution";
+import { operationId } from "../../core/schedules";
 import { createRequire } from "node:module";
 import { Repository } from "./repository";
 import { CredentialBroker } from "./credentials";
@@ -10,6 +16,7 @@ import { operationUuid } from "./runner-dispatch";
 import { pendingSignals, acknowledgeSignal } from "./device-signals";
 import { loadPackageCatalog } from "./plugin-packages";
 import { isRequiredCore } from "@taskasaur/platform/core/catalog";
+import * as execution from "@taskasaur/platform/plugin-sdk/execution";
 import * as fields from "@taskasaur/platform/field-types";
 import * as errors from "@taskasaur/platform/core/errors";
 import * as workflows from "@taskasaur/platform/core/workflows";
@@ -22,6 +29,7 @@ import type {
 } from "@taskasaur/platform/plugin-sdk";
 const require = createRequire(import.meta.url);
 const shared: Record<string, unknown> = {
+  "@taskasaur/platform/plugin-sdk/execution": execution,
   "@taskasaur/server-host": {
     Repository,
     CredentialBroker,
@@ -148,27 +156,80 @@ export async function pluginTick(repo: Repository, workspaceId: string) {
   );
   const enabled = new Set(states.rows.map((row) => row.id));
   for (const entry of await loadPackageCatalog())
-    if (enabled.has(entry.manifest.id) && entry.manifest.server?.background) {
+    if (
+      enabled.has(entry.manifest.id) &&
+      (entry.manifest.server?.background ||
+        executionSlots(entry.manifest.id).some((s) => s.background))
+    ) {
       if (["automation-runtime", "reminders"].includes(entry.manifest.id))
         continue;
       const node = repo.db.core.workspaces.get(workspaceId)!;
+      const jobs = new JobService(repo);
+      // Old mail ticks enumerated every account. Dispatch only items assigned here.
       if (
-        !(await (
-          await import("../../core/services")
-        ).assignedService(node, entry.manifest.id))
-      )
-        continue;
-      try {
-        const handler = await backend(entry, repo);
-        await handler.tick?.({ repo, workspaceId });
-      } catch (error) {
-        console.error(
-          "Plugin background operation failed",
-          entry.manifest.id,
-          error instanceof errors.CoreError
-            ? error.kind
-            : "PLUGIN_BACKGROUND_FAILED",
-        );
+        entry.manifest.id === "email-client" &&
+        entry.manifest.version === "1.0.0"
+      ) {
+        for (const record of node.records
+          .all()
+          .filter(
+            (r) =>
+              !r.deletedAt &&
+              ["mail", "mail_operations"].includes(r.collection) &&
+              r.data.status === "queued",
+          )) {
+          const command =
+            record.collection === "mail" ? "mail.send" : "mail.applyOperation";
+          const routed = executionRecord(node, command, { id: record.id });
+          if (
+            !routed ||
+            !(await executionActive(node, routed.record, routed.slot))
+          )
+            continue;
+          const id =
+            record.collection === "mail"
+              ? record.data.send_operation_id
+              : record.id;
+          if (typeof id !== "string") continue;
+          await jobs.enqueue(
+            {
+              workspaceId,
+              userId: record.ownerId,
+              pluginId: entry.manifest.id,
+              permissions: entry.manifest.permissions,
+            },
+            command,
+            { id: record.id },
+            { operationId: id },
+          );
+        }
+      }
+      for (const slot of executionSlots(entry.manifest.id).filter(
+        (s) => s.background,
+      )) {
+        for (const record of node.records
+          .all()
+          .filter((r) => r.collection === slot.collection && !r.deletedAt)) {
+          if (!(await executionActive(node, record, slot))) continue;
+          const interval = Math.floor(
+            Date.now() / (slot.background!.intervalSeconds * 1000),
+          );
+          await jobs.enqueue(
+            {
+              workspaceId,
+              userId: record.ownerId,
+              pluginId: slot.pluginId,
+              permissions: entry.manifest.permissions,
+            },
+            slot.background!.command,
+            { id: record.id },
+            {
+              operationId: await operationId(
+                `${record.id}:${slot.id}:${interval}`,
+              ),
+            },
+          );
+        }
       }
     }
 }

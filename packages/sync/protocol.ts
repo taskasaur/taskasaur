@@ -66,6 +66,16 @@ export class PeerProtocol {
   ) {
     this.files = new ReplicaFiles(replica);
   }
+  localCall(
+    command: string,
+    input: unknown,
+    requestId: string = crypto.randomUUID(),
+  ) {
+    return this.handle(
+      { kind: "rpc", command, input, requestId },
+      this.replica.identity.id,
+    );
+  }
   setHandler(handler: CommandHandler) {
     this.execute = handler;
   }
@@ -230,8 +240,9 @@ export class PeerProtocol {
         };
       case "rpc": {
         invariant(
-          currentPolicy(this.replica.access).members[deviceId].role !==
-            "viewer",
+          request.command === "core.plugins.status" ||
+            currentPolicy(this.replica.access).members[deviceId].role !==
+              "viewer",
           "PERMISSION_DENIED",
           "Read-only members cannot execute commands",
         );
@@ -249,8 +260,9 @@ export class PeerProtocol {
         );
         // Live terminal traffic is never persisted or replayed as a durable job.
         if (
-          request.command.startsWith("terminal.") &&
-          request.command !== "terminal.open"
+          request.command === "core.plugins.status" ||
+          (request.command.startsWith("terminal.") &&
+            request.command !== "terminal.open")
         )
           return this.execute(request.command, request.input, {
             deviceId,

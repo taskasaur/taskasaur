@@ -2,8 +2,16 @@ import type { WorkspaceNode } from "./device";
 import { canonical, digest, utf8 } from "./crypto";
 import { LocalState } from "./local-state";
 import { invariant } from "@taskasaur/platform/core/errors";
-export async function serviceToken(value: Record<string, unknown>) {
-  return digest(utf8.encode(canonical(value)));
+export async function serviceToken(value: object) {
+  const binding = value as {
+    resourceId?: string;
+    slot?: string;
+    enabled?: boolean;
+  };
+  const { enabled, ...stable } = binding;
+  return digest(
+    utf8.encode(canonical(binding.resourceId && binding.slot ? stable : value)),
+  );
 }
 export async function assignedService(node: WorkspaceNode, id: string) {
   const assignment = node.replica.read<{ deviceId: string }>(
@@ -11,6 +19,7 @@ export async function assignedService(node: WorkspaceNode, id: string) {
   );
   return Boolean(
     assignment?.deviceId === node.replica.identity.id &&
+    (assignment as { enabled?: boolean }).enabled !== false &&
     !(await new LocalState(node.replica, "released-services").get(
       await serviceToken(assignment),
     )),
@@ -21,6 +30,7 @@ export async function releaseService(
   id: string,
   token: string,
   drain: () => Promise<void> = async () => {},
+  successor?: { deviceId: string; generation: string },
 ) {
   const assignment = node.replica.read<{ deviceId: string }>(
     "setting/service." + id,
@@ -31,15 +41,23 @@ export async function releaseService(
     "SERVICE_CHANGED",
     "Service assignment changed",
   );
+  const key = `setting/service-release.${id}.${token}`;
+  const previous = node.replica.read<{ successor?: unknown }>(key);
+  invariant(
+    !previous ||
+      canonical(previous.successor ?? null) === canonical(successor ?? null),
+    "SERVICE_CHANGED",
+    "This item was already released to another assignment",
+  );
   await new LocalState(node.replica, "released-services").set(token, {
     released: true,
   });
   await drain();
-  const key = `setting/service-release.${id}.${token}`;
   if (!node.replica.read(key))
     await node.replica.update(key, {
       deviceId: node.replica.identity.id,
       token,
+      ...(successor ? { successor } : {}),
     });
 }
 export async function assignService(

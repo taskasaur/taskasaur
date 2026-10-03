@@ -1,4 +1,5 @@
 import type { WorkspaceNode } from "./device";
+import { executionActive } from "./execution";
 import { deviceRecordId } from "./records";
 import { LocalState } from "./local-state";
 import { digest, utf8, canonical } from "./crypto";
@@ -24,6 +25,7 @@ export async function workflowTriggers(
         r.data.target_device_id === target &&
         Number(r.data.published_version) > 0,
     )) {
+    if (!(await executionActive(node, workflow))) continue;
     const data = workflow.data,
       key = await digest(
         utf8.encode(

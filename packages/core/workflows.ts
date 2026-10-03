@@ -9,6 +9,7 @@ import { invariant } from "@taskasaur/platform/core/errors";
 import type { Value } from "@taskasaur/platform/field-types";
 import type { WorkspaceNode } from "./device";
 import { LocalState } from "./local-state";
+import { requireExecution, executionActive } from "./execution";
 import { deviceRecordId } from "./records";
 import { canonical } from "./crypto";
 interface Checkpoint {
@@ -77,6 +78,7 @@ export class PortableWorkflows {
       "NOT_FOUND",
       "Workflow not found",
     );
+    await requireExecution(this.node, workflow);
     const version = Number(workflow.data.published_version),
       pin = this.node.replica.read<{ graph: unknown; trusted: boolean }>(
         "setting/workflow." + input.id + "." + version,
@@ -181,6 +183,12 @@ export class PortableWorkflows {
         "CAPABILITY_UNSUPPORTED",
         "Automation execution was disabled",
       );
+      const workflow = this.node.records.get(state.workflowId);
+      invariant(
+        workflow && (await executionActive(this.node, workflow)),
+        "EXECUTION_PAUSED",
+        "Execution is paused or assigned to another computer",
+      );
       const current = await this.store.get<RunState>(id);
       invariant(
         current?.status !== "cancelled",
@@ -261,7 +269,8 @@ export class PortableWorkflows {
     } catch (error) {
       await Promise.allSettled(pending);
       state.status =
-        error instanceof Suspended
+        error instanceof Suspended ||
+        (error as { kind?: string }).kind === "EXECUTION_PAUSED"
           ? "waiting"
           : (error as { kind?: string }).kind === "CANCELLED"
             ? "cancelled"
@@ -301,6 +310,17 @@ export class PortableWorkflows {
     });
     await this.run(id);
     return { ok: true };
+  }
+  async releaseWorkflow(workflowId: string) {
+    for (const id of await this.store.ids()) {
+      const state = await this.store.get<RunState>(id);
+      if (
+        state?.workflowId === workflowId &&
+        ["running", "waiting"].includes(state.status)
+      )
+        await this.cancel(id);
+    }
+    await Promise.allSettled(this.active.values());
   }
   async close() {
     await Promise.allSettled(this.active.values());

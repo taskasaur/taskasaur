@@ -1,3 +1,4 @@
+import { configureExecution, slotFor } from "../packages/core/execution";
 import { it, expect } from "vitest";
 import { DeviceCore } from "../packages/core/device";
 import { MemoryStorage } from "../packages/storage";
@@ -22,10 +23,17 @@ it("runs pinned portable graphs, preserves checkpoints, and never replays comple
     published_version: 1,
     target_device_id: target,
   });
+  await configureExecution(
+    node,
+    workflow,
+    slotFor(workflow)!,
+    core.identity.id,
+    true,
+  );
   await node.records.put(
     "workflows",
     {
-      ...workflow.data,
+      ...node.records.get(workflow.id)!.data,
       graph: {
         ...graph,
         nodes: [{ id: "draft", type: "transform", config: { value: "draft" } }],
@@ -134,6 +142,13 @@ it("stops an interrupted external step rather than executing it again", async ()
     published_version: 1,
     target_device_id: target,
   });
+  await configureExecution(
+    node,
+    workflow,
+    slotFor(workflow)!,
+    core.identity.id,
+    true,
+  );
   const id = crypto.randomUUID(),
     pin = node.replica.read<any>("setting/workflow." + workflow.id + ".1");
   await new LocalState(node.replica, "workflow-checkpoints").set(id, {
@@ -166,4 +181,67 @@ it("stops an interrupted external step rather than executing it again", async ()
   expect(calls).toBe(0);
   expect(node.records.get(id)?.data.status).toBe("failed");
   expect(node.records.get(id)?.data.error).toContain("interrupted");
+});
+it("pauses one automation at a checkpoint while another completes, then resumes it", async () => {
+  const core = await DeviceCore.open(new MemoryStorage(), "Runner"),
+    node = await core.createWorkspace("Pause"),
+    target = deviceRecordId(core.identity.id);
+  const data = {
+    graph: {
+      nodes: [
+        {
+          id: "signal",
+          type: "signal",
+          config: { name: "continue", timeout_seconds: 300 },
+        },
+        { id: "send", type: "command", config: { command: "test.effect" } },
+      ],
+      edges: [{ id: "next", source: "signal", target: "send" }],
+    },
+    target_device_id: target,
+    published_version: 1,
+  };
+  const first = await node.records.put("workflows", { ...data, name: "First" }),
+    second = await node.records.put("workflows", { ...data, name: "Second" });
+  for (const workflow of [first, second])
+    await configureExecution(
+      node,
+      workflow,
+      slotFor(workflow)!,
+      core.identity.id,
+      true,
+    );
+  let calls = 0;
+  const engine = new PortableWorkflows(
+    node,
+    { deviceId: target, call: async () => ++calls },
+    () => ({ enabled: true, trustedCode: false }),
+  );
+  const a = crypto.randomUUID(),
+    b = crypto.randomUUID();
+  await engine.start({ id: first.id, targetDeviceId: target, operationId: a });
+  await engine.start({ id: second.id, targetDeviceId: target, operationId: b });
+  await engine.close();
+  await configureExecution(
+    node,
+    node.records.get(first.id)!,
+    slotFor(first)!,
+    core.identity.id,
+    false,
+  );
+  await engine.signal(a, "continue", null);
+  await engine.signal(b, "continue", null);
+  expect(node.records.get(a)?.data.status).toBe("waiting");
+  expect(node.records.get(b)?.data.status).toBe("completed");
+  expect(calls).toBe(1);
+  await configureExecution(
+    node,
+    node.records.get(first.id)!,
+    slotFor(first)!,
+    core.identity.id,
+    true,
+  );
+  await engine.tick();
+  expect(node.records.get(a)?.data.status).toBe("completed");
+  expect(calls).toBe(2);
 });

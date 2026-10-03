@@ -99,6 +99,10 @@
     "./core/modules": {
       "types": "./dist/core/modules.d.ts",
       "import": "./dist/core/modules.js"
+    },
+    "./plugin-sdk/execution": {
+      "types": "./dist/plugin-sdk/execution.d.ts",
+      "import": "./dist/plugin-sdk/execution.js"
     }
   },
   "dependencies": {
