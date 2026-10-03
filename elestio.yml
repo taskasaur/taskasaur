@@ -3,9 +3,9 @@ config:
   version: ""
   framework: ""
   installCommand: ""
-  buildCommand: docker compose build
+  buildCommand: docker compose pull
   buildDir: /
-  runCommand: docker compose up -d --pull never
+  runCommand: docker compose up -d --no-build
 environments:
   - key: TASKASAUR_MODE
     value: server

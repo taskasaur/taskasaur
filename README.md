@@ -36,7 +36,7 @@ A browser cannot accept an ordinary TCP listener. Connect it to a reachable nati
 
 [![Deploy to Elestio](https://elest.io/images/logos/deploy-to-elestio-btn.png)](https://dash.elest.io/deploy?source=cicd&social=dockerCompose&url=https://github.com/taskasaur/taskasaur)
 
-The button opens Elestio's Docker Compose deployment flow for this repository. Choose a small VM and review the provider's [current pricing](https://elest.io/pricing); its managed entry plans start at $11/month at the time of writing. The checked-in [template](elestio.yml) builds the app, attaches persistent storage and routes HTTPS/WSS to its peer port. No frontend is exposed. Pair the new device with your workspace using the [headless setup steps](docs/self-hosting.md#pair-a-headless-peer). Deployment requires your provider account; the button does not create an account or pair a workspace automatically.
+The button opens Elestio's Docker Compose deployment flow for this repository. Choose a small VM and review the provider's [current pricing](https://elest.io/pricing); its managed entry plans start at $11/month at the time of writing. The checked-in [template](elestio.yml) pulls the verified container image, attaches persistent storage and routes HTTPS/WSS to its peer port. No frontend is exposed. Pair the new device with your workspace using the [headless setup steps](docs/self-hosting.md#pair-a-headless-peer). Deployment requires your provider account; the button does not create an account or pair a workspace automatically.
 
 ```sh
 cp .env.example .env.peer
