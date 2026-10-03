@@ -99,7 +99,19 @@
       "types": "./dist/plugin-sdk/artifact.d.ts",
       "import": "./dist/plugin-sdk/artifact.js"
     },
-    "./host-types": "./types/host.d.ts"
+    "./host-types": "./types/host.d.ts",
+    "./automation/graph": {
+      "types": "./dist/automation/graph.d.ts",
+      "import": "./dist/automation/graph.js"
+    },
+    "./plugin-sdk/peers": {
+      "types": "./dist/plugin-sdk/peers.d.ts",
+      "import": "./dist/plugin-sdk/peers.js"
+    },
+    "./core/modules": {
+      "types": "./dist/core/modules.d.ts",
+      "import": "./dist/core/modules.js"
+    }
   },
   "dependencies": {
     "zod": "^3.25.42",

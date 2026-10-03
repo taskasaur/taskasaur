@@ -13,6 +13,7 @@ export const manifestSchema = z
     license: z.string().min(1),
     entrypoints: z
       .object({
+        core: z.string().optional(),
         browser: z.string().optional(),
         server: z.string().optional(),
         runner: z.string().optional(),
@@ -80,6 +81,8 @@ export interface Principal {
   permissions: string[];
 }
 export interface ResourceRecord {
+  /** Unknown newer schemas replicate opaquely; editing requires the matching plugin version. */
+  schemaVersion?: number;
   id: string;
   workspaceId: string;
   ownerId: string;

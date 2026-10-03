@@ -16,10 +16,11 @@ export async function buildPlugin() {
   for (const name of ["plugin.json", "schemas.json", "LICENSE"])
     await copyFile(name, path.join("dist", name));
   for (const [runtime, file] of Object.entries(manifest.entrypoints)) {
-    const browser = runtime === "browser";
+    const portable = runtime === "core";
+    const browser = runtime === "browser" || portable;
     const result = await build({
       entryPoints: [`src/${runtime}.tsx`].map((p) =>
-        browser ? p : p.replace(/\.tsx$/, ".ts"),
+        runtime === "browser" ? p : p.replace(/\.tsx$/, ".ts"),
       ),
       outfile: `dist/${file}`,
       bundle: true,
@@ -69,9 +70,11 @@ export async function buildPlugin() {
       .map((f) => f.text)
       .join("\n");
     const loader = `function instantiate(require){const module={exports:{}};const exports=module.exports;\n${code}\nreturn module.exports;}\n`;
-    const wrapper = browser
-      ? `export default {async activate(context){const ui=context.services.require("core.ui");const removeStyle=ui.addStyles(${JSON.stringify(css)});const imported=instantiate(id=>{if(!(id in ui.modules))throw Error("Unsupported shared import: "+id);return ui.modules[id];});try{const cleanup=await imported.default.activate(context);return async()=>{try{await cleanup?.();}finally{removeStyle();}};}catch(error){removeStyle();throw error;}}};`
-      : `export function createBackend(core){return instantiate(core.require).createBackend(core);}
+    const wrapper = portable
+      ? `export default {async activate(context){const modules=context.services.require("core.modules");return instantiate(id=>{if(!(id in modules))throw Error("Unsupported portable import: "+id);return modules[id];}).default.activate(context);}};`
+      : browser
+        ? `export default {async activate(context){const ui=context.services.require("core.ui");const removeStyle=ui.addStyles(${JSON.stringify(css)});const imported=instantiate(id=>{if(!(id in ui.modules))throw Error("Unsupported shared import: "+id);return ui.modules[id];});try{const cleanup=await imported.default.activate(context);return async()=>{try{await cleanup?.();}finally{removeStyle();}};}catch(error){removeStyle();throw error;}}};`
+        : `export function createBackend(core){return instantiate(core.require).createBackend(core);}
 export function loadForHost(core){return instantiate(core.require);}\nexport default {async activate(context){const core=context.services.require("core.server");const imported=instantiate(core.require);return imported.default?.activate?.(context);}};`;
     await writeFile(path.join("dist", file), loader + wrapper + "\n");
   }

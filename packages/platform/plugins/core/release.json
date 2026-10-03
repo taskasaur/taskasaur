@@ -86,7 +86,7 @@
           "events": []
         }
       },
-      "services": ["core.records", "core.fields"]
+      "services": ["core.records", "core.fields", "core.modules"]
     },
     {
       "manifest": {
@@ -133,9 +133,9 @@
     },
     {
       "manifest": {
-        "id": "sync-supabase",
-        "name": "Sync Supabase",
-        "description": "Required shared sync-supabase provider.",
+        "id": "peer-sync",
+        "name": "Peer synchronization",
+        "description": "Required shared peer-sync provider.",
         "version": "1.0.0",
         "platformApi": "^1.0.0",
         "fieldSchemaApi": "^1.0.0",
@@ -145,7 +145,7 @@
         "ui": {
           "mode": "shared",
           "apiVersion": "^1.0.0",
-          "surfaces": ["sync-supabase"]
+          "surfaces": ["peer-sync"]
         },
         "storage": {
           "local": {
@@ -153,7 +153,7 @@
             "collections": []
           }
         },
-        "permissions": ["sync-supabase.read", "sync-supabase.write"],
+        "permissions": ["peer-sync.read", "peer-sync.write"],
         "dependencies": [],
         "features": {},
         "sharedServices": [
@@ -441,7 +441,7 @@
           "events": []
         }
       },
-      "services": ["core.devices", "core.streams"]
+      "services": ["core.devices", "core.peers", "core.streams"]
     },
     {
       "manifest": {

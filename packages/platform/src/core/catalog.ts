@@ -12,7 +12,7 @@ export const requiredCoreIds = [
   "access-control",
   "records",
   "data-dexie",
-  "sync-supabase",
+  "peer-sync",
   "settings",
   "variables",
   "tables",
@@ -24,15 +24,15 @@ export const requiredCoreIds = [
 ] as const;
 export const coreServices: Record<string, string[]> = {
   "access-control": ["core.access"],
-  records: ["core.records", "core.fields"],
+  records: ["core.records", "core.fields", "core.modules"],
   "data-dexie": ["core.storage.local"],
-  "sync-supabase": ["core.sync"],
+  "peer-sync": ["core.sync"],
   settings: ["core.settings"],
   variables: ["core.variables"],
   tables: ["core.tables"],
   files: ["files.access"],
   credentials: ["credentials.use"],
-  devices: ["core.devices", "core.streams"],
+  devices: ["core.devices", "core.peers", "core.streams"],
   jobs: ["core.jobs", "core.schedules"],
   notifications: ["core.notifications"],
 };
