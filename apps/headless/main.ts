@@ -8,9 +8,9 @@ import { FileStorage } from "../../packages/platform-node/storage";
 import { lockDirectory } from "../../packages/platform-node/lock";
 import { DeviceCore } from "../../packages/core/device";
 import { startNativeRuntime } from "../../packages/platform-node/runtime";
-import {snapshotStorage} from '../../packages/storage';
-import {exportBackup,restoreBackup} from '../../packages/core/backup';
-import {isRequiredCore} from '@taskasaur/platform/core/catalog';
+import { snapshotStorage } from "../../packages/storage";
+import { exportBackup, restoreBackup } from "../../packages/core/backup";
+import { isRequiredCore } from "@taskasaur/platform/core/catalog";
 const { values } = parseArgs({
   options: {
     data: { type: "string" },
@@ -32,7 +32,9 @@ const { values } = parseArgs({
     output: { type: "string" },
     "workspace-id": { type: "string" },
     plugin: { type: "string" },
-    backup:{type:'string'},restore:{type:'string'},'passphrase-file':{type:'string'},
+    backup: { type: "string" },
+    restore: { type: "string" },
+    "passphrase-file": { type: "string" },
     help: { type: "boolean" },
   },
 });
@@ -45,10 +47,35 @@ if (values.help) {
 const directory = path.resolve(
   values.data ?? process.env.TASKASAUR_DATA ?? ".taskasaur/peer",
 );
-if(values.backup||values.restore){
-  if(!values['passphrase-file']||Boolean(values.backup)===Boolean(values.restore))throw Error('Choose --backup or --restore and provide --passphrase-file');
-  const unlock=await lockDirectory(directory),storage=snapshotStorage(new FileStorage(path.join(directory,'replicas')));
-  try{const password=(await readFile(values['passphrase-file'],'utf8')).replace(/\r?\n$/,'');if(values.restore)await restoreBackup(storage,await readFile(values.restore,'utf8'),password);else await writeFile(values.backup!,await exportBackup(storage,password),{mode:0o600,flag:'wx'});}finally{await unlock();}process.exit(0);
+if (values.backup || values.restore) {
+  if (
+    !values["passphrase-file"] ||
+    Boolean(values.backup) === Boolean(values.restore)
+  )
+    throw Error("Choose --backup or --restore and provide --passphrase-file");
+  const unlock = await lockDirectory(directory),
+    storage = snapshotStorage(
+      new FileStorage(path.join(directory, "replicas")),
+    );
+  try {
+    const password = (
+      await readFile(values["passphrase-file"], "utf8")
+    ).replace(/\r?\n$/, "");
+    if (values.restore)
+      await restoreBackup(
+        storage,
+        await readFile(values.restore, "utf8"),
+        password,
+      );
+    else
+      await writeFile(values.backup!, await exportBackup(storage, password), {
+        mode: 0o600,
+        flag: "wx",
+      });
+  } finally {
+    await unlock();
+  }
+  process.exit(0);
 }
 if (values["pairing-request"] || values.approve || values.join) {
   const unlock = await lockDirectory(directory);
@@ -107,7 +134,10 @@ if (values.plugin) {
     if (seen.has(id)) return;
     seen.add(id);
     const entry = inventory.plugins.find((p) => p.id === id);
-    if (!entry) {if(isRequiredCore(id))return;throw Error('Plugin is not in the selected inventory: '+id);}
+    if (!entry) {
+      if (isRequiredCore(id)) return;
+      throw Error("Plugin is not in the selected inventory: " + id);
+    }
     for (const dep of entry.dependencies) await install(dep);
     await runtime.services.install(workspaceId, {
       id: entry.id,

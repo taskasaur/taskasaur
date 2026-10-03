@@ -130,8 +130,17 @@ export class JobService {
         deviceRecordId(this.repo.db.core.identity.id)
       )
         continue;
-      const node=this.repo.db.core.workspaces.get(row.workspace_id)!,plugin=String((candidate.data.payload as unknown as JobPayload).pluginId);
-      if(node.replica.read('setting/service.'+plugin)&&!await (await import('../../core/services')).assignedService(node,plugin))continue;
+      const node = this.repo.db.core.workspaces.get(row.workspace_id)!,
+        plugin = String(
+          (candidate.data.payload as unknown as JobPayload).pluginId,
+        );
+      if (
+        node.replica.read("setting/service." + plugin) &&
+        !(await (
+          await import("../../core/services")
+        ).assignedService(node, plugin))
+      )
+        continue;
       const result = await this.repo.db.transaction(async (tx) => {
         await tx.query(
           "SELECT id FROM taskasaur.workspaces WHERE id=$1 FOR UPDATE",

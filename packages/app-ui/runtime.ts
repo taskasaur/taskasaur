@@ -604,7 +604,18 @@ export class AppRuntime {
       result = { ok: true };
     } else if (route === "rpc") {
       const request = input.request;
-      if (this.host?.router.has(request.method))
+      const target = input.context?.targetDeviceId,
+        localTarget =
+          !target ||
+          target === this.principal.deviceId ||
+          target === this.device.identity.id;
+      if (localTarget && target)
+        invariant(
+          this.host?.router.has(request.method),
+          "CAPABILITY_UNSUPPORTED",
+          "This device does not provide that command",
+        );
+      if (localTarget && this.host?.router.has(request.method))
         result = await this.host.router.receive(request, {
           principal: {
             ...this.principal,

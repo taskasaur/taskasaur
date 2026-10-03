@@ -1,7 +1,8 @@
 import { coreModules } from "@taskasaur/platform/core/modules";
+import { Capacitor } from "@capacitor/core";
 import { peerService } from "../core/peer-service";
+import { credentialHttp } from "../core/credential-http";
 import { pluginWorkspace, pluginModules } from "./plugin-modules";
-("use client");
 import * as React from "react";
 import { PluginHost } from "@taskasaur/platform/core/host";
 import { getSchema, isRequiredCore } from "@taskasaur/platform/core/catalog";
@@ -43,262 +44,310 @@ export async function createBrowserPluginHost(
 ) {
   const local = runtime.db,
     actor = runtime.principal;
-  const host: PluginHost = new PluginHost(runtime.registry, actor, "browser", {
-    cleanup: (id) => {
-      for (const [key, surface] of runtime.surfaces)
-        if (surface.pluginId === id) runtime.surfaces.delete(key);
-      for (const style of document.querySelectorAll<HTMLStyleElement>(
-        "style[data-taskasaur-plugin]",
-      ))
-        if (style.dataset.taskasaurPlugin === id) style.remove();
-      runtime.notifySurfaces();
-    },
-    services: (principal) => {
-      const id = principal.pluginId,
-        manifest = runtime.registry.manifests.get(id)!;
-      const grants = extensions.find((e) => e.manifest.id === id)?.grants ?? [];
-      const scoped = () =>
-        local.scoped(
-          principal,
-          id,
-          runtime.profile.connected ? "synced" : "local-only",
-        );
-      const collection = (name: string) => {
-        invariant(
-          getSchema(name).pluginId === id,
-          "UNDECLARED_COLLECTION",
-          "Use core messages for another plugin collection",
-        );
-        return scoped().collection(name);
-      };
-      const settings = () => ({
-        get: async (key: string) =>
-          runtime.node.replica.read<{ value: unknown }>(
-            `setting/plugin.${id}.${key}`,
-          )?.value,
-        set: (key: string, value: unknown) =>
-          runtime.node.replica.update(`setting/plugin.${id}.${key}`, { value }),
-      });
-      return new Map<string, unknown>([
-        ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
-        ["core.records", { collection }],
-        ["core.modules", coreModules],
-        [
-          "core.storage.local",
-          {
-            collection,
-            capabilities: { atomicRecords: true, multiRecordTransactions: false },
-            transaction: async () => {throw new Error('Multi-record transactions are unavailable. Use durable individual writes with stable operation IDs.');},
-          },
-        ],
-        ["core.fields", { field, getSchema, decodeField, validateRecord }],
-        ["core.settings", settings()],
-        [
-          "core.sync",
-          {
-            synchronize: () => runtime.synchronize(),
-            status: () => runtime.node.replica.status(),
-          },
-        ],
-        [
-          "core.variables",
-          { list: () => runtime.collection("variables").list() },
-        ],
-        [
-          "core.tables",
-          {
-            list: () => runtime.collection("tables").list(),
-            rows: (id: string) =>
-              runtime.collection("table_rows").list({
-                filters: [
-                  {
-                    id: "table",
-                    field: "table_id",
-                    operator: "eq",
-                    value: id,
-                    enabled: true,
-                    link: "and",
-                  },
-                ],
-              }),
-          },
-        ],
-        ["core.devices", { list: () => runtime.collection("devices").list() }],
-        ["core.peers", peerService(runtime.node)],
-        [
-          "core.access",
-          { canWrite: (record: ResourceRecord) => local.canWrite(record) },
-        ],
-        [
-          "files.access",
-          {
-            read: async (id: string) => (await runtime.fileBytes(id)).blob,
-            write: (id: string, blob: Blob, parent: string | null) =>
-              local.saveFile(principal, id, blob, parent),
-          },
-        ],
-        [
-          "core.notifications",
-          {
-            notify: (title: string, body: string, resourceId?: string) =>
-              runtime
-                .collection("notifications")
-                .put({ title, body, resource_id: resourceId ?? null }),
-          },
-        ],
-        [
-          "core.jobs",
-          {
-            enqueue: (command: string, input: unknown, dueAt?: string) =>
-              runtime.api("jobs", { pluginId: id, command, input, dueAt }),
-          },
-        ],
-        [
-          "core.ui",
-          {
-            React,
-            modules: pluginModules(runtime, manifest, grants),
-            addStyles: (css: string) => {
-              const style = document.createElement("style");
-              style.dataset.taskasaurPlugin = id;
-              style.textContent = css;
-              document.head.append(style);
-              return () => style.remove();
+  const platform = window.taskasaurNative ? "desktop" : Capacitor.getPlatform();
+  const host: PluginHost = new PluginHost(
+    runtime.registry,
+    actor,
+    platform === "ios" || platform === "android" || platform === "desktop"
+      ? platform
+      : "browser",
+    {
+      cleanup: (id) => {
+        for (const [key, surface] of runtime.surfaces)
+          if (surface.pluginId === id) runtime.surfaces.delete(key);
+        for (const style of document.querySelectorAll<HTMLStyleElement>(
+          "style[data-taskasaur-plugin]",
+        ))
+          if (style.dataset.taskasaurPlugin === id) style.remove();
+        runtime.notifySurfaces();
+      },
+      services: (principal) => {
+        const id = principal.pluginId,
+          manifest = runtime.registry.manifests.get(id)!;
+        const grants =
+          extensions.find((e) => e.manifest.id === id)?.grants ?? [];
+        const scoped = () =>
+          local.scoped(
+            principal,
+            id,
+            runtime.profile.connected ? "synced" : "local-only",
+          );
+        const collection = (name: string) => {
+          invariant(
+            getSchema(name).pluginId === id,
+            "UNDECLARED_COLLECTION",
+            "Use core messages for another plugin collection",
+          );
+          return scoped().collection(name);
+        };
+        const settings = () => ({
+          get: async (key: string) =>
+            runtime.node.replica.read<{ value: unknown }>(
+              `setting/plugin.${id}.${key}`,
+            )?.value,
+          set: (key: string, value: unknown) =>
+            runtime.node.replica.update(`setting/plugin.${id}.${key}`, {
+              value,
+            }),
+        });
+        return new Map<string, unknown>([
+          ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
+          ["core.records", { collection }],
+          ["core.modules", coreModules],
+          [
+            "core.storage.local",
+            {
+              collection,
+              capabilities: {
+                atomicRecords: true,
+                multiRecordTransactions: false,
+              },
+              transaction: async () => {
+                throw new Error(
+                  "Multi-record transactions are unavailable. Use durable individual writes with stable operation IDs.",
+                );
+              },
             },
-            Button,
-            Input,
-            RecordForm,
-            FieldInput,
-            RecordTable: ({ collection: name }: { collection: string }) => {
-              invariant(
-                manifest.storage.local.collections.includes(name),
-                "UNDECLARED_COLLECTION",
-                "UI collection is not owned by this plugin",
-              );
-              return <RecordTable runtime={runtime} collection={name} />;
+          ],
+          ["core.fields", { field, getSchema, decodeField, validateRecord }],
+          ["core.settings", settings()],
+          [
+            "credentials.use",
+            {
+              request: (
+                credentialId: string,
+                destination: string,
+                options?: {
+                  method?: string;
+                  body?: import("@taskasaur/platform/field-types").Value;
+                },
+              ) =>
+                credentialHttp(
+                  runtime.node.vault,
+                  id,
+                  credentialId,
+                  destination,
+                  options,
+                ),
             },
-            registerSurface: (surface: {
-              id: string;
-              label: string;
-              render: React.ComponentType;
-            }) => {
-              invariant(
-                manifest.ui.mode === "shared" &&
-                  manifest.ui.surfaces.includes(surface.id),
-                "UNDECLARED_SURFACE",
-                "Declare this UI surface in the manifest",
-              );
-              const key = id + ":" + surface.id;
-              invariant(
-                !runtime.surfaces.has(key),
-                "CONTRACT_COLLISION",
-                "UI surface is already registered",
-              );
-              const render =
-                id === "remote-terminal" && manifest.version === "1.0.0"
-                  ? React.lazy(async () => {
-                      const { PeerTerminal } = await import("./peer-terminal");
-                      return {
-                        default: () => <PeerTerminal runtime={runtime} />,
-                      };
-                    })
-                  : id === "sharing" && manifest.version === "1.0.0"
+          ],
+          [
+            "core.sync",
+            {
+              synchronize: () => runtime.synchronize(),
+              status: () => runtime.node.replica.status(),
+            },
+          ],
+          [
+            "core.variables",
+            { list: () => runtime.collection("variables").list() },
+          ],
+          [
+            "core.tables",
+            {
+              list: () => runtime.collection("tables").list(),
+              rows: (id: string) =>
+                runtime.collection("table_rows").list({
+                  filters: [
+                    {
+                      id: "table",
+                      field: "table_id",
+                      operator: "eq",
+                      value: id,
+                      enabled: true,
+                      link: "and",
+                    },
+                  ],
+                }),
+            },
+          ],
+          [
+            "core.devices",
+            { list: () => runtime.collection("devices").list() },
+          ],
+          ["core.peers", peerService(runtime.node)],
+          [
+            "core.access",
+            { canWrite: (record: ResourceRecord) => local.canWrite(record) },
+          ],
+          [
+            "files.access",
+            {
+              read: async (id: string) => (await runtime.fileBytes(id)).blob,
+              write: (id: string, blob: Blob, parent: string | null) =>
+                local.saveFile(principal, id, blob, parent),
+            },
+          ],
+          [
+            "core.notifications",
+            {
+              notify: (title: string, body: string, resourceId?: string) =>
+                runtime
+                  .collection("notifications")
+                  .put({ title, body, resource_id: resourceId ?? null }),
+            },
+          ],
+          [
+            "core.jobs",
+            {
+              enqueue: (command: string, input: unknown, dueAt?: string) =>
+                runtime.api("jobs", { pluginId: id, command, input, dueAt }),
+            },
+          ],
+          [
+            "core.ui",
+            {
+              React,
+              modules: pluginModules(runtime, manifest, grants),
+              addStyles: (css: string) => {
+                const style = document.createElement("style");
+                style.dataset.taskasaurPlugin = id;
+                style.textContent = css;
+                document.head.append(style);
+                return () => style.remove();
+              },
+              Button,
+              Input,
+              RecordForm,
+              FieldInput,
+              RecordTable: ({ collection: name }: { collection: string }) => {
+                invariant(
+                  manifest.storage.local.collections.includes(name),
+                  "UNDECLARED_COLLECTION",
+                  "UI collection is not owned by this plugin",
+                );
+                return <RecordTable runtime={runtime} collection={name} />;
+              },
+              registerSurface: (surface: {
+                id: string;
+                label: string;
+                render: React.ComponentType;
+              }) => {
+                invariant(
+                  manifest.ui.mode === "shared" &&
+                    manifest.ui.surfaces.includes(surface.id),
+                  "UNDECLARED_SURFACE",
+                  "Declare this UI surface in the manifest",
+                );
+                const key = id + ":" + surface.id;
+                invariant(
+                  !runtime.surfaces.has(key),
+                  "CONTRACT_COLLISION",
+                  "UI surface is already registered",
+                );
+                const render =
+                  id === "remote-terminal" && manifest.version === "1.0.0"
                     ? React.lazy(async () => {
-                        const { PeerSharing } = await import("./peer-sharing");
+                        const { PeerTerminal } =
+                          await import("./peer-terminal");
                         return {
-                          default: () => <PeerSharing runtime={runtime} />,
+                          default: () => <PeerTerminal runtime={runtime} />,
                         };
                       })
-                    : id === "office-editor" && manifest.version === "1.0.0"
+                    : id === "sharing" && manifest.version === "1.0.0"
                       ? React.lazy(async () => {
-                          const { PortableOffice } =
-                            await import("./portable-office");
+                          const { PeerSharing } =
+                            await import("./peer-sharing");
                           return {
-                            default: () => (
-                              <PortableOffice
-                                runtime={runtime}
-                                legacy={surface.render}
-                              />
-                            ),
+                            default: () => <PeerSharing runtime={runtime} />,
                           };
                         })
-                      : surface.render;
-              const registered = { ...surface, render, id: key, pluginId: id };
-              runtime.surfaces.set(key, registered);
-              runtime.notifySurfaces();
-              return () => {
-                if (runtime.surfaces.get(key) !== registered) return;
-                runtime.surfaces.delete(key);
+                      : id === "office-editor" && manifest.version === "1.0.0"
+                        ? React.lazy(async () => {
+                            const { PortableOffice } =
+                              await import("./portable-office");
+                            return {
+                              default: () => (
+                                <PortableOffice
+                                  runtime={runtime}
+                                  legacy={surface.render}
+                                />
+                              ),
+                            };
+                          })
+                        : surface.render;
+                const registered = {
+                  ...surface,
+                  render,
+                  id: key,
+                  pluginId: id,
+                };
+                runtime.surfaces.set(key, registered);
                 runtime.notifySurfaces();
-              };
+                return () => {
+                  if (runtime.surfaces.get(key) !== registered) return;
+                  runtime.surfaces.delete(key);
+                  runtime.notifySurfaces();
+                };
+              },
             },
-          },
-        ],
-      ]);
-    },
-    call: async (command, input, principal, options) => {
-      if (options?.targetDeviceId || !host.router.has(command)) {
-        const result = await runtime.api<{
-          result: unknown;
-          error?: { message: string };
-        }>("rpc", {
-          context: {
-            workspaceId: actor.workspaceId,
-            pluginId: principal.pluginId,
-            targetDeviceId: options?.targetDeviceId,
-          },
-          request: {
+          ],
+        ]);
+      },
+      call: async (command, input, principal, options) => {
+        if (options?.targetDeviceId || !host.router.has(command)) {
+          const result = await runtime.api<{
+            result: unknown;
+            error?: { message: string };
+          }>("rpc", {
+            context: {
+              workspaceId: actor.workspaceId,
+              pluginId: principal.pluginId,
+              targetDeviceId: options?.targetDeviceId,
+            },
+            request: {
+              jsonrpc: "2.0",
+              id: options?.mutationId ?? crypto.randomUUID(),
+              method: command,
+              params: input,
+            },
+          });
+          invariant(
+            !result.error,
+            "COMMAND_FAILED",
+            result.error?.message ?? "Command failed",
+          );
+          return result.result;
+        }
+        const result = await host.router.receive(
+          {
             jsonrpc: "2.0",
             id: options?.mutationId ?? crypto.randomUUID(),
             method: command,
             params: input,
           },
-        });
+          {
+            principal: {
+              ...principal,
+              permissions: [
+                ...principal.permissions,
+                host.router.permissionFor(command) ?? command,
+              ],
+            },
+            signal: AbortSignal.timeout(30000),
+          },
+        );
         invariant(
-          !result.error,
+          result && "result" in result,
           "COMMAND_FAILED",
-          result.error?.message ?? "Command failed",
+          "Local command failed",
         );
         return result.result;
-      }
-      const result = await host.router.receive(
-        {
-          jsonrpc: "2.0",
-          id: options?.mutationId ?? crypto.randomUUID(),
-          method: command,
-          params: input,
-        },
-        {
-          principal: {
-            ...principal,
-            permissions: [
-              ...principal.permissions,
-              host.router.permissionFor(command) ?? command,
-            ],
-          },
-          signal: AbortSignal.timeout(30000),
-        },
-      );
-      invariant(
-        result && "result" in result,
-        "COMMAND_FAILED",
-        "Local command failed",
-      );
-      return result.result;
+      },
+      publish: async (event, principal) => {
+        const record = await local.records.get(event.data.resourceId);
+        invariant(
+          record?.workspaceId === actor.workspaceId,
+          "PERMISSION_DENIED",
+          "Event resource is unavailable",
+        );
+        await runtime.node.replica.update(
+          "event/" + event.id,
+          event as unknown as Record<string, unknown>,
+        );
+      },
     },
-    publish: async (event, principal) => {
-      const record = await local.records.get(event.data.resourceId);
-      invariant(
-        record?.workspaceId === actor.workspaceId,
-        "PERMISSION_DENIED",
-        "Event resource is unavailable",
-      );
-      await runtime.node.replica.update(
-        "event/" + event.id,
-        event as unknown as Record<string, unknown>,
-      );
-    },
-  });
+  );
   for (const manifest of runtime.registry.manifests.values())
     for (const command of manifest.provides.commands) {
       const match = /^(.+)\.(list|put|delete)$/.exec(command);

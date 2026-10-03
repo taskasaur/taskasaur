@@ -27,6 +27,23 @@ interface RunState {
   error?: string;
 }
 class Suspended extends Error {}
+export function assertPublishedVersion(
+  node: WorkspaceNode,
+  id: string,
+  version: number,
+) {
+  const key = `setting/workflow.${id}.${version}`;
+  for (const field of ["graph", "targetDeviceId", "trusted"])
+    invariant(
+      new Set(
+        Object.values(node.replica.conflicts(key, field)).map((value) =>
+          canonical(value),
+        ),
+      ).size <= 1,
+      "WORKFLOW_VERSION_CONFLICT",
+      "This version was published differently on two devices. Publish a new version before running it.",
+    );
+}
 /** Browser/mobile adapter for the same graph interpreter used by OpenWorkflow on native peers. */
 export class PortableWorkflows {
   private store: LocalState;
@@ -64,6 +81,7 @@ export class PortableWorkflows {
       pin = this.node.replica.read<{ graph: unknown; trusted: boolean }>(
         "setting/workflow." + input.id + "." + version,
       );
+    assertPublishedVersion(this.node, input.id, version);
     invariant(
       pin,
       "WORKFLOW_UNPUBLISHED",

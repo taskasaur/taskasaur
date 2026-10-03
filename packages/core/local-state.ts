@@ -54,10 +54,11 @@ export class LocalState {
         );
         return value;
       });
-    queues.set(
-      key,
-      pending.catch(() => {}),
-    );
+    const settled = pending.catch(() => {});
+    queues.set(key, settled);
+    void settled.finally(() => {
+      if (queues!.get(key) === settled) queues!.delete(key);
+    });
     return pending;
   }
   async set(id: string, value: unknown) {

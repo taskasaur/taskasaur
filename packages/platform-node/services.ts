@@ -22,6 +22,7 @@ import {
 } from "./compat/plugin-runtime";
 import { workflowTriggers, reminders } from "../core/schedules";
 import { operationId } from "../core/schedules";
+import { assertPublishedVersion } from "../core/workflows";
 import { LocalState } from "../core/local-state";
 import { releaseService } from "../core/services";
 import { processBackground } from "./compat/background";
@@ -345,8 +346,7 @@ export class NativeServices {
       return { path: "/api/automation/hooks/" + workflow.id, token };
     }
     if (route === "automation/cancel") {
-      const engine = await this.engine(node),
-        id = String(body.id),
+      const id = String(body.id),
         state = await new LocalState(
           node.replica,
           "native-workflows",
@@ -356,16 +356,34 @@ export class NativeServices {
         "NOT_FOUND",
         "Workflow is not running on this device",
       );
-      await engine.engine.cancelWorkflowRun(state.engineRunId);
+      await this.controlEngine(node, (engine) =>
+        engine.engine.cancelWorkflowRun(state.engineRunId!),
+      );
+      const record = node.records.get(id);
+      if (record)
+        await node.records.put(
+          "workflow_runs",
+          {
+            ...record.data,
+            status: "cancelled",
+            ended_at: new Date().toISOString(),
+          },
+          id,
+        );
       return { ok: true };
     }
     if (route === "automation/signal") {
-      const engine = this.engines.get(workspaceId);
-      invariant(engine, "NOT_FOUND", "Workflow engine is not active");
-      return engine.engine.sendSignal({
-        signal: String(body.id) + ":" + String(body.name),
-        data: body.data,
-      });
+      const state = await new LocalState(
+        node.replica,
+        "native-workflows",
+      ).get<NativeIntent>(String(body.id));
+      invariant(state, "NOT_FOUND", "Workflow is not on this device");
+      return this.controlEngine(node, (engine) =>
+        engine.engine.sendSignal({
+          signal: String(body.id) + ":" + String(body.name),
+          data: body.data,
+        }),
+      );
     }
     const request = new Request(url, {
       method: input.method,
@@ -394,6 +412,35 @@ export class NativeServices {
       result.error?.message ?? "Plugin operation failed",
     );
     return result;
+  }
+  private async controlEngine<T>(
+    node: WorkspaceNode,
+    work: (engine: AutomationEngine) => Promise<T>,
+  ) {
+    const running = this.engines.get(node.replica.workspaceId);
+    if (running) return work(running);
+    const engine = await createAutomationEngine(
+      {
+        deviceId: deviceRecordId(this.core.identity.id),
+        call: async () => {
+          throw Error(
+            "Control-only workflow connection cannot execute commands",
+          );
+        },
+      },
+      {
+        kind: "sqlite",
+        path: path.join(
+          this.options.directory,
+          "workflow-" + node.replica.workspaceId + ".sqlite",
+        ),
+      },
+    );
+    try {
+      return await work(engine);
+    } finally {
+      await engine.backend.stop();
+    }
   }
   private async engine(node: WorkspaceNode) {
     const workspaceId = node.replica.workspaceId,
@@ -471,6 +518,11 @@ export class NativeServices {
     );
     const graph = validateGraph(pin.graph),
       trusted = pin.trusted;
+    assertPublishedVersion(
+      node,
+      workflow.id,
+      Number(workflow.data.published_version),
+    );
     invariant(
       !trusted ||
         (this.options.trustedCode && workflow.data.allow_trusted_code === true),
@@ -535,7 +587,10 @@ export class NativeServices {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      if(!this.options.automation&&this.engines.size){for(const engine of this.engines.values())await engine.stop();this.engines.clear();}
+      if (!this.options.automation && this.engines.size) {
+        for (const engine of this.engines.values()) await engine.stop();
+        this.engines.clear();
+      }
       await this.project();
       this.terminal.sweep((workspaceId, owner) =>
         Boolean(
@@ -557,16 +612,23 @@ export class NativeServices {
             "presence:" + node.replica.workspaceId,
             String(Date.now()),
           );
-          await node.records.put(
-            "devices",
-            {
-              name: this.core.identity.name,
-              platform: "desktop",
-              capabilities: this.capabilities(),
-              last_seen: new Date().toISOString(),
-            },
-            deviceRecordId(this.core.identity.id),
-          );
+          const prior = node.records.get(deviceRecordId(this.core.identity.id));
+          if (
+            !prior ||
+            prior.data.name !== this.core.identity.name ||
+            JSON.stringify(prior.data.capabilities) !==
+              JSON.stringify(this.capabilities())
+          )
+            await node.records.put(
+              "devices",
+              {
+                name: this.core.identity.name,
+                platform: "desktop",
+                capabilities: this.capabilities(),
+                last_seen: new Date().toISOString(),
+              },
+              deviceRecordId(this.core.identity.id),
+            );
         }
         if (this.options.automation) {
           await workflowTriggers(node, (input) =>

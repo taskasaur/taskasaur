@@ -29,7 +29,17 @@ export class CredentialBroker {
       id,
       pluginId,
       destination,
-      operation,
+      (secret) =>
+        operation({
+          ...secret,
+          accessToken: secret.access_token ?? secret.accessToken,
+          apiKey: secret.api_key ?? secret.apiKey,
+          refreshToken: secret.refresh_token ?? secret.refreshToken,
+          expiresAt: secret.expires_at ?? secret.expiresAt,
+          clientId: secret.client_id ?? secret.clientId,
+          clientSecret: secret.client_secret ?? secret.clientSecret,
+          tokenEndpoint: secret.token_endpoint ?? secret.tokenEndpoint,
+        }),
     );
   }
   async revoke(actor: Principal, id: string) {

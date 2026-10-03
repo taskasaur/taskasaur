@@ -3,6 +3,7 @@ import type { Principal, PluginEvent } from "@taskasaur/platform/plugin-sdk";
 import { manifestById } from "@taskasaur/platform/core/catalog";
 import { invariant, CoreError } from "@taskasaur/platform/core/errors";
 import { domainEvent } from "@taskasaur/platform/core/messages";
+import { canonical } from "../../core/crypto";
 export async function publishEvent(
   repo: Repository,
   actor: Principal,
@@ -31,6 +32,18 @@ export async function publishEvent(
     event.data.value,
     event.id,
   );
+  const node = repo.db.core.workspaces.get(actor.workspaceId)!,
+    prior = node.replica.read<PluginEvent>("event/" + event.id);
+  if (prior) {
+    invariant(
+      prior.source === envelope.source &&
+        prior.type === envelope.type &&
+        canonical(prior.data) === canonical(envelope.data),
+      "IDEMPOTENCY_CONFLICT",
+      "Event identity was reused",
+    );
+    return;
+  }
   invariant(
     JSON.stringify(envelope).length <= 262144,
     "PAYLOAD_TOO_LARGE",

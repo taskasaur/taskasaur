@@ -1,3 +1,4 @@
+import { credentialHttp } from "../../core/credential-http";
 import { coreModules } from "@taskasaur/platform/core/modules";
 import { peerService } from "../../core/peer-service";
 import { serverAdapter } from "./plugin-runtime";
@@ -74,26 +75,59 @@ export async function serverPluginHost(
             },
             put: async (
               data: Record<string, Value>,
-              options: {
-                id?: string;
-                revision?: number;
-                mutationId?: string;
-              } = {},
+              options:
+                | string
+                | {
+                    id?: string;
+                    revision?: number;
+                    mutationId?: string;
+                  } = {},
             ) =>
               repo.mutate(
                 actor,
                 {
-                  id: options.mutationId ?? randomUUID(),
-                  resourceId: options.id ?? randomUUID(),
+                  id:
+                    (typeof options === "string"
+                      ? undefined
+                      : options.mutationId) ?? randomUUID(),
+                  resourceId:
+                    (typeof options === "string" ? options : options.id) ??
+                    randomUUID(),
                   pluginId: actor.pluginId,
                   collection: id,
                   operation: "put",
-                  baseRevision: options.revision ?? 0,
+                  baseRevision:
+                    (typeof options === "string" ? 0 : options.revision) ?? 0,
                   data,
                   createdAt: new Date().toISOString(),
                 },
                 "plugin",
               ),
+            delete: async (
+              resourceId: string,
+              options: { mutationId?: string } = {},
+            ) => {
+              const record = await repo.get(actor, resourceId);
+              invariant(
+                record.collection === id,
+                "UNDECLARED_COLLECTION",
+                "Resource belongs to another collection",
+              );
+              await repo.mutate(
+                actor,
+                {
+                  id: options.mutationId ?? randomUUID(),
+                  resourceId,
+                  pluginId: actor.pluginId,
+                  collection: id,
+                  operation: "delete",
+                  baseRevision: record.revision,
+                  data: {},
+                  createdAt: new Date().toISOString(),
+                },
+                "plugin",
+              );
+            },
           };
         };
         return new Map<string, unknown>([
@@ -156,9 +190,35 @@ export async function serverPluginHost(
           ],
           ["core.records", { collection }],
           [
+            "core.storage.local",
+            {
+              collection,
+              capabilities: {
+                atomicRecords: true,
+                multiRecordTransactions: false,
+              },
+              transaction: async () => {
+                throw Error(
+                  "Multi-record transactions are unavailable. Use durable individual writes with stable operation IDs.",
+                );
+              },
+            },
+          ],
+          [
+            "core.sync",
+            {
+              synchronize: () =>
+                repo.db.core.workspaces.get(actor.workspaceId)!.synchronize(),
+              status: () =>
+                repo.db.core.workspaces
+                  .get(actor.workspaceId)!
+                  .replica.status(),
+            },
+          ],
+          [
             "core.settings",
             {
-              get: (key: string) =>
+              get: async (key: string) =>
                 repo.db.core.workspaces
                   .get(actor.workspaceId)!
                   .replica.read<{ value: unknown }>(
@@ -215,56 +275,18 @@ export async function serverPluginHost(
           [
             "credentials.use",
             {
-              request: async (
+              request: (
                 id: string,
                 destination: string,
-                options: { method?: string; body?: Value } = {},
-              ) => {
-                const url = new URL(destination);
-                invariant(
-                  url.protocol === "https:",
-                  "TLS_REQUIRED",
-                  "Credential HTTP operations require HTTPS",
-                );
-                const broker = new CredentialBroker(
-                  repo,
-                  process.env.CREDENTIAL_ENCRYPTION_KEY ?? "",
-                );
-                return broker.use(
-                  actor,
-                  id,
+                options?: { method?: string; body?: Value },
+              ) =>
+                credentialHttp(
+                  repo.db.core.workspaces.get(actor.workspaceId)!.vault,
                   actor.pluginId,
+                  id,
                   destination,
-                  "http.request",
-                  async (secret) => {
-                    const response = await fetch(url, {
-                      method: options.method ?? "GET",
-                      redirect: "error",
-                      signal: AbortSignal.timeout(15000),
-                      headers: {
-                        Authorization: secret.accessToken
-                          ? "Bearer " + secret.accessToken
-                          : secret.apiKey
-                            ? "Bearer " + secret.apiKey
-                            : "Basic " +
-                              Buffer.from(
-                                `${secret.username ?? ""}:${secret.password ?? ""}`,
-                              ).toString("base64"),
-                        "Content-Type": "application/json",
-                      },
-                      ...(options.body == null
-                        ? {}
-                        : { body: JSON.stringify(options.body) }),
-                    });
-                    invariant(
-                      response.ok,
-                      "HTTP_ERROR",
-                      `Provider returned ${response.status}`,
-                    );
-                    return response.json();
-                  },
-                );
-              },
+                  options,
+                ),
             },
           ],
         ]);

@@ -363,6 +363,10 @@ export class Replica {
           data = event.data as Record<string, unknown> | undefined;
         invariant(
           event.id === entry.documentId.slice(6) &&
+            typeof event.id === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              event.id,
+            ) &&
             event.specversion === "1.0" &&
             typeof event.source === "string" &&
             /^\/plugins\/[a-z0-9-]+$/.test(event.source) &&
@@ -382,7 +386,8 @@ export class Replica {
       } else if (entry.documentId.startsWith("setting/workflow.")) {
         if (previous.value)
           invariant(
-            canonical(previous.value) === canonical(next.value),
+            decoded.deps.length === 0 ||
+              canonical(previous.value) === canonical(next.value),
             "INVALID_WORKFLOW",
             "Published workflow versions are immutable",
           );

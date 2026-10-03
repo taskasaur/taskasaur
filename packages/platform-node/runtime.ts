@@ -17,27 +17,30 @@ export async function startNativeRuntime(
   },
 ) {
   const unlock = await lockDirectory(options.directory);
+  let services: NativeServices | undefined;
+  let core: DeviceCore | undefined;
   try {
-    let services: NativeServices | undefined;
     const storage = snapshotStorage(
       options.storage ??
         new FileStorage(path.join(options.directory, "replicas")),
     );
-    const core = await DeviceCore.open(
+    core = await DeviceCore.open(
       storage,
       options.name ?? os.hostname(),
       () => services?.capabilities() ?? [],
     );
     if (!core.profiles().length && options.createWorkspace)
       await core.createWorkspace(options.createWorkspace);
-    services = await new NativeServices(core, {
+    services = new NativeServices(core, {
       directory: options.directory,
       terminal: options.terminal ?? false,
       automation: options.automation ?? false,
       trustedCode: options.trustedCode ?? false,
       background: options.background ?? false,
       plugins: options.plugins ?? false,
-    }).initialize();
+    });
+    await services.initialize();
+    const device = core;
     const transport = await createPeerTransport(
       storage,
       core.protocols,
@@ -50,11 +53,12 @@ export async function startNativeRuntime(
       pending = pending
         .then(async () => {
           if (stopping) return;
-          for (const node of core.workspaces.values()) await node.synchronize();
+          for (const node of device.workspaces.values())
+            await node.synchronize();
           await services!.tick();
         })
         .catch((error) => {
-          for (const node of core.workspaces.values())
+          for (const node of device.workspaces.values())
             node.replica.error =
               error instanceof Error ? error.message : String(error);
         });
@@ -71,14 +75,19 @@ export async function startNativeRuntime(
         clearInterval(timer);
         await pending;
         try {
-          await services!.close();
-          await core.close();
+          try {
+            await services!.close();
+          } finally {
+            await device.close();
+          }
         } finally {
           await unlock();
         }
       },
     };
   } catch (error) {
+    await services?.close().catch(() => {});
+    await core?.close().catch(() => {});
     await unlock();
     throw error;
   }

@@ -4,14 +4,31 @@ import type { DurableStorage } from "../storage";
 export class FileStorage implements DurableStorage {
   constructor(readonly directory: string) {}
   private file(key: string) {
-    const encoded=Buffer.from(key).toString('base64url');
-    return path.join(this.directory,...(encoded.length>180?['long',...encoded.match(/.{1,120}/g)!]:[encoded]));
+    const encoded = Buffer.from(key).toString("base64url");
+    return path.join(
+      this.directory,
+      ...(encoded.length > 180
+        ? ["long", ...encoded.match(/.{1,120}/g)!]
+        : [encoded]),
+    );
   }
   async get(key: string) {
     try {
       return new Uint8Array(await readFile(this.file(key)));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        const encoded = Buffer.from(key).toString("base64url");
+        if (encoded.length > 180 && encoded.length <= 255)
+          try {
+            return new Uint8Array(
+              await readFile(path.join(this.directory, encoded)),
+            );
+          } catch (legacy) {
+            if ((legacy as NodeJS.ErrnoException).code !== "ENOENT")
+              throw legacy;
+          }
+        return undefined;
+      }
       throw error;
     }
   }
@@ -44,14 +61,29 @@ export class FileStorage implements DurableStorage {
   }
   async delete(key: string) {
     await rm(this.file(key), { force: true });
+    const encoded = Buffer.from(key).toString("base64url");
+    if (encoded.length > 180 && encoded.length <= 255)
+      await rm(path.join(this.directory, encoded), { force: true });
   }
   async keys(prefix: string) {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const flat=(await readdir(this.directory,{withFileTypes:true})).filter(entry=>entry.isFile()).map(entry=>entry.name);
-    const long:string[]=[];
-    const walk=async(folder:string,encoded='')=>{for(const entry of await readdir(folder,{withFileTypes:true})){if(entry.isDirectory())await walk(path.join(folder,entry.name),encoded+entry.name);else long.push(encoded+entry.name);}};
-    try{await walk(path.join(this.directory,'long'));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-    return [...flat,...long]
+    const flat = (await readdir(this.directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+    const long: string[] = [];
+    const walk = async (folder: string, encoded = "") => {
+      for (const entry of await readdir(folder, { withFileTypes: true })) {
+        if (entry.isDirectory())
+          await walk(path.join(folder, entry.name), encoded + entry.name);
+        else long.push(encoded + entry.name);
+      }
+    };
+    try {
+      await walk(path.join(this.directory, "long"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return [...new Set([...flat, ...long])]
       .filter((f) => !f.endsWith(".tmp"))
       .map((f) => Buffer.from(f, "base64url").toString())
       .filter((k) => k.startsWith(prefix))
