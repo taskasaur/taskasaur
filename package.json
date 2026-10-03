@@ -1,6 +1,6 @@
 {
   "name": "taskasaur",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Taskasaur distributed workspace: local replicas, peer synchronization, desktop, mobile and headless",
   "author": {
     "name": "Taskasaur Contributors",
@@ -12,7 +12,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && npm run build:web",
+    "build": "npm run sdk:build && npm run typecheck && npm run build:web && npm run build:peer",
     "build:web": "vite build --config vite.config.ts",
     "build:macos": "npm run build:desktop && electron-builder --mac dmg zip --arm64",
     "build:windows": "npm run build:desktop && electron-builder --win nsis --x64",
@@ -36,7 +36,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "start": "vite preview --host 0.0.0.0",
     "office:prepare": "node scripts/office-prepare.mjs",
-    "device": "tsx scripts/device.ts",
+    "device": "tsx apps/headless/main.ts",
     "format": "prettier --write packages src electron scripts tests docs",
     "build:desktop": "node scripts/desktop.mjs",
     "postinstall": "node scripts/native-prepare.mjs && npm run sdk:build",
@@ -45,11 +45,12 @@
     "core:verify": "node scripts/core-release.mjs",
     "postbuild:client": "node scripts/offline-assets.mjs",
     "sdk:verify": "node scripts/verify-sdk.mjs",
-    "sdk:build": "node scripts/build-platform.mjs"
+    "sdk:build": "node scripts/build-platform.mjs",
+    "peer": "tsx apps/headless/main.ts",
+    "build:peer": "node scripts/build-peer.mjs"
   },
   "dependencies": {
     "@automerge/automerge": "^3.5.0",
-    "@automerge/automerge-repo": "^2.6.0-alpha.3",
     "@base-ui/react": "^1.5.0",
     "@capacitor/android": "^7.6.8",
     "@capacitor/core": "^7.1.0",
@@ -63,7 +64,6 @@
     "@libp2p/crypto": "^5.1.23",
     "@libp2p/identify": "^4.1.14",
     "@libp2p/peer-id": "^6.0.15",
-    "@libp2p/ping": "^3.1.13",
     "@libp2p/webrtc": "^6.0.33",
     "@libp2p/websockets": "^10.1.21",
     "@multiformats/multiaddr": "^13.0.3",
@@ -74,15 +74,24 @@
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.13",
     "@taskasaur/platform": "file:packages/platform",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
+    "docx": "^9.5.1",
+    "exceljs": "^4.4.0",
+    "hot-formula-parser": "^4.0.0",
     "libp2p": "^3.3.11",
     "lucide-react": "^0.511.0",
+    "mammoth": "^1.11.0",
     "next-themes": "^0.4.6",
     "openworkflow": "0.10.1",
+    "pptxgenjs": "^4.0.1",
+    "quill": "2.0.2",
+    "quill-delta": "5.1.0",
     "react": "^19.1.0",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.1.0",
@@ -171,6 +180,12 @@
   "overrides": {
     "cloudevents": {
       "uuid": "11.1.1"
+    },
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "pptxgenjs": {
+      "image-size": "2.0.4"
     }
   },
   "engines": {

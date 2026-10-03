@@ -38,7 +38,8 @@
     "electron/**/*.ts",
     "scripts/**/*.ts",
     "vite.config.ts",
-    "capacitor.config.ts"
+    "capacitor.config.ts",
+    "apps/**/*.ts"
   ],
   "exclude": [
     "node_modules",
@@ -46,6 +47,7 @@
     "dist-electron",
     "vendor",
     "packages/platform/dist",
-    "packages/platform/host-types"
+    "packages/platform/host-types",
+    "dist-peer"
   ]
 }

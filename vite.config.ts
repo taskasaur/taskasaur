@@ -1,26 +1,17 @@
 import path from "node:path";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import { defineConfig, loadEnv } from "vite";
 import { officeAssets } from "./scripts/office-assets";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import electron from "vite-plugin-electron/simple";
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "TASKASAUR_");
-  const target =
-    process.env.TASKASAUR_API_PROXY_URL ||
-    env.TASKASAUR_API_PROXY_URL ||
-    "http://127.0.0.1:3000";
   const headers = {
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Embedder-Policy": "require-corp",
     "X-Content-Type-Options": "nosniff",
   };
-  const proxy = Object.fromEntries(
-    ["/api", "/auth/v1", "/device-stream"].map((route) => [
-      route,
-      { target, changeOrigin: false, ws: route === "/device-stream" },
-    ]),
-  );
   return {
     base: "./",
     plugins: [
@@ -42,6 +33,7 @@ export default defineConfig(({ mode }) => {
                         "openworkflow",
                         "openworkflow/sqlite",
                         "typescript",
+                        /^@electric-sql\//, /^@automerge\//, /^@libp2p\//, /^@chainsafe\//, /^@multiformats\//, "libp2p",
                       ],
                     },
                   },
@@ -55,13 +47,14 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve("packages"),
+        "@automerge/automerge": path.resolve(path.dirname(require.resolve("@automerge/automerge")), "../mjs/entrypoints/fullfat_base64.js"),
         cloudevents: path.resolve(
           "node_modules/cloudevents/bundles/cloudevents.js",
         ),
       },
     },
-    server: { host: "127.0.0.1", port: 5173, headers, proxy },
-    preview: { host: "127.0.0.1", port: 4173, headers, proxy },
+    server: { host: "127.0.0.1", port: 5173, headers },
+    preview: { host: "127.0.0.1", port: 4173, headers },
     build: { outDir: "dist", sourcemap: true, manifest: true },
   };
 });

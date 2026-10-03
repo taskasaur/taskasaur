@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+delete process.env.ELECTRON_RUN_AS_NODE;
 const args = process.argv.includes("--dev") ? [] : ["build"];
 const child = spawn(
   process.execPath,

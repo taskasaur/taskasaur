@@ -1,30 +1,60 @@
-import { mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises';
-import path from 'node:path';
-import type { DurableStorage } from '../storage';
+import { mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
+import path from "node:path";
+import type { DurableStorage } from "../storage";
 export class FileStorage implements DurableStorage {
   constructor(readonly directory: string) {}
-  private file(key: string) { return path.join(this.directory, Buffer.from(key).toString('base64url')); }
-  async get(key: string) {
-    try { return new Uint8Array(await readFile(this.file(key))); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
+  private file(key: string) {
+    const encoded=Buffer.from(key).toString('base64url');
+    return path.join(this.directory,...(encoded.length>180?['long',...encoded.match(/.{1,120}/g)!]:[encoded]));
   }
-  async set(key: string, bytes: Uint8Array) {
-    await mkdir(this.directory, {recursive:true, mode:0o700});
-    const destination = this.file(key), temporary = destination + '.' + crypto.randomUUID() + '.tmp';
-    const handle = await open(temporary, 'wx', 0o600);
-    try { await handle.writeFile(bytes); await handle.sync(); }
-    finally { await handle.close(); }
-    try { await rename(temporary, destination); }
-    catch (error) { await rm(temporary, {force:true}); throw error; }
-    // fsync the directory where supported so the rename survives power loss.
-    if (process.platform !== 'win32') {
-      const directory = await open(this.directory, 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
+  async get(key: string) {
+    try {
+      return new Uint8Array(await readFile(this.file(key)));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw error;
     }
   }
-  async delete(key: string) { await rm(this.file(key), {force:true}); }
+  async set(key: string, bytes: Uint8Array) {
+    await mkdir(path.dirname(this.file(key)), { recursive: true, mode: 0o700 });
+    const destination = this.file(key),
+      temporary = destination + "." + crypto.randomUUID() + ".tmp";
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(bytes);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await rename(temporary, destination);
+    } catch (error) {
+      await rm(temporary, { force: true });
+      throw error;
+    }
+    // fsync the directory where supported so the rename survives power loss.
+    if (process.platform !== "win32") {
+      const directory = await open(path.dirname(destination), "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
+  }
+  async delete(key: string) {
+    await rm(this.file(key), { force: true });
+  }
   async keys(prefix: string) {
-    await mkdir(this.directory, {recursive:true, mode:0o700});
-    return (await readdir(this.directory)).filter(f => !f.endsWith('.tmp')).map(f => Buffer.from(f, 'base64url').toString()).filter(k => k.startsWith(prefix)).sort();
+    await mkdir(this.directory, { recursive: true, mode: 0o700 });
+    const flat=(await readdir(this.directory,{withFileTypes:true})).filter(entry=>entry.isFile()).map(entry=>entry.name);
+    const long:string[]=[];
+    const walk=async(folder:string,encoded='')=>{for(const entry of await readdir(folder,{withFileTypes:true})){if(entry.isDirectory())await walk(path.join(folder,entry.name),encoded+entry.name);else long.push(encoded+entry.name);}};
+    try{await walk(path.join(this.directory,'long'));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    return [...flat,...long]
+      .filter((f) => !f.endsWith(".tmp"))
+      .map((f) => Buffer.from(f, "base64url").toString())
+      .filter((k) => k.startsWith(prefix))
+      .sort();
   }
 }

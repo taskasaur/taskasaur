@@ -15,15 +15,22 @@
       "ui": {
         "mode": "shared",
         "apiVersion": "^1.0.0",
-        "surfaces": ["tasks"]
+        "surfaces": [
+          "tasks"
+        ]
       },
       "storage": {
         "local": {
           "mode": "dexie",
-          "collections": ["tasks"]
+          "collections": [
+            "tasks"
+          ]
         }
       },
-      "permissions": ["tasks.read", "tasks.write"],
+      "permissions": [
+        "tasks.read",
+        "tasks.write"
+      ],
       "dependencies": [],
       "features": {},
       "sharedServices": [
@@ -44,8 +51,14 @@
         }
       ],
       "provides": {
-        "commands": ["tasks.list", "tasks.put", "tasks.delete"],
-        "events": ["tasks.changed"]
+        "commands": [
+          "tasks.list",
+          "tasks.put",
+          "tasks.delete"
+        ],
+        "events": [
+          "tasks.changed"
+        ]
       },
       "consumes": {
         "commands": [],
@@ -75,7 +88,12 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["open", "in-progress", "done", "cancelled"],
+            "choices": [
+              "open",
+              "in-progress",
+              "done",
+              "cancelled"
+            ],
             "default": "open",
             "control": "select",
             "sensitive": false
@@ -171,15 +189,22 @@
       "ui": {
         "mode": "shared",
         "apiVersion": "^1.0.0",
-        "surfaces": ["calendar"]
+        "surfaces": [
+          "calendar"
+        ]
       },
       "storage": {
         "local": {
           "mode": "dexie",
-          "collections": ["calendar"]
+          "collections": [
+            "calendar"
+          ]
         }
       },
-      "permissions": ["calendar.read", "calendar.write"],
+      "permissions": [
+        "calendar.read",
+        "calendar.write"
+      ],
       "dependencies": [],
       "features": {},
       "sharedServices": [
@@ -200,11 +225,21 @@
         }
       ],
       "provides": {
-        "commands": ["calendar.list", "calendar.put", "calendar.delete"],
-        "events": ["calendar.changed"]
+        "commands": [
+          "calendar.list",
+          "calendar.put",
+          "calendar.delete"
+        ],
+        "events": [
+          "calendar.changed"
+        ]
       },
       "consumes": {
-        "commands": ["reminders.list", "reminders.put", "reminders.delete"],
+        "commands": [
+          "reminders.list",
+          "reminders.put",
+          "reminders.delete"
+        ],
         "events": []
       }
     },
@@ -392,7 +427,10 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["OPAQUE", "TRANSPARENT"],
+            "choices": [
+              "OPAQUE",
+              "TRANSPARENT"
+            ],
             "default": "OPAQUE",
             "control": "select",
             "sensitive": false
@@ -404,7 +442,11 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["CONFIRMED", "TENTATIVE", "CANCELLED"],
+            "choices": [
+              "CONFIRMED",
+              "TENTATIVE",
+              "CANCELLED"
+            ],
             "default": "CONFIRMED",
             "control": "select",
             "sensitive": false
@@ -431,15 +473,22 @@
       "ui": {
         "mode": "shared",
         "apiVersion": "^1.0.0",
-        "surfaces": ["reminders"]
+        "surfaces": [
+          "reminders"
+        ]
       },
       "storage": {
         "local": {
           "mode": "dexie",
-          "collections": ["reminders"]
+          "collections": [
+            "reminders"
+          ]
         }
       },
-      "permissions": ["reminders.read", "reminders.write"],
+      "permissions": [
+        "reminders.read",
+        "reminders.write"
+      ],
       "dependencies": [],
       "features": {},
       "sharedServices": [
@@ -480,8 +529,14 @@
         }
       ],
       "provides": {
-        "commands": ["reminders.list", "reminders.put", "reminders.delete"],
-        "events": ["reminders.changed"]
+        "commands": [
+          "reminders.list",
+          "reminders.put",
+          "reminders.delete"
+        ],
+        "events": [
+          "reminders.changed"
+        ]
       },
       "consumes": {
         "commands": [],
@@ -507,7 +562,11 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["DISPLAY", "EMAIL", "AUDIO"],
+            "choices": [
+              "DISPLAY",
+              "EMAIL",
+              "AUDIO"
+            ],
             "default": "DISPLAY",
             "control": "select",
             "sensitive": false
@@ -568,7 +627,10 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["START", "END"],
+            "choices": [
+              "START",
+              "END"
+            ],
             "default": "START",
             "control": "select",
             "sensitive": false
@@ -654,15 +716,22 @@
       "ui": {
         "mode": "shared",
         "apiVersion": "^1.0.0",
-        "surfaces": ["time"]
+        "surfaces": [
+          "time"
+        ]
       },
       "storage": {
         "local": {
           "mode": "dexie",
-          "collections": ["time"]
+          "collections": [
+            "time"
+          ]
         }
       },
-      "permissions": ["time.read", "time.write"],
+      "permissions": [
+        "time.read",
+        "time.write"
+      ],
       "dependencies": [],
       "features": {},
       "sharedServices": [
@@ -688,8 +757,14 @@
         }
       ],
       "provides": {
-        "commands": ["time.list", "time.put", "time.delete"],
-        "events": ["time.changed"]
+        "commands": [
+          "time.list",
+          "time.put",
+          "time.delete"
+        ],
+        "events": [
+          "time.changed"
+        ]
       },
       "consumes": {
         "commands": [
@@ -746,7 +821,11 @@
             "required": true,
             "nullable": false,
             "array": false,
-            "choices": ["work", "break", "focus"],
+            "choices": [
+              "work",
+              "break",
+              "focus"
+            ],
             "default": "work",
             "control": "select",
             "sensitive": false
@@ -804,6 +883,1926 @@
           }
         ],
         "standard": "time-interval"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "email-client",
+      "name": "Email Client",
+      "description": "Mail accounts, mailbox sync, drafts, attachments, and send/receive.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs",
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "email-client"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "mail_accounts",
+            "mail",
+            "mailboxes",
+            "mail_operations"
+          ]
+        }
+      },
+      "permissions": [
+        "email-client.read",
+        "email-client.write"
+      ],
+      "dependencies": [],
+      "features": {
+        "attachments": {
+          "defaultEnabled": false
+        },
+        "notifications": {
+          "defaultEnabled": false
+        },
+        "taskLinks": {
+          "defaultEnabled": false
+        }
+      },
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "credentials.use",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "files.access",
+          "version": "^1",
+          "optional": false,
+          "when": "attachments"
+        },
+        {
+          "id": "core.jobs",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "mail_accounts.list",
+          "mail_accounts.put",
+          "mail_accounts.delete",
+          "mail.list",
+          "mail.put",
+          "mail.delete",
+          "mailboxes.list",
+          "mailboxes.put",
+          "mailboxes.delete",
+          "mail_operations.list",
+          "mail_operations.put",
+          "mail_operations.delete",
+          "mail.sync",
+          "mail.read",
+          "mail.send",
+          "mail.applyOperation",
+          "mail.folders"
+        ],
+        "events": [
+          "mail_accounts.changed",
+          "mail.changed",
+          "mailboxes.changed",
+          "mail_operations.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [
+          "files.list",
+          "files.put",
+          "files.delete"
+        ],
+        "events": []
+      },
+      "server": {
+        "routes": [
+          {
+            "path": "mail/*",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          }
+        ],
+        "background": true,
+        "mutationHooks": false
+      }
+    },
+    "schemas": [
+      {
+        "id": "mail_accounts",
+        "pluginId": "email-client",
+        "name": "Mail accounts",
+        "version": 1,
+        "fields": [
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "address",
+            "label": "Email",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "control": "email",
+            "sensitive": false
+          },
+          {
+            "id": "credential_id",
+            "label": "Credential",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "credentials",
+            "control": "reference"
+          },
+          {
+            "id": "imap_host",
+            "label": "IMAP host",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "imap_port",
+            "label": "IMAP port",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 1,
+            "max": 65535,
+            "default": 993,
+            "sensitive": false
+          },
+          {
+            "id": "smtp_host",
+            "label": "SMTP host",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "smtp_port",
+            "label": "SMTP port",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 1,
+            "max": 65535,
+            "default": 465,
+            "sensitive": false
+          },
+          {
+            "id": "smtp_security",
+            "label": "SMTP security",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "tls",
+              "starttls"
+            ],
+            "default": "tls",
+            "control": "select",
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "mail",
+        "pluginId": "email-client",
+        "name": "Mail",
+        "version": 1,
+        "fields": [
+          {
+            "id": "account_id",
+            "label": "Account",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "mail_accounts",
+            "control": "reference"
+          },
+          {
+            "id": "mailbox",
+            "label": "Mailbox",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": "INBOX",
+            "sensitive": false
+          },
+          {
+            "id": "subject",
+            "label": "Subject",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "from",
+            "label": "From",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "to",
+            "label": "To",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "cc",
+            "label": "Cc",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "bcc",
+            "label": "Bcc",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "body",
+            "label": "Message",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "html",
+            "label": "HTML",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "message_id",
+            "label": "Message ID",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "provider_uid",
+            "label": "Provider UID",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "uid_validity",
+            "label": "UID validity",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "received_at",
+            "label": "Received",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "status",
+            "label": "Status",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "draft",
+              "queued",
+              "sending",
+              "sent",
+              "received",
+              "failed",
+              "unknown"
+            ],
+            "default": "draft",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "read",
+            "label": "Read",
+            "pgType": "boolean",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": false,
+            "sensitive": false
+          },
+          {
+            "id": "flags",
+            "label": "Flags",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "in_reply_to",
+            "label": "Reply to Message-ID",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "references",
+            "label": "Thread references",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "send_operation_id",
+            "label": "Send operation",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "provider_deleted",
+            "label": "Removed from mailbox",
+            "pgType": "boolean",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": false,
+            "sensitive": false
+          },
+          {
+            "id": "attachments",
+            "label": "Attachments",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "mailboxes",
+        "pluginId": "email-client",
+        "name": "Mailboxes",
+        "version": 1,
+        "fields": [
+          {
+            "id": "account_id",
+            "label": "Account",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "control": "reference",
+            "reference": "mail_accounts",
+            "sensitive": false
+          },
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "path",
+            "label": "Path",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "special_use",
+            "label": "Special use",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "mail_operations",
+        "pluginId": "email-client",
+        "name": "Mailbox operations",
+        "version": 1,
+        "fields": [
+          {
+            "id": "message_id",
+            "label": "Message",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "control": "reference",
+            "reference": "mail",
+            "sensitive": false
+          },
+          {
+            "id": "operation",
+            "label": "Operation",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "read",
+              "unread",
+              "flag",
+              "unflag",
+              "move"
+            ],
+            "default": "read",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "mailbox",
+            "label": "Destination mailbox",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "status",
+            "label": "Status",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "queued",
+              "completed",
+              "failed"
+            ],
+            "default": "queued",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "error",
+            "label": "Error",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "automation-runtime",
+      "name": "Automation Runtime",
+      "description": "TypeScript workflows executed on an explicitly selected device.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "none",
+        "apiVersion": "^1.0.0",
+        "surfaces": []
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "workflows",
+            "workflow_runs"
+          ]
+        }
+      },
+      "permissions": [
+        "automation-runtime.read",
+        "automation-runtime.write"
+      ],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.jobs",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.devices",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "credentials.use",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "workflows.list",
+          "workflows.put",
+          "workflows.delete",
+          "workflow_runs.list",
+          "workflow_runs.put",
+          "workflow_runs.delete"
+        ],
+        "events": [
+          "workflows.changed",
+          "workflow_runs.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [],
+        "events": []
+      },
+      "server": {
+        "routes": [
+          {
+            "path": "automation/hooks/*",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "plugin"
+          },
+          {
+            "path": "automation/cancel",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          },
+          {
+            "path": "automation/signal",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          },
+          {
+            "path": "automation/webhook",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          },
+          {
+            "path": "automation/run",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          }
+        ],
+        "background": true,
+        "mutationHooks": true
+      }
+    },
+    "schemas": [
+      {
+        "id": "workflows",
+        "pluginId": "automation-runtime",
+        "name": "Workflows",
+        "version": 1,
+        "fields": [
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "graph",
+            "label": "Graph",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": {
+              "nodes": [],
+              "edges": []
+            },
+            "sensitive": false
+          },
+          {
+            "id": "target_device_id",
+            "label": "Run on",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "devices",
+            "control": "reference"
+          },
+          {
+            "id": "enabled",
+            "label": "Enabled",
+            "pgType": "boolean",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": false,
+            "sensitive": false
+          },
+          {
+            "id": "published_version",
+            "label": "Published version",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "trigger_kind",
+            "label": "Trigger",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "manual",
+              "schedule",
+              "event",
+              "webhook"
+            ],
+            "default": "manual",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "schedule_seconds",
+            "label": "Schedule interval in seconds",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 10,
+            "max": 31536000,
+            "sensitive": false
+          },
+          {
+            "id": "schedule_start",
+            "label": "Schedule starts",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "catch_up",
+            "label": "Missed schedule",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "skip",
+              "once",
+              "all"
+            ],
+            "default": "once",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "event_type",
+            "label": "Committed event type",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "allow_trusted_code",
+            "label": "Allow trusted TypeScript code",
+            "pgType": "boolean",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": false,
+            "description": "Code runs with this device's OS account. Enable only for code you trust.",
+            "sensitive": false
+          },
+          {
+            "id": "offline_policy",
+            "label": "Offline policy",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "fail",
+              "waitForDevice"
+            ],
+            "default": "fail",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "dispatch_timeout_seconds",
+            "label": "Wait timeout",
+            "pgType": "integer",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "min": 1,
+            "max": 86400,
+            "sensitive": false
+          },
+          {
+            "id": "description",
+            "label": "Description",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "workflow_runs",
+        "pluginId": "automation-runtime",
+        "name": "Workflow runs",
+        "version": 1,
+        "fields": [
+          {
+            "id": "workflow_id",
+            "label": "Workflow",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "workflows",
+            "control": "reference"
+          },
+          {
+            "id": "target_device_id",
+            "label": "Run on",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "devices",
+            "control": "reference"
+          },
+          {
+            "id": "workflow_version",
+            "label": "Workflow version",
+            "pgType": "integer",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "status",
+            "label": "Status",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "queued",
+              "running",
+              "waiting",
+              "completed",
+              "failed",
+              "cancelled",
+              "expired"
+            ],
+            "default": "queued",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "input",
+            "label": "Input",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": {},
+            "sensitive": false
+          },
+          {
+            "id": "output",
+            "label": "Output",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": {},
+            "sensitive": false
+          },
+          {
+            "id": "steps",
+            "label": "Steps",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "started_at",
+            "label": "Started",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "ended_at",
+            "label": "Ended",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "error",
+            "label": "Error",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "automation-editor",
+      "name": "Automation Editor",
+      "description": "Visual workflow editor and execution history.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "automation-editor"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": []
+        }
+      },
+      "permissions": [
+        "automation-editor.read",
+        "automation-editor.write"
+      ],
+      "dependencies": [
+        "automation-runtime"
+      ],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.devices",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [],
+        "events": []
+      },
+      "consumes": {
+        "commands": [
+          "workflows.list",
+          "workflows.put",
+          "workflows.delete",
+          "workflow_runs.list",
+          "workflow_runs.put",
+          "workflow_runs.delete",
+          "devices.list",
+          "devices.put",
+          "devices.delete"
+        ],
+        "events": []
+      }
+    },
+    "schemas": []
+  },
+  {
+    "manifest": {
+      "id": "track",
+      "name": "Track",
+      "description": "Activity history, measurements, and presets.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "track"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "track",
+            "presets"
+          ]
+        }
+      },
+      "permissions": [
+        "track.read",
+        "track.write"
+      ],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "track.list",
+          "track.put",
+          "track.delete",
+          "presets.list",
+          "presets.put",
+          "presets.delete"
+        ],
+        "events": [
+          "track.changed",
+          "presets.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [],
+        "events": []
+      }
+    },
+    "schemas": [
+      {
+        "id": "track",
+        "pluginId": "track",
+        "name": "Track",
+        "version": 1,
+        "fields": [
+          {
+            "id": "title",
+            "label": "Activity",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "started_at",
+            "label": "Started",
+            "pgType": "timestamp with time zone",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "ended_at",
+            "label": "Ended",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "notes",
+            "label": "Notes",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "measurement",
+            "label": "Measurement",
+            "pgType": "numeric",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "precision": 18,
+            "scale": 6,
+            "sensitive": false
+          },
+          {
+            "id": "unit",
+            "label": "Unit",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "task_id",
+            "label": "Task",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false,
+            "reference": "tasks",
+            "control": "reference"
+          },
+          {
+            "id": "metadata",
+            "label": "Custom fields",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": {},
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "presets",
+        "pluginId": "track",
+        "name": "Presets",
+        "version": 1,
+        "fields": [
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "values",
+            "label": "Preset values",
+            "pgType": "jsonb",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "default": {},
+            "sensitive": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "office-editor",
+      "name": "Office Editor",
+      "description": "Offline documents, spreadsheets, and presentations.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "office-editor"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "office"
+          ]
+        }
+      },
+      "permissions": [
+        "office-editor.read",
+        "office-editor.write"
+      ],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "files.access",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "office.list",
+          "office.put",
+          "office.delete"
+        ],
+        "events": [
+          "office.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [
+          "files.list",
+          "files.put",
+          "files.delete"
+        ],
+        "events": []
+      }
+    },
+    "schemas": [
+      {
+        "id": "office",
+        "pluginId": "office-editor",
+        "name": "Office",
+        "version": 1,
+        "fields": [
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "kind",
+            "label": "Kind",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "document",
+              "spreadsheet",
+              "presentation"
+            ],
+            "default": "document",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "file_id",
+            "label": "File",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "files",
+            "control": "reference"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "sharing",
+      "name": "Sharing",
+      "description": "Scoped resource sharing and permissions.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "sharing"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "grants"
+          ]
+        }
+      },
+      "permissions": [
+        "sharing.read",
+        "sharing.write"
+      ],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.access",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "grants.list",
+          "grants.put",
+          "grants.delete"
+        ],
+        "events": [
+          "grants.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [
+          "grants.list",
+          "grants.put",
+          "grants.delete"
+        ],
+        "events": []
+      }
+    },
+    "schemas": [
+      {
+        "id": "grants",
+        "pluginId": "sharing",
+        "name": "Sharing",
+        "version": 1,
+        "fields": [
+          {
+            "id": "resource_id",
+            "label": "Resource",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "resources",
+            "control": "reference"
+          },
+          {
+            "id": "subject_id",
+            "label": "Person",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false,
+            "reference": "people",
+            "control": "reference"
+          },
+          {
+            "id": "role",
+            "label": "Role",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "viewer",
+              "commenter",
+              "editor"
+            ],
+            "default": "viewer",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "expires_at",
+            "label": "Expires",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "id": "remote-terminal",
+      "name": "Remote Terminal",
+      "description": "Authorized interactive shells on connected computers.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs",
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "remote-terminal"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": []
+        }
+      },
+      "permissions": [
+        "remote-terminal.read",
+        "remote-terminal.write"
+      ],
+      "dependencies": [],
+      "features": {},
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.devices",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.streams",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "credentials.use",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [],
+        "events": []
+      },
+      "consumes": {
+        "commands": [
+          "devices.list",
+          "devices.put",
+          "devices.delete"
+        ],
+        "events": []
+      },
+      "server": {
+        "routes": [
+          {
+            "path": "terminal/open",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          }
+        ],
+        "background": false,
+        "mutationHooks": false
+      }
+    },
+    "schemas": []
+  },
+  {
+    "manifest": {
+      "id": "connector-github",
+      "name": "Connector Github",
+      "description": "GitHub issues and actions through shared credentials.",
+      "version": "1.0.0",
+      "platformApi": "^1.0.0",
+      "fieldSchemaApi": "^1.0.0",
+      "publisher": "taskasaur",
+      "license": "GPL-3.0-only",
+      "entrypoints": {
+        "browser": "browser.mjs",
+        "server": "server.mjs"
+      },
+      "ui": {
+        "mode": "shared",
+        "apiVersion": "^1.0.0",
+        "surfaces": [
+          "connector-github"
+        ]
+      },
+      "storage": {
+        "local": {
+          "mode": "dexie",
+          "collections": [
+            "github_connections",
+            "github_issues"
+          ]
+        }
+      },
+      "permissions": [
+        "connector-github.read",
+        "connector-github.write"
+      ],
+      "dependencies": [],
+      "features": {
+        "taskLinks": {
+          "defaultEnabled": false
+        }
+      },
+      "sharedServices": [
+        {
+          "id": "core.records",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "credentials.use",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.ui",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.workspace",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.server",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.sync",
+          "version": "^1",
+          "optional": false
+        },
+        {
+          "id": "core.storage.local",
+          "version": "^1",
+          "optional": false
+        }
+      ],
+      "provides": {
+        "commands": [
+          "github_connections.list",
+          "github_connections.put",
+          "github_connections.delete",
+          "github_issues.list",
+          "github_issues.put",
+          "github_issues.delete"
+        ],
+        "events": [
+          "github_connections.changed",
+          "github_issues.changed"
+        ]
+      },
+      "consumes": {
+        "commands": [
+          "tasks.list",
+          "tasks.put",
+          "tasks.delete"
+        ],
+        "events": []
+      },
+      "server": {
+        "routes": [
+          {
+            "path": "github/*",
+            "methods": [
+              "POST"
+            ],
+            "authentication": "workspace"
+          }
+        ],
+        "background": false,
+        "mutationHooks": false
+      }
+    },
+    "schemas": [
+      {
+        "id": "github_connections",
+        "pluginId": "connector-github",
+        "name": "GitHub repositories",
+        "version": 1,
+        "fields": [
+          {
+            "id": "name",
+            "label": "Name",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "credential_id",
+            "label": "Credential",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "control": "reference",
+            "reference": "credentials",
+            "sensitive": false
+          },
+          {
+            "id": "owner",
+            "label": "Repository owner",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "repository",
+            "label": "Repository",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          }
+        ]
+      },
+      {
+        "id": "github_issues",
+        "pluginId": "connector-github",
+        "name": "GitHub issues",
+        "version": 1,
+        "fields": [
+          {
+            "id": "connection_id",
+            "label": "Repository",
+            "pgType": "uuid",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "control": "reference",
+            "reference": "github_connections",
+            "sensitive": false
+          },
+          {
+            "id": "number",
+            "label": "Issue number",
+            "pgType": "integer",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "title",
+            "label": "Title",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "body",
+            "label": "Description",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "textarea",
+            "sensitive": false
+          },
+          {
+            "id": "state",
+            "label": "State",
+            "pgType": "text",
+            "required": true,
+            "nullable": false,
+            "array": false,
+            "choices": [
+              "open",
+              "closed"
+            ],
+            "default": "open",
+            "control": "select",
+            "sensitive": false
+          },
+          {
+            "id": "url",
+            "label": "URL",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "url",
+            "sensitive": false
+          },
+          {
+            "id": "labels",
+            "label": "Labels",
+            "pgType": "text",
+            "required": false,
+            "nullable": true,
+            "array": true,
+            "default": [],
+            "sensitive": false
+          },
+          {
+            "id": "provider_updated_at",
+            "label": "Updated",
+            "pgType": "timestamp with time zone",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "sensitive": false
+          },
+          {
+            "id": "task_id",
+            "label": "Linked task",
+            "pgType": "uuid",
+            "required": false,
+            "nullable": true,
+            "array": false,
+            "control": "reference",
+            "reference": "tasks",
+            "sensitive": false
+          }
+        ]
       }
     ]
   }
