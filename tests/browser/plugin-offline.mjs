@@ -8,8 +8,9 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(process.env.TEST_APP_URL ?? "http://localhost:4173");
   await page
-    .getByRole("button", { name: "Create local workspace", exact: true })
+    .getByRole("button", { name: "Create workspace", exact: true })
     .click();
+  await page.getByRole("button", { name: "Plugins", exact: true }).click();
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText("Tasks", { exact: true }) });

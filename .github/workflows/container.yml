@@ -84,6 +84,11 @@ jobs:
         run: npx tsx tests/browser/distributed.ts
       - name: Check offline office editing and exports
         run: node tests/browser/office.mjs
+      - name: Check published plugin surfaces and offline mail drafts
+        run: |
+          node tests/browser/plugins.mjs
+          node tests/browser/mail.mjs
+          node tests/browser/plugin-inventory.mjs
       - name: Check persistent identity after container replacement
         run: node tests/container.mjs
       - name: Stop the peer

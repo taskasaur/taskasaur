@@ -8,7 +8,8 @@ RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts && npm rebuild 
 COPY . .
 ARG VITE_PLUGIN_INVENTORY_URL
 ENV VITE_PLUGIN_INVENTORY_URL=$VITE_PLUGIN_INVENTORY_URL
-RUN npm run build && npm prune --omit=dev --ignore-scripts
+RUN npm run build
+RUN npm prune --omit=dev --omit=peer --ignore-scripts
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir /data && chown node:node /data
