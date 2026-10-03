@@ -363,6 +363,8 @@ export class StoragePlacement {
         "This device has not durably received this version",
       );
       await this.local.set(itemKey(item), { item, ...version, retained: true });
+      if (item.kind === "record" && this.replica.member.role !== "viewer")
+        await this.replica.publishCatalog("record/" + item.id);
       await this.receipt(item, current, true);
       return {
         deviceId: this.replica.identity.id,
@@ -410,6 +412,17 @@ export class StoragePlacement {
       for (const status of await this.list()) {
         if (!status.local) continue;
         if (!status.deleted && this.wanted(status.item)) {
+          if (
+            status.item.kind === "record" &&
+            this.replica.member.role !== "viewer" &&
+            canonical(
+              this.replica
+                .read<StorageCatalog>(catalogKey(status.item.id))
+                ?.heads?.slice()
+                .sort(),
+            ) !== canonical(status.version.heads)
+          )
+            await this.replica.publishCatalog("record/" + status.item.id);
           await this.receipt(status.item, status.version, true);
           continue;
         }

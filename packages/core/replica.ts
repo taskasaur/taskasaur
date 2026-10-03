@@ -154,6 +154,10 @@ export class Replica {
   private async publishCatalogInternal(id: string) {
     const record = this.read<ResourceRecord>(id);
     if (!record) return;
+    const existing = this.read<{ heads: string[] }>(catalogKey(record.id));
+    // A selective replica may keep an older payload while knowing a newer remote head.
+    // Releasing that payload must not roll discovery metadata back to the old version.
+    if (existing?.heads.some((head) => !this.changes.has(head))) return;
     await this.updateInternal(catalogKey(record.id), {
       id: record.id,
       pluginId: record.managedBy ?? record.pluginId,

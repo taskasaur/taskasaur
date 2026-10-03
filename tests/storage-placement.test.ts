@@ -125,6 +125,12 @@ describe("core storage placement and version handoffs", () => {
     await a.synchronize();
     expect(a.records.get(record.id)).toBeUndefined();
     expect(b.records.get(record.id)?.data.value).toBe("Later version");
+    expect((await a.protocol.storage.version(item)).token).toBe(
+      (await b.protocol.storage.version(item)).token,
+    );
+    await a.protocol.storage.setCopy(item, a.replica.identity.id, true);
+    await a.synchronize();
+    expect(a.records.get(record.id)?.data.value).toBe("Later version");
   });
   it("requires an unchanged reviewed version, preserves concurrent edits, and binds receipts to signers", async () => {
     const { a, b, item, record } = await pair();
