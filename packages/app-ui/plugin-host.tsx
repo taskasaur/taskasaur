@@ -1,4 +1,5 @@
 import { coreModules } from "@taskasaur/platform/core/modules";
+import { sharedReact } from "../ui/html-controls";
 import { Capacitor } from "@capacitor/core";
 import { peerService } from "../core/peer-service";
 import { credentialHttp } from "../core/credential-http";
@@ -20,7 +21,10 @@ import type {
   ResourceRecord,
 } from "@taskasaur/platform/plugin-sdk";
 import type { AppRuntime } from "./runtime";
-import { RecordTable } from "./record-table";
+import { RecordTable, type RecordTableProps } from "./record-table";
+import { CollectionView } from "../ui/collection-view";
+import { QueryControls } from "../ui/query-controls";
+import { ChoiceSelect } from "../ui/choice-select";
 import { RecordForm, FieldInput } from "../ui/fields";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
@@ -197,7 +201,7 @@ export async function createBrowserPluginHost(
           [
             "core.ui",
             {
-              React,
+              React: sharedReact,
               modules: pluginModules(runtime, manifest, grants),
               addStyles: (css: string) => {
                 const style = document.createElement("style");
@@ -210,13 +214,19 @@ export async function createBrowserPluginHost(
               Input,
               RecordForm,
               FieldInput,
-              RecordTable: ({ collection: name }: { collection: string }) => {
+              CollectionView,
+              QueryControls,
+              ChoiceSelect,
+              RecordTable: (props: Omit<RecordTableProps, "runtime">) => {
+                const name = props.collection;
                 invariant(
                   manifest.storage.local.collections.includes(name),
                   "UNDECLARED_COLLECTION",
                   "UI collection is not owned by this plugin",
                 );
-                return <RecordTable runtime={runtime} collection={name} />;
+                return (
+                  <RecordTable {...props} runtime={runtime} collection={name} />
+                );
               },
               registerSurface: (surface: {
                 id: string;
@@ -236,36 +246,43 @@ export async function createBrowserPluginHost(
                   "UI surface is already registered",
                 );
                 const render =
-                  id === "remote-terminal" && manifest.version === "1.0.0"
+                  id === "tasks" && manifest.version === "1.0.0"
                     ? React.lazy(async () => {
-                        const { PeerTerminal } =
-                          await import("./peer-terminal");
+                        const { TasksView } = await import("./tasks-view");
                         return {
-                          default: () => <PeerTerminal runtime={runtime} />,
+                          default: () => <TasksView runtime={runtime} />,
                         };
                       })
-                    : id === "sharing" && manifest.version === "1.0.0"
+                    : id === "remote-terminal" && manifest.version === "1.0.0"
                       ? React.lazy(async () => {
-                          const { PeerSharing } =
-                            await import("./peer-sharing");
+                          const { PeerTerminal } =
+                            await import("./peer-terminal");
                           return {
-                            default: () => <PeerSharing runtime={runtime} />,
+                            default: () => <PeerTerminal runtime={runtime} />,
                           };
                         })
-                      : id === "office-editor" && manifest.version === "1.0.0"
+                      : id === "sharing" && manifest.version === "1.0.0"
                         ? React.lazy(async () => {
-                            const { PortableOffice } =
-                              await import("./portable-office");
+                            const { PeerSharing } =
+                              await import("./peer-sharing");
                             return {
-                              default: () => (
-                                <PortableOffice
-                                  runtime={runtime}
-                                  legacy={surface.render}
-                                />
-                              ),
+                              default: () => <PeerSharing runtime={runtime} />,
                             };
                           })
-                        : surface.render;
+                        : id === "office-editor" && manifest.version === "1.0.0"
+                          ? React.lazy(async () => {
+                              const { PortableOffice } =
+                                await import("./portable-office");
+                              return {
+                                default: () => (
+                                  <PortableOffice
+                                    runtime={runtime}
+                                    legacy={surface.render}
+                                  />
+                                ),
+                              };
+                            })
+                          : surface.render;
                 const registered = {
                   ...surface,
                   render,

@@ -1,3 +1,5 @@
+import { SharedInput, SharedTextarea } from "../ui/html-controls";
+import { LegacySelect } from "../ui/choice-select";
 import { useState, useEffect, useSyncExternalStore } from "react";
 import type { NativeInfo, NativeSettings } from "./network";
 import { exportBackup } from "../core/backup";
@@ -147,7 +149,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
           restarts. Phones and browsers pause execution when suspended.
         </p>
         <label className="flex gap-2">
-          <input
+          <SharedInput
             type="checkbox"
             checked={runtime.automationOptions.enabled}
             onChange={(e) =>
@@ -162,7 +164,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
           Enable local automation execution
         </label>
         <label className="flex gap-2">
-          <input
+          <SharedInput
             type="checkbox"
             checked={runtime.automationOptions.trustedCode}
             onChange={(e) =>
@@ -194,7 +196,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
             ] as const
           ).map((key) => (
             <label key={key} className="flex items-center gap-2">
-              <input
+              <SharedInput
                 type="checkbox"
                 checked={native.options[key]}
                 disabled={busy}
@@ -227,14 +229,14 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
                 Ask the workspace owner to approve this computer’s background
                 services identity.
               </p>
-              <textarea
+              <SharedTextarea
                 readOnly
                 className="core-input"
                 value={native.request}
               />
               <label>
                 Invitation for this computer
-                <textarea
+                <SharedTextarea
                   className="core-input"
                   value={nativeInvitation}
                   onChange={(e) => setNativeInvitation(e.target.value)}
@@ -269,7 +271,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
         </p>
         <label className="field-row">
           Plugin
-          <select
+          <LegacySelect
             className="core-select"
             value={plugin}
             onChange={(e) => setPlugin(e.target.value)}
@@ -286,11 +288,11 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
                   {p.name}
                 </option>
               ))}
-          </select>
+          </LegacySelect>
         </label>
         <label className="field-row">
           Computer
-          <select
+          <LegacySelect
             className="core-select"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -303,7 +305,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
                   {p.name}
                 </option>
               ))}
-          </select>
+          </LegacySelect>
         </label>
         {plugin && (
           <p className="text-xs break-words">
@@ -354,7 +356,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
         </p>
         <label className="field-row">
           Peer addresses
-          <textarea
+          <SharedTextarea
             className="core-input min-h-24 font-mono text-xs"
             value={peers}
             onChange={(e) => setPeers(e.target.value)}
@@ -377,7 +379,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
         </Button>
         <label className="field-row">
           This device’s addresses
-          <textarea
+          <SharedTextarea
             readOnly
             className="core-input min-h-16 text-xs"
             value={
@@ -396,7 +398,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
           </p>
           <label className="field-row">
             Device request
-            <textarea
+            <SharedTextarea
               className="core-input min-h-24"
               value={request}
               onChange={(e) => setRequest(e.target.value)}
@@ -404,14 +406,14 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
           </label>
           <label className="field-row">
             Access
-            <select
+            <LegacySelect
               className="core-select"
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
             >
               <option value="editor">Edit this workspace</option>
               <option value="viewer">Read this workspace</option>
-            </select>
+            </LegacySelect>
           </label>
           <Button
             disabled={busy || !request}
@@ -433,7 +435,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
             <>
               <label className="field-row">
                 Encrypted invitation
-                <textarea
+                <SharedTextarea
                   readOnly
                   className="core-input min-h-24"
                   value={invitation}
@@ -460,7 +462,7 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
         </p>
         <label className="field-row">
           Backup passphrase
-          <input
+          <SharedInput
             type="password"
             autoComplete="new-password"
             className="core-input"

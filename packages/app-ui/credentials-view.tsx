@@ -1,4 +1,6 @@
 "use client";
+
+import { SharedInput } from "../ui/html-controls";
 import { useState } from "react";
 import { KeyRound, ShieldOff } from "lucide-react";
 import type { AppRuntime } from "./runtime";
@@ -133,7 +135,7 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
               .filter((m) => m.role !== "viewer")
               .map((m) => (
                 <label key={m.identity.id} className="flex gap-2 items-center">
-                  <input
+                  <SharedInput
                     type="checkbox"
                     checked={deviceIds.includes(m.identity.id)}
                     disabled={m.identity.id === runtime.device.identity.id}

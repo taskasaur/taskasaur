@@ -1,6 +1,32 @@
+import * as AlertDialog from "../ui/primitives/alert-dialog";
+import * as CalendarUI from "../ui/primitives/calendar";
+import * as Card from "../ui/primitives/card";
+import * as Collapsible from "../ui/primitives/collapsible";
+import * as DropdownMenu from "../ui/primitives/dropdown-menu";
+import * as InputGroup from "../ui/primitives/input-group";
+import * as Label from "../ui/primitives/label";
+import * as ScrollArea from "../ui/primitives/scroll-area";
+import * as Separator from "../ui/primitives/separator";
+import * as Sonner from "../ui/primitives/sonner";
+import * as Switch from "../ui/primitives/switch";
+import * as Tabs from "../ui/primitives/tabs";
+import * as Toggle from "../ui/primitives/toggle";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
-import * as JsxRuntime from "react/jsx-runtime";
+import {
+  sharedReact,
+  sharedJsxRuntime,
+  sharedJsxDevRuntime,
+} from "../ui/html-controls";
+import * as QueryControls from "../ui/query-controls";
+import * as ChoiceSelect from "../ui/choice-select";
+import * as CollectionView from "../ui/collection-view";
+import * as CollectionModel from "../ui/collection-view-model";
+import * as Popover from "../ui/primitives/popover";
+import * as Combobox from "../ui/primitives/combobox";
+import * as Breadcrumb from "../ui/primitives/breadcrumb";
+import * as Checkbox from "../ui/primitives/checkbox";
+import * as Textarea from "../ui/primitives/textarea";
 import * as DexieReact from "dexie-react-hooks";
 import * as Fields from "../ui/fields";
 import * as Button from "../ui/primitives/button";
@@ -244,9 +270,9 @@ export function pluginModules(
       "Declare the collection used by this table",
     );
   return {
-    react: React,
-    "react/jsx-runtime": JsxRuntime,
-    "react/jsx-dev-runtime": JsxRuntime,
+    react: { ...sharedReact, default: sharedReact },
+    "react/jsx-runtime": sharedJsxRuntime,
+    "react/jsx-dev-runtime": sharedJsxDevRuntime,
     "react-dom": ReactDOM,
     "dexie-react-hooks": DexieReact,
     "@taskasaur/ui/fields": Fields,
@@ -256,6 +282,28 @@ export function pluginModules(
     "@taskasaur/ui/primitives/select": Select,
     "@taskasaur/ui/primitives/table": Table,
     "@taskasaur/ui/primitives/badge": Badge,
+    "@taskasaur/ui/primitives/popover": Popover,
+    "@taskasaur/ui/primitives/alert-dialog": AlertDialog,
+    "@taskasaur/ui/primitives/calendar": CalendarUI,
+    "@taskasaur/ui/primitives/card": Card,
+    "@taskasaur/ui/primitives/collapsible": Collapsible,
+    "@taskasaur/ui/primitives/dropdown-menu": DropdownMenu,
+    "@taskasaur/ui/primitives/input-group": InputGroup,
+    "@taskasaur/ui/primitives/label": Label,
+    "@taskasaur/ui/primitives/scroll-area": ScrollArea,
+    "@taskasaur/ui/primitives/separator": Separator,
+    "@taskasaur/ui/primitives/sonner": Sonner,
+    "@taskasaur/ui/primitives/switch": Switch,
+    "@taskasaur/ui/primitives/tabs": Tabs,
+    "@taskasaur/ui/primitives/toggle": Toggle,
+    "@taskasaur/ui/primitives/combobox": Combobox,
+    "@taskasaur/ui/primitives/breadcrumb": Breadcrumb,
+    "@taskasaur/ui/primitives/checkbox": Checkbox,
+    "@taskasaur/ui/primitives/textarea": Textarea,
+    "@taskasaur/ui/choice-select": ChoiceSelect,
+    "@taskasaur/ui/query-controls": QueryControls,
+    "@taskasaur/ui/collection-view": CollectionView,
+    "@taskasaur/ui/collection-view-model": CollectionModel,
     "@taskasaur/ui/download": Download,
     "@taskasaur/ui/record-table": {
       RecordTable: (props: React.ComponentProps<typeof RecordTable>) => {

@@ -1,4 +1,6 @@
 "use client";
+
+import { SharedInput } from "../ui/html-controls";
 import { useState, useMemo, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -96,7 +98,7 @@ export function FilesView({ runtime }: { runtime: AppRuntime }) {
           <label className="upload-button">
             <Upload size={14} />
             {busy ? "Saving…" : "Upload files"}
-            <input
+            <SharedInput
               hidden
               type="file"
               multiple

@@ -1,4 +1,6 @@
 "use client";
+
+import { SharedTextarea } from "../ui/html-controls";
 import {
   useEffect,
   useState,
@@ -212,7 +214,7 @@ function Welcome({
             </p>
             <label className="field-row">
               Device request
-              <textarea
+              <SharedTextarea
                 className="core-input min-h-20"
                 value={request}
                 readOnly
@@ -230,7 +232,7 @@ function Welcome({
             </Button>
             <label className="field-row">
               Workspace invitation
-              <textarea
+              <SharedTextarea
                 className="core-input min-h-28"
                 value={invitation}
                 onChange={(e) => setInvitation(e.target.value)}
@@ -436,7 +438,7 @@ function Shell({
           <span>Taskasaur</span>
         </button>
         <div className="workspace-label">{runtime.profile.name}</div>
-        <nav>
+        <nav aria-label="Workspace">
           {appNavigation
             .filter((n) => enabled.has(n.id.split(":")[0]))
             .map((n) => (

@@ -1,3 +1,4 @@
+import { LegacySelect } from "../ui/choice-select";
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -20,7 +21,7 @@ export function PeerTerminal({ runtime }: { runtime: AppRuntime }) {
         disconnect.
       </p>
       <div className="flex gap-2">
-        <select
+        <LegacySelect
           aria-label="Terminal target"
           className="core-select"
           value={target}
@@ -34,7 +35,7 @@ export function PeerTerminal({ runtime }: { runtime: AppRuntime }) {
               {Date.now() - p.lastSeen > 45000 ? " (offline)" : ""}
             </option>
           ))}
-        </select>
+        </LegacySelect>
         <Button
           disabled={!target || !!session}
           onClick={async () => {

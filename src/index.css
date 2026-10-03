@@ -13,19 +13,19 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #0b2f4a;
-  --primary-foreground: #f7fbff;
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: #e9f5fc;
-  --accent-foreground: #0b2f4a;
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.98 0.01 80);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: #174f78;
+  --ring: oklch(0.708 0 0);
   --chart-1: #0b2f4a;
   --chart-2: #174f78;
   --chart-3: #2f76a4;
@@ -50,19 +50,19 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #9bd8ff;
-  --primary-foreground: #08243a;
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: #17354a;
-  --accent-foreground: #bce6ff;
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.98 0.01 80);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: #9bd8ff;
+  --ring: oklch(0.556 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: #9bd8ff;
@@ -133,7 +133,7 @@
     margin: 0;
     min-height: 100vh;
     background: var(--app-shell-background);
-    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-family: var(--font-sans);
   }
 
   button,
@@ -147,16 +147,6 @@
   }
   html {
     @apply font-sans;
-  }
-}
-
-@layer components {
-  tbody > tr[data-slot="table-row"]:hover {
-    background-color: color-mix(
-      in srgb,
-      var(--primary) 12%,
-      transparent
-    ) !important;
   }
 }
 
@@ -212,17 +202,8 @@
   .section-heading span {
     @apply text-xs text-muted-foreground;
   }
-  .core-select {
-    @apply border-input bg-background border rounded-md h-9 px-3 text-sm w-full outline-none focus:ring-2 focus:ring-ring;
-  }
-  .core-textarea {
-    @apply border-input bg-background border rounded-md p-3 text-sm w-full min-h-24 outline-none focus:ring-2 focus:ring-ring;
-  }
   .field-row {
     @apply grid gap-2 text-sm;
-  }
-  .query-panel {
-    @apply bg-muted/30 border rounded-lg p-3 space-y-3;
   }
   .empty-state {
     @apply border border-dashed rounded-xl p-12 text-center space-y-3;

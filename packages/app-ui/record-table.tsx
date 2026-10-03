@@ -1,24 +1,14 @@
-"use client";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, Trash2, Pencil, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import {
   queryRecords,
-  type Query,
   type Value,
   type RecordSchema,
 } from "@taskasaur/platform/field-types";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import type { AppRuntime } from "./runtime";
-import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "../ui/primitives/table";
 import { Button } from "../ui/primitives/button";
 import {
   Dialog,
@@ -26,9 +16,45 @@ import {
   DialogTitle,
   DialogHeader,
 } from "../ui/primitives/dialog";
-import { RecordForm, displayValue } from "../ui/fields";
+import { RecordForm } from "../ui/fields";
 import { QueryControls } from "../ui/query-controls";
+import {
+  CollectionView,
+  type CellContext,
+  type ColumnOptions,
+} from "../ui/collection-view";
+import {
+  normalizeView,
+  type CollectionViewState,
+} from "../ui/collection-view-model";
 
+export interface RecordTableProps {
+  runtime: AppRuntime;
+  collection: string;
+  toolbar?: ReactNode;
+  renderActions?: (
+    row: ResourceRecord,
+    context: {
+      writable: boolean;
+      update: (patch: Record<string, Value>) => Promise<void>;
+    },
+  ) => ReactNode;
+  onOpen?: (row: ResourceRecord) => void;
+  hideCreate?: boolean;
+  schemaOverride?: RecordSchema;
+  storeOverride?: {
+    list: () => Promise<ResourceRecord[]>;
+    put: (data: any, id?: string) => Promise<ResourceRecord>;
+    delete: (id: string) => Promise<unknown>;
+  };
+  viewKey?: string;
+  readOnly?: boolean;
+  defaultView?: Partial<CollectionViewState>;
+  renderCell?: (context: CellContext) => ReactNode;
+  renderCard?: (row: ResourceRecord, defaultContent: ReactNode) => ReactNode;
+  columnOptions?: Record<string, ColumnOptions>;
+}
+/** Storage/permissions adapter. Every plugin gets the same collection presentation. */
 export function RecordTable({
   runtime,
   collection,
@@ -40,27 +66,16 @@ export function RecordTable({
   storeOverride,
   viewKey,
   readOnly = false,
-}: {
-  runtime: AppRuntime;
-  collection: string;
-  toolbar?: ReactNode;
-  renderActions?: (row: ResourceRecord) => ReactNode;
-  onOpen?: (row: ResourceRecord) => void;
-  hideCreate?: boolean;
-  schemaOverride?: RecordSchema;
-  storeOverride?: {
-    list: () => Promise<ResourceRecord[]>;
-    put: (data: unknown, id?: string) => Promise<ResourceRecord>;
-    delete: (id: string) => Promise<void>;
-  };
-  viewKey?: string;
-  readOnly?: boolean;
-}) {
-  const schema = schemaOverride ?? getSchema(collection),
-    store = useMemo(
-      () => storeOverride ?? runtime.collection(collection),
-      [runtime, collection, storeOverride],
-    );
+  defaultView,
+  renderCell,
+  renderCard,
+  columnOptions,
+}: RecordTableProps) {
+  const schema = schemaOverride ?? getSchema(collection);
+  const store = useMemo(
+    () => storeOverride ?? runtime.collection(collection),
+    [runtime, collection, storeOverride],
+  );
   const rows = useLiveQuery(() => store.list(), [store]) ?? [];
   const access = useLiveQuery(
     () =>
@@ -80,68 +95,115 @@ export function RecordTable({
         (!row ||
           (row.revision === 0 && row.ownerId === runtime.principal.userId) ||
           access.writableIds.includes(row.id)));
-  const saved = useLiveQuery(
-    () =>
-      runtime.db.getMetadata<{ query: Query; columns: string[] }>(
-        `view.${viewKey ?? collection}`,
-      ),
-    [runtime, collection, viewKey],
-  );
-  const [query, setQuery] = useState<Query>({}),
-    [columns, setColumns] = useState(
-      schema.fields.slice(0, 5).map((f) => f.id),
-    );
+  const key = "view." + (viewKey ?? collection);
+  const [state, setState] = useState(() => normalizeView(defaultView, schema));
+  const current = useRef(state),
+    writeQueue = useRef(Promise.resolve()),
+    edits = useRef(0);
   const [editor, setEditor] = useState<ResourceRecord | "new" | null>(null),
     [error, setError] = useState(""),
     [confirmDelete, setConfirmDelete] = useState<ResourceRecord | null>(null);
   useEffect(() => {
-    setQuery(saved?.query ?? {});
-    setColumns(saved?.columns ?? schema.fields.slice(0, 5).map((f) => f.id));
-  }, [collection, saved, schema]);
-  const changeQuery = (next: Query) => {
-    setQuery(next);
-    void runtime.db.setMetadata(`view.${viewKey ?? collection}`, {
-      query: next,
-      columns,
-    });
+    let canceled = false;
+    const revision = ++edits.current;
+    const initial = normalizeView(defaultView, schema);
+    current.current = initial;
+    setState(initial);
+    void runtime.db
+      .getMetadata<Partial<CollectionViewState>>(key)
+      .then((saved) => {
+        if (canceled || edits.current !== revision) return;
+        const next = normalizeView(saved ?? defaultView, schema);
+        current.current = next;
+        setState(next);
+      })
+      .catch((e) => {
+        if (!canceled) setError(String(e));
+      });
+    return () => {
+      canceled = true;
+    };
+    // Schema changes are keyed by version; object identities from plugin renders need not be stable.
+  }, [runtime, key, schema.id, schema.version]);
+  const change = (patch: Partial<CollectionViewState>) => {
+    edits.current++;
+    const next = normalizeView({ ...current.current, ...patch }, schema);
+    current.current = next;
+    setState(next);
+    writeQueue.current = writeQueue.current
+      .then(() => runtime.db.setMetadata(key, next))
+      .catch((e) => setError(String(e)));
   };
-  const changeColumns = (next: string[]) => {
-    setColumns(next);
-    void runtime.db.setMetadata(`view.${viewKey ?? collection}`, {
-      query,
-      columns: next,
-    });
-  };
-  let filtered: ResourceRecord[] = [];
-  let queryError = "";
+  let filtered: ResourceRecord[] = [],
+    queryError = "";
   try {
-    filtered = queryRecords(rows, schema, query);
+    filtered = queryRecords(rows, schema, state.query);
   } catch (e) {
     queryError = e instanceof Error ? e.message : String(e);
   }
-  const fields = columns
-    .map((id) => schema.fields.find((f) => f.id === id))
-    .filter((f) => f !== undefined);
-  const groups = new Map<string, ResourceRecord[]>();
-  for (const row of filtered) {
-    const key = query.groupBy ? displayValue(row.data[query.groupBy]) : "";
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  }
+  const open = (row: ResourceRecord) => {
+    if (onOpen) onOpen(row);
+    else if (writable(row)) setEditor(row);
+  };
+  const update = async (row: ResourceRecord, patch: Record<string, Value>) => {
+    try {
+      if (!writable(row)) throw Error("This entry is read-only");
+      const latest = (await store.list()).find((r) => r.id === row.id);
+      if (!latest) throw Error("This entry is no longer available");
+      await store.put({ ...latest.data, ...patch }, row.id);
+      void runtime.synchronize().catch((e) => setError(e.message));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  };
+  const actions = (row: ResourceRecord) => (
+    <>
+      {renderActions?.(row, {
+        writable: writable(row),
+        update: (patch) => update(row, patch),
+      })}
+      {writable(row) && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Edit entry"
+            onClick={() => setEditor(row)}
+          >
+            <Pencil />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Delete entry"
+            onClick={() => setConfirmDelete(row)}
+          >
+            <Trash2 />
+          </Button>
+        </>
+      )}
+    </>
+  );
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4" data-record-collection={collection}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <QueryControls
           fields={schema.fields}
-          query={query}
-          onChange={changeQuery}
-          columns={columns}
-          onColumns={changeColumns}
+          query={state.query}
+          onChange={(query) => change({ query })}
+          columns={state.columns}
+          onColumns={(columns) => change({ columns })}
+          groups={state.groups}
+          onGroups={(groups) => change({ groups })}
+          mode={state.mode}
+          onMode={(mode) => change({ mode })}
         />
         <div className="flex gap-2">
           {toolbar}
           {!hideCreate && writable() && (
             <Button onClick={() => setEditor("new")}>
-              <Plus size={16} />
+              <Plus />
               New entry
             </Button>
           )}
@@ -152,138 +214,28 @@ export function RecordTable({
           {error || queryError}
         </div>
       )}
-      {[...groups.entries()].map(([group, entries]) => (
-        <div key={group}>
-          {query.groupBy && (
-            <h3 className="text-sm font-semibold py-3">
-              {group}{" "}
-              <span className="text-muted-foreground">{entries.length}</span>
-            </h3>
-          )}
-          <div className="rounded-xl border bg-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {fields.map((f) => (
-                    <TableHead key={f.id}>
-                      <button
-                        className="flex items-center gap-1"
-                        onClick={() =>
-                          changeQuery({
-                            ...query,
-                            sorts: [
-                              {
-                                field: f.id,
-                                direction:
-                                  query.sorts?.[0]?.field === f.id &&
-                                  query.sorts[0].direction === "asc"
-                                    ? "desc"
-                                    : "asc",
-                                enabled: true,
-                              },
-                              ...(query.sorts ?? []).filter(
-                                (s) => s.field !== f.id,
-                              ),
-                            ],
-                          })
-                        }
-                      >
-                        {f.label}
-                        {query.sorts?.[0]?.field === f.id &&
-                          (query.sorts[0].direction === "asc" ? (
-                            <ArrowUp size={12} />
-                          ) : (
-                            <ArrowDown size={12} />
-                          ))}
-                      </button>
-                    </TableHead>
-                  ))}
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    onDoubleClick={() =>
-                      onOpen ? onOpen(row) : writable(row) && setEditor(row)
-                    }
-                  >
-                    {fields.map((f) => (
-                      <TableCell key={f.id} className="max-w-80 truncate">
-                        {f.id === "title" ||
-                        f.id === "name" ||
-                        f.id === "summary" ||
-                        f.id === "subject" ? (
-                          <button
-                            className="text-left hover:underline font-medium"
-                            onClick={() =>
-                              onOpen
-                                ? onOpen(row)
-                                : writable(row) && setEditor(row)
-                            }
-                          >
-                            {displayValue(row.data[f.id], f) === "—"
-                              ? "Untitled"
-                              : displayValue(row.data[f.id], f)}
-                          </button>
-                        ) : (
-                          displayValue(row.data[f.id], f)
-                        )}
-                      </TableCell>
-                    ))}
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {renderActions?.(row)}
-                        {writable(row) && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Edit entry"
-                              onClick={() => setEditor(row)}
-                            >
-                              <Pencil size={14} />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label="Delete entry"
-                              onClick={() => setConfirmDelete(row)}
-                            >
-                              <Trash2 size={14} />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      ))}
-      {!filtered.length && (
+      <CollectionView
+        schema={schema}
+        rows={filtered}
+        state={state}
+        onChange={change}
+        onOpen={open}
+        renderActions={actions}
+        renderCell={renderCell}
+        renderCard={renderCard}
+        columnOptions={columnOptions}
+        writable={writable}
+        onUpdate={update}
+      />
+      {!rows.length && (
         <div className="empty-state">
-          <h3>
-            {rows.length
-              ? "No matching entries"
-              : `No ${schema.name.toLowerCase()} yet`}
-          </h3>
+          <h3>No {schema.name.toLowerCase()} yet</h3>
           <p>
-            {rows.length
-              ? "Adjust the filters to see more entries."
-              : "Create an entry to get started. Your changes are saved on this device."}
+            Create an entry to get started. Your changes are saved on this
+            device.
           </p>
         </div>
       )}
-      <div className="text-xs text-muted-foreground">
-        {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
-        {runtime.profile.connected
-          ? " · Changes synchronize with your workspace"
-          : " · Saved on this device"}
-      </div>
       <Dialog
         open={editor !== null}
         onOpenChange={(open) => {

@@ -1,3 +1,4 @@
+import { SharedInput, SharedTextarea } from "../ui/html-controls";
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import Quill from "quill";
 import Delta, { type Op } from "quill-delta";
@@ -44,13 +45,11 @@ export function PortableOffice({
       if (file && file.size > 20 * 1024 * 1024)
         throw Error("Import files up to 20 MB.");
       if (file) {
-        const original = await runtime
-          .collection("files")
-          .put({
-            name: file.name,
-            media_type: file.type || "application/octet-stream",
-            size: String(file.size),
-          });
+        const original = await runtime.collection("files").put({
+          name: file.name,
+          media_type: file.type || "application/octet-stream",
+          size: String(file.size),
+        });
         await runtime.db.saveFile(runtime.principal, original.id, file, null);
       }
       let blob: Blob,
@@ -155,7 +154,7 @@ export function PortableOffice({
         ))}
         <label className="upload-button">
           Import
-          <input
+          <SharedInput
             hidden
             type="file"
             accept=".docx,.txt,.xlsx,.csv,.taskasaur-office.json"
@@ -321,7 +320,7 @@ function OfficeSession({
         >
           Office
         </Button>
-        <input
+        <SharedInput
           aria-label="Document name"
           className="core-input flex-1 min-w-40"
           value={name}
@@ -539,14 +538,14 @@ function SlidesEditor({
           </>
         ) : (
           <>
-            <input
+            <SharedInput
               aria-label="Slide title"
               className="w-full text-3xl font-bold bg-transparent border-b mb-6"
               value={slide.title}
               onChange={(e) => patch({ title: e.target.value })}
             />
             <div className="flex gap-4">
-              <textarea
+              <SharedTextarea
                 aria-label="Slide body"
                 className="flex-1 w-full min-h-44 text-xl bg-transparent resize-y"
                 value={slide.body}
@@ -582,7 +581,7 @@ function SlidesEditor({
           <div className="flex gap-4">
             <label>
               Background{" "}
-              <input
+              <SharedInput
                 aria-label="Slide background"
                 type="color"
                 value={slide.background}
@@ -591,7 +590,7 @@ function SlidesEditor({
             </label>
             <label>
               Text{" "}
-              <input
+              <SharedInput
                 aria-label="Slide text color"
                 type="color"
                 value={slide.color}
@@ -600,7 +599,7 @@ function SlidesEditor({
             </label>
             <label className="upload-button">
               Add image
-              <input
+              <SharedInput
                 hidden
                 type="file"
                 accept="image/png,image/jpeg"
@@ -624,7 +623,7 @@ function SlidesEditor({
           </div>
           <label className="field-row">
             Speaker notes
-            <textarea
+            <SharedTextarea
               aria-label="Speaker notes"
               className="core-input"
               value={slide.notes}

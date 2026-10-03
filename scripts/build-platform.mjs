@@ -7,3 +7,5 @@ async function entries(directory) {
 await rm('packages/platform/dist', { recursive: true, force: true });
 await build({ entryPoints: await entries('packages/platform/src'), outdir:'packages/platform/dist', outbase:'packages/platform/src', bundle:true, splitting:true, format:'esm', platform:'neutral', packages:'external', external:['node:*'], target:'es2022', sourcemap:true });
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc','-p','packages/platform/tsconfig.json'], {stdio:'inherit'});
+
+execFileSync(process.execPath, ["scripts/build-ui-types.mjs"], {stdio:"inherit"});

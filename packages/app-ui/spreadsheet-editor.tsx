@@ -1,3 +1,4 @@
+import { SharedInput } from "../ui/html-controls";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import ExcelJS from "exceljs";
 import { Parser } from "hot-formula-parser";
@@ -165,7 +166,7 @@ export function SpreadsheetEditor({
         </Button>
         <label>
           Sheet name{" "}
-          <input
+          <SharedInput
             aria-label="Sheet name"
             className="core-input w-40"
             value={sheet.name}
@@ -188,7 +189,7 @@ export function SpreadsheetEditor({
         }}
       >
         <label className="text-sm font-mono w-12">{address}</label>
-        <input
+        <SharedInput
           aria-label="Cell value or formula"
           className="core-input flex-1"
           value={formula}

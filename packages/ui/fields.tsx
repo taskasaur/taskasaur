@@ -1,4 +1,7 @@
 "use client";
+
+import { SharedTextarea } from "./html-controls";
+import { LegacySelect } from "./choice-select";
 import { useState, createContext, useContext } from "react";
 import {
   field,
@@ -90,7 +93,7 @@ export function FieldInput({
   }
   if (f.reference)
     return (
-      <select
+      <LegacySelect
         {...common}
         className="core-select"
         value={text}
@@ -106,11 +109,11 @@ export function FieldInput({
             {item.label}
           </option>
         ))}
-      </select>
+      </LegacySelect>
     );
   if (f.pgType === "boolean" && f.nullable)
     return (
-      <select
+      <LegacySelect
         {...common}
         className="core-select"
         value={value == null ? "" : String(value)}
@@ -121,7 +124,7 @@ export function FieldInput({
         <option value="">Not set</option>
         <option value="true">Yes</option>
         <option value="false">No</option>
-      </select>
+      </LegacySelect>
     );
   if (f.pgType === "boolean")
     return (
@@ -135,7 +138,7 @@ export function FieldInput({
     );
   if (f.choices && !f.array)
     return (
-      <select
+      <LegacySelect
         {...common}
         className="core-select"
         value={text}
@@ -145,7 +148,7 @@ export function FieldInput({
         {f.choices.map((choice) => (
           <option key={choice}>{choice}</option>
         ))}
-      </select>
+      </LegacySelect>
     );
   if (f.pgType === "jsonb")
     return (
@@ -158,7 +161,7 @@ export function FieldInput({
     );
   if (f.control === "textarea")
     return (
-      <textarea
+      <SharedTextarea
         {...common}
         className="core-textarea"
         value={text}
@@ -247,7 +250,7 @@ function JsonInput({
     [error, setError] = useState("");
   return (
     <>
-      <textarea
+      <SharedTextarea
         className="core-textarea font-mono"
         aria-label={label}
         value={draft}
