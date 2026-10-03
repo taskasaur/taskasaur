@@ -1,4 +1,11 @@
 import { chromium, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import JSZip from "jszip";
+async function checkExport(download, entry, content) {
+  const zip = await JSZip.loadAsync(await readFile(await download.path()));
+  expect(await zip.file(entry)?.async("string")).toContain(content);
+  console.log("Verified", download.suggestedFilename());
+}
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const context = await browser.newContext({ acceptDownloads: true }),
@@ -28,7 +35,11 @@ try {
   await expect(page.getByRole("status")).toContainText("Saved on this device");
   let downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  console.log("Exported", (await downloading).suggestedFilename());
+  await checkExport(
+    await downloading,
+    "word/document.xml",
+    "Offline document content",
+  );
   await page
     .getByRole("button", { name: "Office", exact: true })
     .last()
@@ -45,7 +56,7 @@ try {
   await expect(page.getByRole("status")).toContainText("Saved on this device");
   downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  console.log("Exported", (await downloading).suggestedFilename());
+  await checkExport(await downloading, "xl/worksheets/sheet1.xml", "6*7");
   await page
     .getByRole("button", { name: "Office", exact: true })
     .last()
@@ -61,7 +72,11 @@ try {
   await expect(page.getByRole("status")).toContainText("Saved on this device");
   downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  console.log("Exported", (await downloading).suggestedFilename());
+  await checkExport(
+    await downloading,
+    "ppt/slides/slide1.xml",
+    "Offline slides",
+  );
   await page
     .getByRole("button", { name: "Office", exact: true })
     .last()

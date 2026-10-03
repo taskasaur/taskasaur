@@ -1,6 +1,6 @@
 {
   "name": "@taskasaur/platform",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "license": "GPL-3.0-only",
   "files": [
@@ -77,18 +77,6 @@
       "types": "./dist/automation/typescript.d.ts",
       "import": "./dist/automation/typescript.js"
     },
-    "./device-host/stream-transport": {
-      "types": "./dist/device-host/stream-transport.d.ts",
-      "import": "./dist/device-host/stream-transport.js"
-    },
-    "./device-host/native-host": {
-      "types": "./dist/device-host/native-host.d.ts",
-      "import": "./dist/device-host/native-host.js"
-    },
-    "./device-host/native-runner": {
-      "types": "./dist/device-host/native-runner.d.ts",
-      "import": "./dist/device-host/native-runner.js"
-    },
     "./release.json": "./plugins/core/release.json",
     "./build-plugin": "./scripts/build-plugin.mjs",
     "./plugin-sdk/inventory": {
@@ -123,25 +111,13 @@
   },
   "peerDependencies": {
     "openworkflow": "0.10.1",
-    "typescript": "^5.9.3",
-    "ws": "8.22.0",
-    "ssh2": "1.17.0",
-    "node-pty": "1.1.0"
+    "typescript": "^5.9.3"
   },
   "peerDependenciesMeta": {
     "openworkflow": {
       "optional": true
     },
     "typescript": {
-      "optional": true
-    },
-    "ws": {
-      "optional": true
-    },
-    "ssh2": {
-      "optional": true
-    },
-    "node-pty": {
       "optional": true
     }
   }

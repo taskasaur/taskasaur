@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   verify:
-    name: Build and exercise the static client
+    name: Build and exercise the distributed peer
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -76,15 +76,19 @@ jobs:
             SOURCE_REVISION=${{ steps.version.outputs.revision }}
           cache-from: type=gha,scope=taskasaur-client-amd64
           cache-to: type=gha,scope=taskasaur-client-amd64,mode=max
-      - name: Start the static client
-        run: docker run -d --name taskasaur-client-ci -p 8080:8080 taskasaur-ci:local
+      - name: Start the peer
+        run: docker run -d --name taskasaur-peer-ci -p 8080:8080 -p 8787:8787 taskasaur-ci:local
       - name: Install browser
         run: npx playwright install --with-deps chrome
-      - name: Check offline startup and local storage
-        run: node tests/browser/offline.mjs
-      - name: Stop the client
+      - name: Check pairing, offline writes and reconnection
+        run: npx tsx tests/browser/distributed.ts
+      - name: Check offline office editing and exports
+        run: node tests/browser/office.mjs
+      - name: Check persistent identity after container replacement
+        run: node tests/container.mjs
+      - name: Stop the peer
         if: always()
-        run: docker rm -f taskasaur-client-ci
+        run: docker rm -f taskasaur-peer-ci
 
   publish:
     name: Publish versioned amd64 and arm64 image

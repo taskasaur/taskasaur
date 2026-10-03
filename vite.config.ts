@@ -27,13 +27,16 @@ export default defineConfig(({ mode }) => {
                   build: {
                     rollupOptions: {
                       external: [
-                        "ssh2",
                         "node-pty",
-                        "ws",
                         "openworkflow",
                         "openworkflow/sqlite",
                         "typescript",
-                        /^@electric-sql\//, /^@automerge\//, /^@libp2p\//, /^@chainsafe\//, /^@multiformats\//, "libp2p",
+                        /^@electric-sql\//,
+                        /^@automerge\//,
+                        /^@libp2p\//,
+                        /^@chainsafe\//,
+                        /^@multiformats\//,
+                        "libp2p",
                       ],
                     },
                   },
@@ -47,7 +50,10 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve("packages"),
-        "@automerge/automerge": path.resolve(path.dirname(require.resolve("@automerge/automerge")), "../mjs/entrypoints/fullfat_base64.js"),
+        "@automerge/automerge": path.resolve(
+          path.dirname(require.resolve("@automerge/automerge")),
+          "../mjs/entrypoints/fullfat_base64.js",
+        ),
         cloudevents: path.resolve(
           "node_modules/cloudevents/bundles/cloudevents.js",
         ),

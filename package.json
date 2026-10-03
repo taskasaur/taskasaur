@@ -40,14 +40,15 @@
     "format": "prettier --write packages src electron scripts tests docs",
     "build:desktop": "node scripts/desktop.mjs",
     "postinstall": "node scripts/native-prepare.mjs && npm run sdk:build",
-    "prebuild:web": "npm run sdk:verify && npm run core:verify",
+    "prebuild:web": "npm run sdk:verify && npm run core:verify && node scripts/third-party-notices.mjs",
     "postbuild:web": "node scripts/offline-assets.mjs",
     "core:verify": "node scripts/core-release.mjs",
     "postbuild:client": "node scripts/offline-assets.mjs",
     "sdk:verify": "node scripts/verify-sdk.mjs",
     "sdk:build": "node scripts/build-platform.mjs",
     "peer": "tsx apps/headless/main.ts",
-    "build:peer": "node scripts/build-peer.mjs"
+    "build:peer": "node scripts/build-peer.mjs",
+    "prebuild:client": "node scripts/third-party-notices.mjs"
   },
   "dependencies": {
     "@automerge/automerge": "^3.5.0",
@@ -96,11 +97,9 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.1.0",
     "sonner": "^2.0.7",
-    "ssh2": "1.17.0",
     "tailwind-merge": "^3.6.0",
     "tsx": "4.23.15",
     "typescript": "^5.9.3",
-    "ws": "8.22.0",
     "zod": "^3.25.42"
   },
   "devDependencies": {
@@ -114,9 +113,7 @@
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
-    "@types/ssh2": "1.15.6",
     "@types/uuid": "^10.0.0",
-    "@types/ws": "8.18.2",
     "@vitejs/plugin-react": "^4.5.2",
     "electron": "44.5.1",
     "electron-builder": "^26.0.12",

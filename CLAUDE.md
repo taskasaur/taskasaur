@@ -1,3 +1,3 @@
-# Taskasaur client
+# Taskasaur
 
-See [AGENTS.md](AGENTS.md) and [README.md](README.md). Backend and SDK development now belongs to `taskasaur-server`.
+Follow [AGENTS.md](AGENTS.md) and [README.md](README.md). This repository owns the distributed application and plugin SDK.

@@ -19,7 +19,7 @@ env:
 
 jobs:
   verify:
-    name: Verify frontend and platform SDK
+    name: Verify distributed core and plugin SDK
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -71,8 +71,6 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Prepare offline office assets
-        run: npm run office:prepare
       - name: Build ${{ matrix.name }}
         run: ${{ matrix.command }}
       - name: Collect ${{ matrix.name }} artifacts
