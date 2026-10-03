@@ -36,7 +36,7 @@ try {
     .click();
   async function install(page: typeof first, name: string) {
     console.log("Installing", name);
-    await expect(page.getByRole("navigation"))
+    await expect(page.getByRole("navigation", { name: "Workspace" }))
       .toBeVisible({ timeout: 30000 })
       .catch(async (e) => {
         console.log((await page.locator("body").innerText()).slice(0, 1600));
@@ -58,7 +58,7 @@ try {
   }
   await install(first, "Tasks");
   await first
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Devices", exact: true })
     .click();
   await first
@@ -87,7 +87,7 @@ try {
     first.getByRole("row").filter({ hasText: "Integration peer" }),
   ).toContainText("Online", { timeout: 30000 });
   await first
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Tasks", exact: true })
     .click();
   await first.getByRole("button", { name: "New entry", exact: true }).click();
@@ -113,7 +113,7 @@ try {
     .getByRole("textbox", { name: "Device request", exact: true })
     .inputValue();
   await first
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Devices", exact: true })
     .click();
   await first
@@ -137,7 +137,7 @@ try {
     .click();
   await install(second, "Tasks");
   await second
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Tasks", exact: true })
     .click();
   await second

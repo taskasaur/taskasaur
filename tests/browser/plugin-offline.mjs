@@ -24,7 +24,7 @@ try {
     timeout: 30000,
   });
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Tasks", exact: true })
     .click();
   await page.getByRole("button", { name: "New entry", exact: true }).click();
@@ -56,7 +56,8 @@ try {
       exact: true,
     }),
   ).toBeVisible({ timeout: 30000 });
-  await page.getByRole("button", { name: "Board", exact: true }).click();
+  await page.getByRole("button", { name: "View", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Board", exact: true }).click();
   await expect(
     page.getByText("Offline downloaded plugin", { exact: true }),
   ).toBeVisible();

@@ -28,7 +28,7 @@ try {
       .click();
     await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
     await page
-      .getByRole("navigation")
+      .getByRole("navigation", { name: "Workspace" })
       .getByRole("button", { name: "Tasks", exact: true })
       .click();
     await page.getByRole("button", { name: "New entry", exact: true }).click();
@@ -48,12 +48,12 @@ try {
     await row.getByRole("button", { name: "Disable", exact: true }).click();
     await expect(
       page
-        .getByRole("navigation")
+        .getByRole("navigation", { name: "Workspace" })
         .getByRole("button", { name: "Tasks", exact: true }),
     ).toHaveCount(0);
     await row.getByRole("button", { name: "Enable", exact: true }).click();
     await page
-      .getByRole("navigation")
+      .getByRole("navigation", { name: "Workspace" })
       .getByRole("button", { name: "Tasks", exact: true })
       .click();
     await expect(

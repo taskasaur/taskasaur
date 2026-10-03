@@ -42,13 +42,15 @@ try {
     await expect(row.getByText(/could not start/)).toHaveCount(0);
     console.log("Installed", name);
   }
-  const navigation = page.getByRole("navigation");
+  const navigation = page.getByRole("navigation", { name: "Workspace" });
   const labels = await navigation.getByRole("button").allTextContents();
   for (const name of labels) {
     await navigation.getByRole("button", { name, exact: true }).click();
     await expect(page.locator("main")).toBeVisible();
     await expect(page.getByText(/This plugin could not render/)).toHaveCount(0);
     expect(failures, `Plugin surface ${name}`).toEqual([]);
+    await expect(page.getByPlaceholder(/Search entries/i)).toHaveCount(0);
+    await expect(page.locator("select:visible")).toHaveCount(0);
   }
   console.log(
     "All twelve published plugins installed; their shared navigation surfaces opened without page errors.",

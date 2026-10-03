@@ -25,7 +25,7 @@ try {
     .getByRole("button", { name: "Disable", exact: true })
     .waitFor({ timeout: 30000 });
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Tasks", exact: true })
     .click();
   await page.getByRole("button", { name: "New entry", exact: true }).click();

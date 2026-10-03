@@ -26,7 +26,7 @@ try {
     .click();
   await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Office", exact: true })
     .click();
   await page.getByRole("button", { name: "Document", exact: true }).click();

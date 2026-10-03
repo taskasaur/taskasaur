@@ -25,7 +25,7 @@ try {
     .getByRole("button", { name: "Disable", exact: true })
     .waitFor({ timeout: 30000 });
   await page
-    .getByRole("navigation")
+    .getByRole("navigation", { name: "Workspace" })
     .getByRole("button", { name: "Mail", exact: true })
     .click();
   await context.setOffline(true);
