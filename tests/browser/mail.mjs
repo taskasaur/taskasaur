@@ -37,6 +37,8 @@ try {
     page.getByText("Saved on this device", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).last().click();
+  // Closing awaits the durable draft write; a click alone does not await that work.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Offline saved draft", exact: true })
     .click();
@@ -47,6 +49,8 @@ try {
     .getByLabel("Message", { exact: true })
     .fill("Saved immediately on closing.");
   await page.getByRole("button", { name: "Close", exact: true }).last().click();
+  // Closing awaits the durable draft write; a click alone does not await that work.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await context.setOffline(false);
   await page.reload();
   await page
