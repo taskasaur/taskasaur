@@ -27,6 +27,14 @@
     "table.tsx": "749b0501e97591f8d7c9ef81366d636e4b47857a15a28e6cf3b87841232e74bf",
     "tabs.tsx": "04c251a62bddfe55d09bf157ce150b1fc527b1fcfdbb10d51188b1e36dd3e3c0",
     "textarea.tsx": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
-    "toggle.tsx": "48ab6456afc25c4cf79537252cb9512c5c2846d2b1796170eab8aca91ebf7ddf"
-  }
+    "toggle.tsx": "48ab6456afc25c4cf79537252cb9512c5c2846d2b1796170eab8aca91ebf7ddf",
+    "command.tsx": "2625ae4eb60296d1547f3b1017af9947e13dea106e0c1f930aefadb1bb5898f2",
+    "sheet.tsx": "68816b7ace4be48326726de2e2efab802b245c71b098ccc35c49a6447a1814e1"
+  },
+  "additions": [
+    {
+      "command": "npx shadcn@latest add command sheet --yes --overwrite",
+      "downloadedAt": "2026-10-03T21:26:11.921389+00:00"
+    }
+  ]
 }
