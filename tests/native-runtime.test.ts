@@ -1,9 +1,10 @@
+import { MemoryStorage } from "../packages/storage";
 import { canonical } from "../packages/core/crypto";
 import { configureExecution, slotFor } from "../packages/core/execution";
 import { registryFor } from "../packages/platform-node/compat/api";
 import { Repository } from "../packages/platform-node/compat/repository";
 import { it, expect } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { FileStorage } from "../packages/platform-node/storage";
@@ -292,3 +293,50 @@ it("claims mail jobs only for their enabled account and rejects orphaned executi
     await rm(directory, { recursive: true, force: true });
   }
 }, 30000);
+
+it("reopens linked workspaces as a storage-only peer without creating a SQL projection", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "taskasaur-storage-peer-"),
+  );
+  const storage = new FileStorage(path.join(directory, "replicas"));
+  const owner = await DeviceCore.open(new MemoryStorage(), "Owner");
+  const workspace = await owner.createWorkspace("Existing workspace");
+  const original = await DeviceCore.open(storage, "Cloud peer");
+  const joined = await original.join(
+    await owner.approve(
+      workspace.replica.workspaceId,
+      original.pairingRequest(),
+    ),
+  );
+  const core = await DeviceCore.open(storage, "Restarted");
+  const services = new NativeServices(core, {
+    directory,
+    storageOnly: true,
+    terminal: false,
+    automation: false,
+    trustedCode: false,
+    background: false,
+    plugins: false,
+  });
+  try {
+    await services.initialize();
+    expect(core.workspaces.has(joined.replica.workspaceId)).toBe(true);
+    expect(services.capabilities()).toEqual(["storage.peer"]);
+    await services.tick();
+    expect(await readdir(directory)).toEqual(["replicas"]);
+    await expect(
+      services.execute(
+        joined.replica.workspaceId,
+        "core.plugins.status",
+        {},
+        { deviceId: core.identity.id, requestId: crypto.randomUUID() },
+      ),
+    ).rejects.toThrow("only provides storage");
+  } finally {
+    await services.close();
+    await core.close();
+    await original.close();
+    await owner.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

@@ -1,0 +1,32 @@
+config:
+  runTime: dockerCompose
+  version: ""
+  framework: ""
+  installCommand: ""
+  buildCommand: docker compose build
+  buildDir: /
+  runCommand: docker compose up -d --pull never
+environments:
+  - key: TASKASAUR_MODE
+    value: server
+  - key: TASKASAUR_SERVE_UI
+    value: "0"
+  - key: TASKASAUR_STORAGE_ONLY
+    value: "1"
+  - key: TASKASAUR_RELAY
+    value: "1"
+  - key: PEER_BIND
+    value: 172.17.0.1
+  - key: PEER_PORT
+    value: "8787"
+  - key: TASKASAUR_ANNOUNCE
+    value: /dns4/[CI_CD_DOMAIN]/tcp/443/wss
+ports:
+  - protocol: HTTPS
+    targetProtocol: HTTP
+    listeningPort: "443"
+    targetPort: "8787"
+    targetIP: 172.17.0.1
+    public: true
+    path: /
+    isAuth: false

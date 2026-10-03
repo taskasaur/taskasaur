@@ -9,7 +9,7 @@ const docker = (...args) =>
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
-async function start(serveUi) {
+async function start(serveUi, workspaces = 1) {
   docker(
     "run",
     "-d",
@@ -22,7 +22,11 @@ async function start(serveUi) {
     "-p",
     "127.0.0.1::8080",
     "-e",
-    `TASKASAUR_SERVE_UI=${serveUi ? 1 : 0}`,
+    "TASKASAUR_SERVE_UI=1",
+    "-e",
+    `TASKASAUR_MODE=${serveUi ? "peer" : "server"}`,
+    "-e",
+    `TASKASAUR_STORAGE_ONLY=${serveUi ? 0 : 1}`,
     image,
   );
   const port = docker("port", name, "8080/tcp").split(":").at(-1);
@@ -31,7 +35,10 @@ async function start(serveUi) {
     try {
       const response = await fetch(url + "/api/health");
       if (response.ok) {
-        assert.equal((await response.json()).workspaces, 1);
+        const health = await response.json();
+        assert.equal(health.workspaces, workspaces);
+        assert.equal(health.mode, serveUi ? "peer" : "server");
+        assert.equal(health.ui, serveUi);
         return url;
       }
     } catch {}
@@ -55,6 +62,20 @@ function fingerprint() {
 }
 try {
   docker("volume", "create", volume);
+  const empty = await start(false, 0);
+  assert.equal((await fetch(empty)).status, 404);
+  assert.equal(
+    docker(
+      "exec",
+      name,
+      "node",
+      "-e",
+      "console.log(require('node:fs').existsSync('/data/plugin-projection'))",
+    ),
+    "false",
+  );
+  docker("stop", "-t", "40", name);
+  docker("rm", name);
   const first = await start(true);
   assert.equal((await fetch(first)).status, 200);
   assert.match(

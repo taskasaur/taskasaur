@@ -1,7 +1,7 @@
 name: taskasaur-peer
 services:
   taskasaur:
-    image: ${TASKASAUR_IMAGE:-ghcr.io/taskasaur/taskasaur:0.3.0}
+    image: ${TASKASAUR_IMAGE:-ghcr.io/taskasaur/taskasaur:edge}
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
@@ -9,7 +9,12 @@ services:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:8080"
       - "${PEER_BIND:-0.0.0.0}:${PEER_PORT:-8787}:8787"
     environment:
-      TASKASAUR_SERVE_UI: ${TASKASAUR_SERVE_UI:-1}
+      TASKASAUR_MODE: ${TASKASAUR_MODE:-server}
+      TASKASAUR_NAME: ${TASKASAUR_NAME:-Taskasaur server}
+      TASKASAUR_STORAGE_ONLY: ${TASKASAUR_STORAGE_ONLY:-1}
+      TASKASAUR_SYNC_INTERVAL_MS: ${TASKASAUR_SYNC_INTERVAL_MS:-15000}
+      TASKASAUR_DOCUMENT_CACHE: ${TASKASAUR_DOCUMENT_CACHE:-128}
+      TASKASAUR_SERVE_UI: ${TASKASAUR_SERVE_UI:-0}
       TASKASAUR_TERMINAL: ${TASKASAUR_TERMINAL:-0}
       TASKASAUR_AUTOMATION: ${TASKASAUR_AUTOMATION:-0}
       TASKASAUR_TRUSTED_CODE: ${TASKASAUR_TRUSTED_CODE:-0}
@@ -20,7 +25,6 @@ services:
       PLUGIN_INVENTORY_URL: ${PLUGIN_INVENTORY_URL:-https://raw.githubusercontent.com/taskasaur/taskasaur-plugin-inventory/main/plugins.json}
     volumes:
       - taskasaur-data:/data
-      - ${OFFICE_ASSET_PATH:-./.taskasaur/office-engine/wasm}:/app/office-engine:ro
     restart: unless-stopped
     stop_grace_period: 40s
 volumes:

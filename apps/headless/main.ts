@@ -20,6 +20,7 @@ const { values } = parseArgs({
     "peer-port": { type: "string" },
     host: { type: "string" },
     "no-ui": { type: "boolean" },
+    server: { type: "boolean" },
     relay: { type: "boolean" },
     plugins: { type: "boolean" },
     terminal: { type: "boolean" },
@@ -40,7 +41,7 @@ const { values } = parseArgs({
 });
 if (values.help) {
   console.log(
-    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --plugin <id> --workspace-id <id>",
+    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --plugin <id> --workspace-id <id>",
   );
   process.exit(0);
 }
@@ -103,6 +104,13 @@ if (values["pairing-request"] || values.approve || values.join) {
   await unlock();
   process.exit(0);
 }
+const serverMode = values.server || process.env.TASKASAUR_MODE === "server";
+const syncIntervalMs = Number(
+  process.env.TASKASAUR_SYNC_INTERVAL_MS ?? (serverMode ? 15000 : 5000),
+);
+const documentCache = Number(
+  process.env.TASKASAUR_DOCUMENT_CACHE ?? (serverMode ? 128 : 512),
+);
 const host = values.host ?? process.env.TASKASAUR_HOST ?? "127.0.0.1",
   port = Number(values.port ?? process.env.PORT ?? 8080),
   peerPort = Number(
@@ -110,8 +118,14 @@ const host = values.host ?? process.env.TASKASAUR_HOST ?? "127.0.0.1",
   );
 const runtime = await startNativeRuntime({
   directory,
-  name: values.name,
-  createWorkspace: values.workspace ?? "My workspace",
+  name: values.name ?? process.env.TASKASAUR_NAME,
+  createWorkspace:
+    values.workspace ??
+    process.env.TASKASAUR_WORKSPACE ??
+    (serverMode ? undefined : "My workspace"),
+  storageOnly: process.env.TASKASAUR_STORAGE_ONLY === "1",
+  syncIntervalMs,
+  documentCache,
   terminal: values.terminal ?? process.env.TASKASAUR_TERMINAL === "1",
   automation: values.automation ?? process.env.TASKASAUR_AUTOMATION === "1",
   trustedCode:
@@ -152,7 +166,8 @@ if (values.plugin) {
   process.exit(0);
 }
 const webRoot = path.resolve(process.env.TASKASAUR_UI_PATH ?? "dist"),
-  serveUi = !values["no-ui"] && process.env.TASKASAUR_SERVE_UI !== "0";
+  serveUi =
+    !serverMode && !values["no-ui"] && process.env.TASKASAUR_SERVE_UI !== "0";
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -174,7 +189,8 @@ const http = createServer(async (req, res) => {
       res.end(
         JSON.stringify({
           status: "ready",
-          mode: "peer",
+          mode: serverMode ? "server" : "peer",
+          ui: serveUi,
           workspaces: runtime.core.profiles().length,
         }),
       );

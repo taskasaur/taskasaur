@@ -14,8 +14,21 @@ export async function startNativeRuntime(
     network?: NetworkOptions;
     createWorkspace?: string;
     storage?: DurableStorage;
+    syncIntervalMs?: number;
+    documentCache?: number;
   },
 ) {
+  const interval = options.syncIntervalMs ?? 5000,
+    documentCache = options.documentCache ?? 512;
+  if (
+    !Number.isSafeInteger(interval) ||
+    interval < 1000 ||
+    interval > 3600000 ||
+    !Number.isSafeInteger(documentCache) ||
+    documentCache < 1 ||
+    documentCache > 100000
+  )
+    throw Error("Invalid synchronization interval or document cache limit");
   const unlock = await lockDirectory(options.directory);
   let services: NativeServices | undefined;
   let core: DeviceCore | undefined;
@@ -33,6 +46,7 @@ export async function startNativeRuntime(
       await core.createWorkspace(options.createWorkspace);
     services = new NativeServices(core, {
       directory: options.directory,
+      storageOnly: options.storageOnly ?? false,
       terminal: options.terminal ?? false,
       automation: options.automation ?? false,
       trustedCode: options.trustedCode ?? false,
@@ -47,24 +61,32 @@ export async function startNativeRuntime(
       options.network ?? { listen: ["/ip4/127.0.0.1/tcp/0/ws"] },
     );
     core.attachTransport(transport);
+    let scheduled = false;
     let stopping = false,
       pending: Promise<void> = Promise.resolve();
     const tick = () => {
+      if (scheduled || stopping) return;
+      scheduled = true;
       pending = pending
         .then(async () => {
           if (stopping) return;
           for (const node of device.workspaces.values())
             await node.synchronize();
           await services!.tick();
+          for (const node of device.workspaces.values())
+            node.replica.compact(documentCache);
         })
         .catch((error) => {
           for (const node of device.workspaces.values())
             node.replica.error =
               error instanceof Error ? error.message : String(error);
+        })
+        .finally(() => {
+          scheduled = false;
         });
     };
     tick();
-    const timer = setInterval(tick, 5000);
+    const timer = setInterval(tick, interval);
     timer.unref();
     return {
       core,

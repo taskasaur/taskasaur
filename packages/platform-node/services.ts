@@ -52,6 +52,7 @@ import type {
 import type { Value } from "@taskasaur/platform/field-types";
 import { invariant } from "@taskasaur/platform/core/errors";
 export interface NativeOptions {
+  storageOnly?: boolean;
   directory: string;
   terminal: boolean;
   automation: boolean;
@@ -112,6 +113,7 @@ export class NativeServices {
     readonly options: NativeOptions,
   ) {}
   capabilities() {
+    if (this.options.storageOnly) return ["storage.peer"];
     return [
       "core.http",
       "core.plugins.status",
@@ -131,6 +133,19 @@ export class NativeServices {
     ];
   }
   async initialize() {
+    if (this.options.storageOnly) {
+      invariant(
+        !this.options.plugins &&
+          !this.options.automation &&
+          !this.options.terminal &&
+          !this.options.background,
+        "INVALID_CONFIG",
+        "Turn off storage-only mode before enabling native execution services",
+      );
+      for (const profile of this.core.profiles())
+        await this.core.workspace(profile.id);
+      return this;
+    }
     process.env.PLUGIN_PATH = path.join(this.options.directory, "plugins");
     const opened = await openDatabase(
       path.join(this.options.directory, "plugin-projection"),
@@ -170,6 +185,7 @@ export class NativeServices {
     };
   }
   async project() {
+    if (this.options.storageOnly) return;
     for (const node of this.core.workspaces.values()) {
       await projectWorkspace(this.db, node);
       // Replication only updates local projections; it never invokes mutation hooks or commands.
@@ -212,6 +228,11 @@ export class NativeServices {
     workspaceId: string,
     input: { id: string; version: string; sha256: string; grants: string[] },
   ) {
+    invariant(
+      !this.options.storageOnly,
+      "CAPABILITY_UNAVAILABLE",
+      "Storage-only mode does not run plugins",
+    );
     const actor = this.actor(workspaceId, this.core.identity.id),
       repo = new Repository(this.db);
     await installInventoryPlugin(input, this.db);
@@ -238,6 +259,11 @@ export class NativeServices {
     input: unknown,
     context: { deviceId: string; requestId: string },
   ) {
+    invariant(
+      !this.options.storageOnly,
+      "CAPABILITY_UNSUPPORTED",
+      "This peer only provides storage and synchronization",
+    );
     const node = this.core.workspaces.get(workspaceId)!;
     if (command === "core.plugins.status") {
       const registry = registryFor(
@@ -760,6 +786,7 @@ export class NativeServices {
     return run;
   }
   async tick() {
+    if (this.options.storageOnly) return;
     if (this.ticking) return;
     this.ticking = true;
     try {
@@ -907,6 +934,11 @@ export class NativeServices {
     }
   }
   async webhook(id: string, token: string, key: string, input: Value) {
+    invariant(
+      !this.options.storageOnly,
+      "CAPABILITY_UNSUPPORTED",
+      "Storage-only peers do not execute webhooks",
+    );
     invariant(
       /^[a-zA-Z0-9_.:-]{1,200}$/.test(key),
       "VALIDATION_FAILED",

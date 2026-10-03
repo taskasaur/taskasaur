@@ -1,6 +1,8 @@
 name: Container
 
 on:
+  push:
+    branches: [main]
   pull_request:
   release:
     types: [published]
@@ -89,6 +91,7 @@ jobs:
           node tests/browser/plugins.mjs
           node tests/browser/mail.mjs
           node tests/browser/plugin-inventory.mjs
+          node tests/browser/storage-placement.mjs
       - name: Check persistent identity after container replacement
         run: node tests/container.mjs
       - name: Stop the peer
@@ -96,9 +99,9 @@ jobs:
         run: docker rm -f taskasaur-peer-ci
 
   publish:
-    name: Publish versioned amd64 and arm64 image
+    name: Publish verified amd64 and arm64 image
     needs: verify
-    if: github.event_name == 'release' || inputs.publish
+    if: github.event_name == 'push' || github.event_name == 'release' || inputs.publish
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -125,7 +128,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ steps.registry.outputs.image }}:${{ needs.verify.outputs.version }}
+            ${{ steps.registry.outputs.image }}:${{ github.event_name == 'push' && 'edge' || needs.verify.outputs.version }}
             ${{ steps.registry.outputs.image }}:sha-${{ needs.verify.outputs.revision }}
           build-args: |
             TASKASAUR_VERSION=${{ needs.verify.outputs.version }}

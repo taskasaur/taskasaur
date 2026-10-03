@@ -16,7 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certifi
 WORKDIR /app
 ARG TASKASAUR_VERSION=0.3.0
 ARG SOURCE_REVISION=unknown
-LABEL org.opencontainers.image.title="Taskasaur peer" \
+LABEL org.opencontainers.image.source="https://github.com/taskasaur/taskasaur" \
+      org.opencontainers.image.documentation="https://github.com/taskasaur/taskasaur/blob/main/docs/self-hosting.md" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.title="Taskasaur peer" \
       org.opencontainers.image.version=$TASKASAUR_VERSION \
       org.opencontainers.image.revision=$SOURCE_REVISION
 ENV NODE_ENV=production TASKASAUR_DATA=/data TASKASAUR_HOST=0.0.0.0 TASKASAUR_RELAY=1 OFFICE_ASSET_PATH=/app/office-engine
