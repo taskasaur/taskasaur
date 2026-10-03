@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim AS build
+FROM node:26.10.0-bookworm-slim AS build
 WORKDIR /app
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -11,7 +11,7 @@ ENV VITE_PLUGIN_INVENTORY_URL=$VITE_PLUGIN_INVENTORY_URL
 RUN npm run build
 RUN npm prune --omit=dev --omit=peer --ignore-scripts
 
-FROM node:24-bookworm-slim
+FROM node:26.10.0-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends tini ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir /data && chown node:node /data
 WORKDIR /app
 ARG TASKASAUR_VERSION=0.3.0

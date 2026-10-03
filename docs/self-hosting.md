@@ -62,6 +62,8 @@ Create a webhook in the automation editor on the workflow's selected native peer
 
 The README button uses Elestio's documented [Docker Compose CI/CD template](https://docs.elest.io/books/cicd-pipelines/page/create-your-own-template-elestioyml). The root `elestio.yml` pulls the published image using `compose.yaml` on the selected VM and routes its public HTTPS endpoint to the peer WebSocket port. `[CI_CD_DOMAIN]` becomes the assigned hostname. Choose the VM/provider/region and review its current bill before creating it; this is a paid managed VM, with persistent disk rather than ephemeral serverless storage. The image must finish publishing before the first deployment; check the repository's Container workflow. Cloud deployment uses `--no-build`, so the small VM does not compile the full frontend and native dependencies. The template targets Elestio's Docker bridge (`172.17.0.1`) and proxy. Other hosts should leave the regular Compose bind defaults and supply their own TLS proxy.
 
+Registry maintainers: after the first publication, set the [container package visibility](https://github.com/orgs/taskasaur/packages/container/taskasaur/settings) to **Public**. GitHub creates new packages as private by default; the cloud template needs anonymous pull access. Forks must also update `TASKASAUR_IMAGE` to their published package. See [GitHub’s visibility instructions](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility).
+
 For Compose pairing, stop the running service and generate its public request in the persistent volume:
 
 ```sh

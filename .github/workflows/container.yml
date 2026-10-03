@@ -46,7 +46,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26.10.0
           cache: npm
       - run: npm ci
       - run: npm test

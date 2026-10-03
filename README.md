@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/taskasaur/taskasaur/actions/workflows/container.yml"><img src="https://github.com/taskasaur/taskasaur/actions/workflows/container.yml/badge.svg?branch=main" alt="Container build and tests" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL 3.0 license" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-24%2B-339933?logo=nodedotjs&logoColor=white" alt="Node.js 24 or later" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-26.10%2B-339933?logo=nodedotjs&logoColor=white" alt="Node.js 26.10 or later" /></a>
   <a href="https://github.com/taskasaur/taskasaur/pkgs/container/taskasaur"><img src="https://img.shields.io/badge/container-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" alt="Docker: amd64 and arm64" /></a>
   <a href="docs/distributed.md"><img src="https://img.shields.io/badge/local_first-Automerge-7252D3" alt="Local-first with Automerge" /></a>
 </p>
@@ -18,7 +18,7 @@ This repository owns the shared core, UI, platform adapters, headless peer and p
 
 ## Run
 
-Use Node.js 24 or later.
+Use Node.js 26.10 or later (`nvm use`). The container and CI pin 26.10.0 to avoid a [Node 24 WebAssembly runtime crash](https://github.com/nodejs/node/issues/66366).
 
 ```sh
 npm ci
