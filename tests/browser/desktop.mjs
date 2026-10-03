@@ -24,7 +24,9 @@ try {
   await window
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
-  await window.getByRole("navigation", { name: "Workspace" }).waitFor({ timeout: 45000 });
+  await window
+    .getByRole("navigation", { name: "Current page" })
+    .waitFor({ timeout: 45000 });
   await app.evaluate(async ({ app }) => {
     const require = process
       .getBuiltinModule("node:module")

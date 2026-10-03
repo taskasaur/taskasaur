@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -10,7 +11,7 @@ try {
   await page
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  await navigate(page, "Plugins");
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText("Tasks", { exact: true }) });
@@ -23,11 +24,11 @@ try {
   await expect(row.getByText("Enabled", { exact: true })).toBeVisible({
     timeout: 30000,
   });
-  await page
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Tasks", exact: true })
-    .click();
+  await navigate(page, "Tasks");
   await page.getByRole("button", { name: "New entry", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Add optional fields", exact: true })
+    .click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Offline downloaded plugin");

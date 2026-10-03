@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -16,7 +17,7 @@ try {
     await page
       .getByRole("button", { name: "Create workspace", exact: true })
       .click();
-    await page.getByRole("button", { name: "Plugins", exact: true }).click();
+    await navigate(page, "Plugins");
     const row = page
       .getByRole("row")
       .filter({ has: page.getByText("Tasks", { exact: true }) });
@@ -27,11 +28,11 @@ try {
       .getByRole("button", { name: "Confirm install", exact: true })
       .click();
     await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
-    await page
-      .getByRole("navigation", { name: "Workspace" })
-      .getByRole("button", { name: "Tasks", exact: true })
-      .click();
+    await navigate(page, "Tasks");
     await page.getByRole("button", { name: "New entry", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Add optional fields", exact: true })
+      .click();
     await page
       .getByLabel("Title", { exact: true })
       .fill("Downloaded task plugin");
@@ -44,18 +45,19 @@ try {
       page.getByRole("button", { name: "Downloaded task plugin", exact: true }),
     ).toBeVisible({ timeout: 30000 });
     await context.setOffline(true);
-    await page.getByRole("button", { name: "Plugins", exact: true }).click();
+    await navigate(page, "Plugins");
     await row.getByRole("button", { name: "Disable", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Open plugins menu", exact: true })
+      .click();
     await expect(
       page
-        .getByRole("navigation", { name: "Workspace" })
-        .getByRole("button", { name: "Tasks", exact: true }),
-    ).toHaveCount(0);
+        .getByRole("navigation", { name: "Workspace", exact: true })
+        .getByRole("button", { name: "Tasks Disabled", exact: true }),
+    ).toBeVisible();
+    await navigate(page, "Plugins");
     await row.getByRole("button", { name: "Enable", exact: true }).click();
-    await page
-      .getByRole("navigation", { name: "Workspace" })
-      .getByRole("button", { name: "Tasks", exact: true })
-      .click();
+    await navigate(page, "Tasks");
     await expect(
       page.getByRole("button", { name: "Downloaded task plugin", exact: true }),
     ).toBeVisible();

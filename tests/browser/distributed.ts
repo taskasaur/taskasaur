@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -36,13 +37,13 @@ try {
     .click();
   async function install(page: typeof first, name: string) {
     console.log("Installing", name);
-    await expect(page.getByRole("navigation", { name: "Workspace" }))
+    await expect(page.getByRole("navigation", { name: "Current page" }))
       .toBeVisible({ timeout: 30000 })
       .catch(async (e) => {
         console.log((await page.locator("body").innerText()).slice(0, 1600));
         throw e;
       });
-    await page.getByRole("button", { name: "Plugins", exact: true }).click();
+    await navigate(page, "Plugins");
     const row = page
       .getByRole("row")
       .filter({ has: page.getByText(name, { exact: true }) });
@@ -57,10 +58,7 @@ try {
       .waitFor({ timeout: 30000 });
   }
   await install(first, "Tasks");
-  await first
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Devices", exact: true })
-    .click();
+  await navigate(first, "Devices");
   await first
     .getByRole("textbox", { name: "Device request", exact: true })
     .fill(peer.core.pairingRequest());
@@ -86,11 +84,11 @@ try {
   await expect(
     first.getByRole("row").filter({ hasText: "Integration peer" }),
   ).toContainText("Online", { timeout: 30000 });
-  await first
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Tasks", exact: true })
-    .click();
+  await navigate(first, "Tasks");
   await first.getByRole("button", { name: "New entry", exact: true }).click();
+  await first
+    .getByRole("button", { name: "Add optional fields", exact: true })
+    .click();
   await first
     .getByLabel("Title", { exact: true })
     .fill("Replicated browser task");
@@ -112,10 +110,7 @@ try {
   const request = await second
     .getByRole("textbox", { name: "Device request", exact: true })
     .inputValue();
-  await first
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Devices", exact: true })
-    .click();
+  await navigate(first, "Devices");
   await first
     .getByRole("textbox", { name: "Device request", exact: true })
     .fill(request);
@@ -136,10 +131,7 @@ try {
     .getByRole("button", { name: "Join and save local copy", exact: true })
     .click();
   await install(second, "Tasks");
-  await second
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Tasks", exact: true })
-    .click();
+  await navigate(second, "Tasks");
   await second
     .getByRole("button", { name: "Replicated browser task", exact: true })
     .waitFor({ timeout: 40000 });
@@ -150,6 +142,9 @@ try {
     .getByRole("button", { name: "Replicated browser task", exact: true })
     .waitFor({ timeout: 30000 });
   await second.getByRole("button", { name: "New entry", exact: true }).click();
+  await second
+    .getByRole("button", { name: "Add optional fields", exact: true })
+    .click();
   await second.getByLabel("Title", { exact: true }).fill("Written offline");
   await second.getByRole("button", { name: "Save", exact: true }).click();
   await second
@@ -165,10 +160,11 @@ try {
     .waitFor();
   await b.setOffline(false);
   await second
-    .getByRole("button", { name: /saved locally|peers/ })
-    .first()
-    .click()
-    .catch(() => {});
+    .getByRole("button", { name: "Open settings menu", exact: true })
+    .click();
+  await second
+    .getByRole("button", { name: "Synchronize workspace", exact: true })
+    .click();
   await expect
     .poll(
       () => node.records.all().some((r) => r.data.title === "Written offline"),

@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -21,12 +22,9 @@ page.setDefaultTimeout(45000);
 page.on("pageerror", (e) => errors.push(e.message));
 const button = (name: string) =>
   page.getByRole("button", { name, exact: true });
-const nav = (name: string) =>
-  page
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name, exact: true });
+const nav = (name: string) => ({ click: () => navigate(page, name) });
 async function install(name: string) {
-  await button("Plugins").click();
+  await navigate(page, "Plugins");
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText(name, { exact: true }) });
@@ -155,6 +153,7 @@ try {
   await install("Tasks");
   await nav("Tasks").click();
   await button("New entry").click();
+  await button("Add optional fields").click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Content has no execution target");

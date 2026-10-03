@@ -12,6 +12,8 @@ All persisted fields use the shared PostgreSQL-based descriptors in `@taskasaur/
 
 The [complete field mapping](fields.md) specifies every supported type, portable encoding and shared input, including nullability and precision rules.
 
+See [navigation, commands, search, and independent tables](navigation-search-and-tables.md) for main/subpages, icons, local indexing, table schemas, and managed shared resources.
+
 ## Entrypoints
 
 - `entrypoints.core`: portable TypeScript logic bundled as `core.mjs`, activated on browser/mobile/desktop and headless peers. It must use portable APIs and core services. The build wrapper resolves allowed SDK imports through declared/granted `core.modules`.

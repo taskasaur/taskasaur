@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({
@@ -47,17 +48,14 @@ const records = () => page.locator("[data-record-id]");
 try {
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:5173");
   await click("Create workspace");
-  await click("Plugins");
+  await navigate(page, "Plugins");
   const install = page
     .getByRole("row")
     .filter({ has: page.getByText("Tasks", { exact: true }) });
   await install.getByRole("button", { name: "Install", exact: true }).click();
   await click("Confirm install");
   await install.getByRole("button", { name: "Disable", exact: true }).waitFor();
-  await page
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Tasks", exact: true })
-    .click();
+  await navigate(page, "Tasks");
   const longTitle =
     "Alpha " +
     "A long task title with words and averylongunbrokenword".repeat(10);
@@ -68,9 +66,9 @@ try {
     ["Delta", "done", "B"],
   ]) {
     await click("New entry");
+    await click("Add optional fields");
     await page.getByLabel("Title", { exact: true }).fill(title);
     await choose("Status", status);
-    await click("Add optional fields");
     await page.getByLabel("Description", { exact: true }).fill(description);
     await click("Save");
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -334,7 +332,9 @@ try {
     animations: "disabled",
   });
   await page.keyboard.press("Escape");
-  await click("Toggle theme");
+  await navigate(page, "Settings");
+  await choose("Color theme", "Dark");
+  await navigate(page, "Tasks");
   await expect(page.locator("html")).toHaveClass(/dark/);
   await click("Columns");
   await page.getByRole("textbox", { name: "Find columns" }).fill("Status");

@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
@@ -16,7 +17,7 @@ try {
   await page
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  await navigate(page, "Plugins");
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText("Office Editor", { exact: true }) });
@@ -25,10 +26,7 @@ try {
     .getByRole("button", { name: "Confirm install", exact: true })
     .click();
   await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
-  await page
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Office", exact: true })
-    .click();
+  await navigate(page, "Office");
   await page.getByRole("button", { name: "Document", exact: true }).click();
   await page.locator(".ql-editor").fill("Offline document content");
   await page.getByRole("button", { name: "Save", exact: true }).click();

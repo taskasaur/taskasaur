@@ -1,3 +1,4 @@
+import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -10,7 +11,7 @@ try {
   await page
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
-  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  await navigate(page, "Plugins");
   await page
     .getByRole("row")
     .filter({ has: page.getByText("Email Client", { exact: true }) })
@@ -24,10 +25,8 @@ try {
     .filter({ has: page.getByText("Email Client", { exact: true }) })
     .getByRole("button", { name: "Disable", exact: true })
     .waitFor({ timeout: 30000 });
-  await page
-    .getByRole("navigation", { name: "Workspace" })
-    .getByRole("button", { name: "Mail", exact: true })
-    .click();
+  await navigate(page, "Mail");
+  await page.getByRole("button", { name: "Compose", exact: true }).waitFor();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Compose", exact: true }).click();
   await page.getByLabel("Subject", { exact: true }).fill("Offline saved draft");
