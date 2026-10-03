@@ -37,6 +37,7 @@ Required app providers are access control, records/fields/modules, local storage
 | `core.peers`                                          | Typed current identity, approved peers, online state and capability discovery                |
 | `files.access`                                        | Read/write core file bytes and immutable versions                                            |
 | `credentials.use`                                     | Broker a declared operation with an approved credential/destination; never enumerate secrets |
+| `core.execution`                                      | Per-item targets, required plugins, capabilities, status and signed handoff                  |
 | `core.jobs`, `core.schedules`                         | Durable, explicitly assigned work; external operations require idempotency                   |
 | `core.notifications`, `core.variables`, `core.tables` | Shared typed resources                                                                       |
 
@@ -75,7 +76,7 @@ Use `@taskasaur/platform/build-plugin` with source entrypoints in `src/core.ts`,
 
 Installation downloads with a size limit, validates paths, verifies the trusted publisher signature and every hash, checks API compatibility/dependencies and asks for the declared grants. Browser sources are verified again before activation. Native packages use an atomic staged install and revalidation before loading. Replacing bytes under an existing version, silently downgrading, or removing stored fields without migration is rejected.
 
-Approval is per device. Synchronizing records or a package recommendation never executes downloaded native code. The app’s Devices page installs reviewed native dependencies on an explicitly selected, opted-in computer. Account/background services have an assigned computer; they do not fail over automatically during a partition. Disable a service on its old computer before changing its assignment to prevent concurrent external effects.
+Approval is per device. Synchronizing records or a package recommendation never executes downloaded native code. Each execution item uses the shared computer picker and reviewed dependency installation. Plugins declare the item types needing execution, while ordinary replicated content stays target-free. See [per-item execution](execution.md) for the manifest, core service, UI, readiness checks, pause and signed handoff.
 
 Test clean install, restart, disable/uninstall/re-enable, offline CRUD, a second peer with the plugin absent, independent/conflicting edits, schema upgrades, revoked/read-only devices, duplicate command IDs, file download interruption, credential denial and disposal. Data must remain recoverable when code is disabled or unavailable. Existing v1 terminal, sharing and office UI packages are adapted by the host to peer terminals, workspace-level sharing and portable offline editors. Their old central gateway/account interfaces are not used. The office surface is available only after installing the signed Office Editor plugin.
 

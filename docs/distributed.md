@@ -28,7 +28,7 @@ Workflows pin their graph at publication. Browser/mobile and native use the same
 
 A queued offline request is held on the requesting device until its selected peer is reachable, with an explicit deadline. Keep that app active for dispatch, or send while the target is online. Execution intents/checkpoints are device-local and cannot be created simply by replicating a `job/` document. External side effects cannot be made globally exactly-once by a CRDT; handlers must use operation IDs and report ambiguous provider outcomes.
 
-Scheduled workflow triggers execute only on their declared target. Native account/background plugins run on their assigned service computer and do not automatically fail over. Browser/mobile availability is foreground availability; do not represent iOS suspension as a continuously running server.
+Scheduled workflow triggers execute only on their declared target. Automations, individual accounts and other declared execution items each select a computer through [core execution](plugins/execution.md). Assignments are independent within a plugin and never fail over automatically. Browser/mobile availability is foreground availability; do not represent iOS suspension as a continuously running server.
 
 ## Backup and rollback
 

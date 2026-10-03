@@ -200,3 +200,95 @@ it("executes a published TypeScript graph on the explicitly selected native devi
     await rm(directory, { recursive: true, force: true });
   }
 }, 40000);
+it("claims mail jobs only for their enabled account and rejects orphaned execution items", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "taskasaur-item-jobs-"),
+  );
+  let services: NativeServices;
+  const core = await DeviceCore.open(
+      new FileStorage(path.join(directory, "replicas")),
+      "Mail worker",
+      () => services?.capabilities() ?? [],
+    ),
+    node = await core.createWorkspace("Accounts");
+  services = new NativeServices(core, {
+    directory,
+    terminal: false,
+    automation: false,
+    trustedCode: false,
+    background: true,
+    plugins: false,
+  });
+  try {
+    await services.initialize();
+    const repo = new Repository((services as any).db),
+      actor = {
+        workspaceId: node.replica.workspaceId,
+        userId: node.replica.member.userId,
+        pluginId: "email-client",
+        permissions: [],
+      },
+      registry = registryFor(repo, actor);
+    await registry.initialize();
+    await registry.install("email-client");
+    await registry.enable("email-client");
+    const account = await node.records.put("mail_accounts", {
+      name: "Account A",
+      address: "a@example.test",
+      credential_id: crypto.randomUUID(),
+      imap_host: "imap.example.test",
+      smtp_host: "smtp.example.test",
+      smtp_security: "tls",
+    });
+    await configureExecution(
+      node,
+      account,
+      slotFor(account)!,
+      core.identity.id,
+      true,
+    );
+    const message = await node.records.put("mail", {
+      account_id: account.id,
+      subject: "Queued",
+      status: "queued",
+      send_operation_id: crypto.randomUUID(),
+    });
+    await services.project();
+    const { JobService } =
+      await import("../packages/platform-node/compat/jobs");
+    const jobs = new JobService(repo);
+    await expect(
+      jobs.enqueue(actor, "mail.send", { id: crypto.randomUUID() }),
+    ).rejects.toThrow("execution item");
+    await jobs.enqueue(actor, "mail.send", { id: message.id });
+    await configureExecution(
+      node,
+      node.records.get(account.id)!,
+      slotFor(account)!,
+      core.identity.id,
+      false,
+    );
+    expect(await jobs.claim("test-worker")).toBeUndefined();
+    await configureExecution(
+      node,
+      node.records.get(account.id)!,
+      slotFor(account)!,
+      core.identity.id,
+      true,
+    );
+    const claim = await jobs.claim("test-worker");
+    expect(claim?.payload.execution?.resourceId).toBe(account.id);
+    await jobs.settle(claim!);
+    await jobs.enqueue(actor, "mail.send", { id: message.id });
+    await node.records.put(
+      "mail",
+      { ...message.data, account_id: null },
+      message.id,
+    );
+    expect(await jobs.claim("test-worker")).toBeUndefined();
+  } finally {
+    await services.close();
+    await core.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 30000);
