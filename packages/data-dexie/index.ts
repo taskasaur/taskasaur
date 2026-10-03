@@ -1,4 +1,10 @@
 import Dexie, { liveQuery, type Table } from "dexie";
+import type { SearchDocument } from "@taskasaur/platform/plugin-sdk/navigation";
+import {
+  generatedValues,
+  collectionColumns,
+  customValues,
+} from "@taskasaur/platform/core/collection-tables";
 import type {
   Mutation,
   Principal,
@@ -44,7 +50,12 @@ interface Metadata {
 export class LocalDatabase extends Dexie {
   replicaBridge?: {
     canWrite(): boolean;
-    put(collection: string, data: unknown, id: string): Promise<ResourceRecord>;
+    put(
+      collection: string,
+      data: unknown,
+      id: string,
+      managedBy?: string,
+    ): Promise<ResourceRecord>;
     delete(id: string): Promise<void>;
     saveFile(id: string, blob: Blob, parent: string | null): Promise<string>;
   };
@@ -53,6 +64,7 @@ export class LocalDatabase extends Dexie {
   metadata!: Table<Metadata, string>;
   plugins!: Table<PluginState, string>;
   fileVersions!: Table<FileVersion, string>;
+  searchDocuments!: Table<SearchDocument, string>;
   constructor(
     public readonly workspaceId: string,
     public readonly userId: string,
@@ -65,6 +77,10 @@ export class LocalDatabase extends Dexie {
       metadata: "key",
       plugins: "id",
       fileVersions: "id,fileId,createdAt",
+    });
+    // A rebuildable local index; it never enters the replica or the outbox.
+    this.version(2).stores({
+      searchDocuments: "id,pluginId,collection,*tokens",
     });
   }
   pluginPersistence() {
@@ -160,10 +176,23 @@ export class LocalDatabase extends Dexie {
             "READ_ONLY",
             "Cache projections are ingestion-only",
           );
-          const data = validateRecord(schema, input);
+          const data = validateRecord(
+            schema,
+            generatedValues(
+              schema,
+              input,
+              (await this.records.get(resourceId))?.data,
+            ),
+          );
           if (this.replicaBridge) {
             await authorize();
-            return this.replicaBridge.put(id, data, resourceId);
+            const managedBy =
+              ["tables", "files", "variables", "credentials"].includes(id) &&
+              !isRequiredCore(principal.pluginId) &&
+              principal.pluginId !== "core"
+                ? principal.pluginId
+                : undefined;
+            return this.replicaBridge.put(id, data, resourceId, managedBy);
           }
           const now = new Date().toISOString();
           return this.transaction(
@@ -175,6 +204,55 @@ export class LocalDatabase extends Dexie {
             async () => {
               await authorize();
               validateDynamicData(id, data);
+              if (id === "tables" && data.collection_id) {
+                const target = getSchema(String(data.collection_id));
+                invariant(
+                  target.tables && target.pluginId === principal.pluginId,
+                  "PERMISSION_DENIED",
+                  "Plugin tables belong to their owning plugin",
+                );
+                collectionColumns(target, data.columns);
+                const existing = await this.records.get(resourceId);
+                invariant(
+                  !existing ||
+                    (existing.data.collection_id === data.collection_id &&
+                      Boolean(existing.data.is_default) ===
+                        Boolean(data.is_default)),
+                  "INVALID_TABLE",
+                  "A table's collection and default status cannot change",
+                );
+                for (const row of await this.records
+                  .where("collection")
+                  .equals(target.id)
+                  .filter((r) => !r.deletedAt && r.data.table_id === resourceId)
+                  .toArray())
+                  customValues(target, data.columns, row.data.custom_fields);
+              }
+              if (schema.tables && data.table_id) {
+                const definition = await this.records.get(
+                  String(data.table_id),
+                );
+                invariant(
+                  definition?.collection === "tables" &&
+                    !definition.deletedAt &&
+                    definition.data.collection_id === id &&
+                    definition.managedBy === schema.pluginId,
+                  "INVALID_TABLE",
+                  "Choose a table belonging to this collection",
+                );
+                data.custom_fields = customValues(
+                  schema,
+                  definition.data.columns,
+                  data.custom_fields,
+                );
+              }
+              if (schema.tables && !data.table_id)
+                invariant(
+                  !data.custom_fields ||
+                    !Object.keys(data.custom_fields).length,
+                  "INVALID_TABLE",
+                  "Custom fields require a table",
+                );
               if (id === "time" && !data.ended_at) {
                 const active = await this.records
                   .where("collection")
@@ -221,6 +299,16 @@ export class LocalDatabase extends Dexie {
                 "Cannot replace this resource",
               );
               const record: ResourceRecord = {
+                ...(previous?.managedBy
+                  ? { managedBy: previous.managedBy }
+                  : !previous &&
+                      ["tables", "variables", "credentials", "files"].includes(
+                        id,
+                      ) &&
+                      !isRequiredCore(principal.pluginId) &&
+                      principal.pluginId !== "core"
+                    ? { managedBy: principal.pluginId }
+                    : {}),
                 id: resourceId,
                 workspaceId: principal.workspaceId,
                 ownerId: previous?.ownerId ?? principal.userId,
@@ -475,12 +563,14 @@ export class LocalDatabase extends Dexie {
       this.records,
       this.outbox,
       this.fileVersions,
+      this.searchDocuments,
       async () => {
         const revoked = await this.records
           .filter((r) => r.revision > 0 && !allowed.has(r.id))
           .toArray();
         for (const record of revoked) {
           await this.records.delete(record.id);
+          await this.searchDocuments.delete(record.id);
           await this.fileVersions.where("fileId").equals(record.id).delete();
           await this.outbox.where("resourceId").equals(record.id).modify({
             state: "rejected",

@@ -147,6 +147,13 @@ export class Repository {
       record = await node.records.put(schema.id, data, mutation.resourceId, {
         ownerId: actor.userId,
         eventId: mutation.id,
+        ...(["tables", "variables", "credentials", "files"].includes(
+          schema.id,
+        ) &&
+        !isRequiredCore(actor.pluginId) &&
+        actor.pluginId !== "core"
+          ? { managedBy: actor.pluginId }
+          : {}),
       });
     await projectRecord(this.db, record);
     await (

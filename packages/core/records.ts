@@ -14,6 +14,11 @@ import {
 import { invariant } from "@taskasaur/platform/core/errors";
 import { validateGraph, allNodes } from "@taskasaur/platform/core/workflows";
 import { domainEvent } from "@taskasaur/platform/core/messages";
+import {
+  collectionColumns,
+  customValues,
+  generatedValues,
+} from "@taskasaur/platform/core/collection-tables";
 export function deviceRecordId(identityId: string) {
   return `${identityId.slice(0, 8)}-${identityId.slice(8, 12)}-4${identityId.slice(13, 16)}-8${identityId.slice(17, 20)}-${identityId.slice(20, 32)}`;
 }
@@ -43,11 +48,16 @@ export class ReplicaRecords {
     collection: string,
     input: unknown,
     id: string = crypto.randomUUID(),
-    options: { ownerId?: string; createdAt?: string; eventId?: string } = {},
+    options: {
+      ownerId?: string;
+      createdAt?: string;
+      eventId?: string;
+      managedBy?: string;
+    } = {},
   ) {
     const schema = getSchema(collection),
-      data = validateRecord(schema, input),
-      old = this.get(id);
+      old = this.get(id),
+      data = validateRecord(schema, generatedValues(schema, input, old?.data));
     invariant(this.canWrite(), "PERMISSION_DENIED", "Workspace is read only");
     invariant(
       !old || old.collection === collection,
@@ -59,16 +69,12 @@ export class ReplicaRecords {
       "SCHEMA_UPGRADE_REQUIRED",
       "Update this plugin before editing newer data",
     );
-    validateDynamicData(collection, data);
-    if (collection === "table_rows") {
-      const definition = this.get(String(data.table_id));
-      invariant(
-        definition?.collection === "tables" && !definition.deletedAt,
-        "NOT_FOUND",
-        "Table definition was not found",
-      );
-      data.values = validateTableValues(definition.data.columns, data.values);
-    }
+    this.validateData(
+      collection,
+      data,
+      id,
+      old ? old.managedBy : options.managedBy,
+    );
     if (collection === "workflows" && Number(data.published_version) > 0) {
       invariant(
         data.target_device_id,
@@ -93,6 +99,9 @@ export class ReplicaRecords {
     }
     const now = new Date().toISOString();
     const record: ResourceRecord = {
+      ...((old ? old.managedBy : options.managedBy)
+        ? { managedBy: old ? old.managedBy : options.managedBy }
+        : {}),
       schemaVersion: schema.version,
       id,
       workspaceId: this.replica.workspaceId,
@@ -115,12 +124,92 @@ export class ReplicaRecords {
   async delete(id: string, eventId?: string) {
     const old = this.get(id);
     invariant(old, "NOT_FOUND", "Record not found");
+    if (old.collection === "tables") {
+      invariant(
+        !old.data.is_default,
+        "DEFAULT_TABLE",
+        "The default table cannot be deleted",
+      );
+      invariant(
+        !this.all().some((r) => !r.deletedAt && r.data.table_id === id),
+        "TABLE_NOT_EMPTY",
+        "Move or delete this table's entries first",
+      );
+    }
     await this.replica.update("record/" + id, {
       ...old,
       deletedAt: new Date().toISOString(),
       revision: old.revision + 1,
     });
     await this.event(this.get(id)!, "delete", eventId);
+  }
+  private validateData(
+    collection: string,
+    data: Record<string, Value>,
+    id: string,
+    managedBy?: string,
+  ) {
+    const schema = getSchema(collection),
+      old = this.get(id);
+    validateDynamicData(collection, data);
+    if (collection === "tables" && old) {
+      invariant(
+        old.data.collection_id === data.collection_id &&
+          Boolean(old.data.is_default) === Boolean(data.is_default),
+        "INVALID_TABLE",
+        "A table's collection and default status cannot change",
+      );
+    }
+    if (collection === "tables" && data.collection_id) {
+      const target = getSchema(String(data.collection_id));
+      invariant(
+        target.tables && managedBy === target.pluginId,
+        "PERMISSION_DENIED",
+        "Plugin tables must be created through their owning plugin",
+      );
+      collectionColumns(target, data.columns);
+      // Schema changes cannot invalidate existing rows or silently drop stored values.
+      for (const row of this.all().filter(
+        (r) =>
+          !r.deletedAt && r.collection === target.id && r.data.table_id === id,
+      ))
+        customValues(target, data.columns, row.data.custom_fields);
+    }
+    if (schema.tables) {
+      const definition = data.table_id
+        ? this.get(String(data.table_id))
+        : undefined;
+      invariant(
+        !data.table_id ||
+          (definition?.collection === "tables" &&
+            !definition.deletedAt &&
+            definition.data.collection_id === collection &&
+            definition.managedBy === schema.pluginId),
+        "INVALID_TABLE",
+        "Choose a table belonging to this collection",
+      );
+      if (definition)
+        data.custom_fields = customValues(
+          schema,
+          definition.data.columns,
+          data.custom_fields,
+        );
+      else
+        invariant(
+          !data.custom_fields || !Object.keys(data.custom_fields).length,
+          "INVALID_TABLE",
+          "Custom fields require a table",
+        );
+    }
+    if (collection === "table_rows") {
+      const definition = this.get(String(data.table_id));
+      invariant(
+        definition?.collection === "tables" && !definition.deletedAt,
+        "NOT_FOUND",
+        "Table definition was not found",
+      );
+      data.values = validateTableValues(definition.data.columns, data.values);
+    }
   }
   private async event(
     record: ResourceRecord,
@@ -154,6 +243,7 @@ export class ReplicaRecords {
       ...record.data,
       [field]: value,
     });
+    this.validateData(record.collection, data, id, record.managedBy);
     await this.replica.update(
       "record/" + id,
       {

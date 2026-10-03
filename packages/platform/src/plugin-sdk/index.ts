@@ -42,6 +42,18 @@ export const manifestSchema = z
       mode: z.enum(["none", "shared"]),
       apiVersion: z.string().optional(),
       surfaces: z.array(z.string()).default([]),
+      icon: z.string().max(80).optional(),
+      mainPage: z.string().optional(),
+      pages: z
+        .array(
+          z.object({
+            id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+            label: z.string().min(1).max(80),
+            collection: z.string().optional(),
+            readOnly: z.boolean().optional(),
+          }),
+        )
+        .optional(),
     }),
     storage: z.object({
       local: z.object({
@@ -83,6 +95,8 @@ export interface Principal {
   permissions: string[];
 }
 export interface ResourceRecord {
+  /** Set by core when a plugin creates a shared resource. */
+  managedBy?: string;
   /** Unknown newer schemas replicate opaquely; editing requires the matching plugin version. */
   schemaVersion?: number;
   id: string;

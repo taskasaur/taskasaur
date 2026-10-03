@@ -103,6 +103,14 @@
     "./plugin-sdk/execution": {
       "types": "./dist/plugin-sdk/execution.d.ts",
       "import": "./dist/plugin-sdk/execution.js"
+    },
+    "./plugin-sdk/navigation": {
+      "types": "./dist/plugin-sdk/navigation.d.ts",
+      "import": "./dist/plugin-sdk/navigation.js"
+    },
+    "./core/collection-tables": {
+      "types": "./dist/core/collection-tables.d.ts",
+      "import": "./dist/core/collection-tables.js"
     }
   },
   "dependencies": {

@@ -6,6 +6,16 @@ declare module "@taskasaur/plugin-host" {
   } from "@taskasaur/platform/plugin-sdk";
   import type { PluginState } from "@taskasaur/platform/core/registry";
   import type { Value } from "@taskasaur/platform/field-types";
+  import type { NavigationService } from "@taskasaur/platform/plugin-sdk/navigation";
+  export interface UIService extends NavigationService {
+    registerSurface(surface: {
+      id: string;
+      label: string;
+      main?: boolean;
+      icon?: string;
+      render: import("react").ComponentType;
+    }): () => void;
+  }
   export interface CollectionStore {
     list(query?: unknown): Promise<ResourceRecord[]>;
     get(id: string): Promise<ResourceRecord | undefined>;

@@ -7,6 +7,7 @@ import {
 import { manifestSchema, type PluginManifest } from "../plugin-sdk";
 import { invariant } from "./errors";
 import { validateCalendar, validateReminder } from "./calendar-values";
+import { withCollectionTables } from "./collection-tables";
 
 export const requiredCoreIds = [
   "access-control",
@@ -96,6 +97,8 @@ export const schemas: RecordSchema[] = [
   schema("tables", "tables", "Tables", [
     text(),
     json("columns", "Columns", []),
+    field("collection_id", "Collection"),
+    field("is_default", "Default table", "boolean", { default: false }),
     field("description", "Description", "text", { control: "textarea" }),
   ]),
   schema("table_rows", "tables", "Table rows", [
@@ -260,6 +263,26 @@ export function validateExtension(input: unknown, contracts: unknown) {
     "Expected collection contracts",
   );
   const prefix = manifest.id.replaceAll(/[.-]/g, "_") + "_";
+  invariant(
+    !manifest.ui.mainPage ||
+      manifest.ui.surfaces.includes(manifest.ui.mainPage) ||
+      manifest.ui.pages?.some((p) => p.id === manifest.ui.mainPage),
+    "UNDECLARED_SURFACE",
+    "The main page must be declared",
+  );
+  invariant(
+    new Set(manifest.ui.pages?.map((p) => p.id)).size ===
+      (manifest.ui.pages?.length ?? 0),
+    "CONTRACT_COLLISION",
+    "Page IDs must be unique",
+  );
+  for (const page of manifest.ui.pages ?? [])
+    invariant(
+      !page.collection ||
+        manifest.storage.local.collections.includes(page.collection),
+      "UNDECLARED_COLLECTION",
+      "Page collections must belong to the plugin",
+    );
   const parsed: RecordSchema[] = contracts.map((contract) => {
     invariant(
       contract && typeof contract === "object",
@@ -302,7 +325,7 @@ export function validateExtension(input: unknown, contracts: unknown) {
       "VALIDATION_FAILED",
       "Unknown schema standard",
     );
-    return {
+    return withCollectionTables({
       standard: schema.standard,
       validate:
         schema.standard === "ical-event"
@@ -324,7 +347,8 @@ export function validateExtension(input: unknown, contracts: unknown) {
       name: String(schema.name),
       version: schema.version,
       fields,
-    };
+      tables: schema.tables,
+    });
   });
   const executionOperations = new Set<string>();
   for (const slot of manifest.execution ?? []) {

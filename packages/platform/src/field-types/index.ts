@@ -52,6 +52,7 @@ export const fieldDescriptor = z.object({
   reference: z.string().optional(),
   description: z.string().optional(),
   sensitive: z.boolean().default(false),
+  generated: z.enum(["uuid", "timestamp"]).optional(),
 });
 export type Field = z.infer<typeof fieldDescriptor>;
 export interface RecordSchema {
@@ -61,6 +62,8 @@ export interface RecordSchema {
   version: number;
   fields: Field[];
   standard?: "ical-event" | "ical-alarm" | "time-interval";
+  /** Opt in to core-managed, independently configured tables. */
+  tables?: boolean;
   validate?: (data: Record<string, Value>) => void;
 }
 export function field(
@@ -270,7 +273,14 @@ export function validateRecord(
     );
   const output: Record<string, Value> = {};
   for (const f of schema.fields) {
-    const value = source[f.id] === undefined ? f.default : source[f.id];
+    const value =
+      source[f.id] === undefined
+        ? f.generated === "uuid"
+          ? crypto.randomUUID()
+          : f.generated === "timestamp"
+            ? new Date().toISOString()
+            : f.default
+        : source[f.id];
     if (value === undefined) {
       if (f.required || !f.nullable) fail(f, "required field is missing");
       output[f.id] = null;

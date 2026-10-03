@@ -137,6 +137,51 @@ export async function serverPluginHost(
             },
           };
         };
+        const sharedStore = (name: string) => ({
+          list: () => repo.list(actor, name),
+          put: async (
+            data: Record<string, Value>,
+            id: string = randomUUID(),
+          ) => {
+            const previous = repo.db.core.workspaces
+              .get(actor.workspaceId)
+              ?.records.get(id);
+            invariant(
+              !previous || previous.managedBy === actor.pluginId,
+              "PERMISSION_DENIED",
+              "Use declared write commands to modify resources your plugin does not manage",
+            );
+            return repo.mutate(actor, {
+              id: randomUUID(),
+              resourceId: id,
+              collection: name,
+              pluginId: name,
+              operation: "put",
+              baseRevision: previous?.revision ?? 0,
+              data,
+              createdAt: new Date().toISOString(),
+            });
+          },
+          delete: async (id: string) => {
+            const previous = await repo.get(actor, id);
+            invariant(
+              previous.collection === name &&
+                previous.managedBy === actor.pluginId,
+              "PERMISSION_DENIED",
+              "Delete only resources managed by this plugin",
+            );
+            await repo.mutate(actor, {
+              id: randomUUID(),
+              resourceId: id,
+              collection: name,
+              pluginId: name,
+              operation: "delete",
+              baseRevision: previous.revision,
+              data: {},
+              createdAt: new Date().toISOString(),
+            });
+          },
+        });
         return new Map<string, unknown>([
           ["core.server", serverAdapter(repo, actor)],
           [
@@ -184,24 +229,41 @@ export async function serverPluginHost(
                 }),
             },
           ],
-          ["core.variables", { list: () => repo.list(actor, "variables") }],
+          ["core.variables", sharedStore("variables")],
           [
             "core.tables",
             {
-              list: () => repo.list(actor, "tables"),
-              rows: (id: string) =>
-                repo.list(actor, "table_rows", {
-                  filters: [
-                    {
-                      id: "table",
-                      field: "table_id",
-                      operator: "eq",
-                      link: "and",
-                      enabled: true,
-                      value: id,
-                    },
-                  ],
-                }),
+              ...sharedStore("tables"),
+              rows: async (tableId: string) => {
+                const table = await repo.get(actor, tableId);
+                invariant(
+                  table.collection === "tables" && !table.deletedAt,
+                  "NOT_FOUND",
+                  "Table is unavailable",
+                );
+                const target =
+                  typeof table.data.collection_id === "string"
+                    ? table.data.collection_id
+                    : "table_rows";
+                const grants =
+                  packages.find((p) => p.manifest.id === actor.pluginId)
+                    ?.grants ?? [];
+                invariant(
+                  target === "table_rows" ||
+                    table.managedBy === actor.pluginId ||
+                    (manifest.consumes.commands.includes(target + ".list") &&
+                      grants.includes(target + ".list")),
+                  "PERMISSION_DENIED",
+                  "Declare permission to read another plugin's table",
+                );
+                return (await repo.list(actor, target)).filter(
+                  (row) =>
+                    row.data.table_id === tableId ||
+                    (target !== "table_rows" &&
+                      table.data.is_default &&
+                      !row.data.table_id),
+                );
+              },
             },
           ],
           ["core.records", { collection }],
