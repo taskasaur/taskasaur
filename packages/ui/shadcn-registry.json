@@ -1,0 +1,32 @@
+{
+  "registry": "https://ui.shadcn.com/r/styles/base-nova",
+  "cli": "shadcn@4.21.1",
+  "downloadedAt": "2026-10-03T19:31:09.834Z",
+  "command": "npx shadcn@4.21.1 add alert-dialog badge breadcrumb button calendar card checkbox collapsible combobox dialog dropdown-menu input-group input label popover scroll-area select separator sonner switch table tabs textarea toggle --overwrite --yes",
+  "files": {
+    "alert-dialog.tsx": "fad884367462f8717907096b6fb44e175411eefe136ece27ad63048aeeef1221",
+    "badge.tsx": "d9fb280e266119c4b62a4c518e63152de27b094c68d3e5f8929d05bfb0c1bc6c",
+    "breadcrumb.tsx": "cbd2b85e7a0097438855ff1bba8ac0cc3d1229e4c94bda3d52176fd22ea2ac62",
+    "button.tsx": "313353436d0fcc8e44ab470adb614b9fd013d28626f624328ea0d66d41a6c81b",
+    "calendar.tsx": "e79d932c6ace8c9c2eeee67917676368e38511c35207cab8ef63881d9f10f41a",
+    "card.tsx": "8ad3a18d36bda0598dc0e9aa96ea22854944d5443ee4946f1d173815e115375f",
+    "checkbox.tsx": "51b82e5ca459ea7792d8f24ac924f13aeaa2b2cd338560d2b4291e38b648c12e",
+    "collapsible.tsx": "3de60b605e64c835588cecc189fbcf907eb602b0158f970d614b067e868b491e",
+    "combobox.tsx": "ab9b927854ca3b9acab2759ab64847fe1267005df8403fd3c1e2da07b66062ca",
+    "dialog.tsx": "1d4b523a852306483fc3b0d3772d1fbaa2228788858ff8de93ba1c9ff5824afb",
+    "dropdown-menu.tsx": "38eb2d79c390295e7038ed4c016543afdd5441611e9692f10c85f78434752a3f",
+    "input-group.tsx": "442333d5b98f57d12edc1b1309162ab55261616e2f3f821d5e3b8db99983fb8b",
+    "input.tsx": "dab990dfefa0ba78854ab6602ad074270dba9d7d1262184d9bfbb62bd990903b",
+    "label.tsx": "b3b7b21d2877838fc73713df48a47248392de04a3b3fafa8961369f33ab14530",
+    "popover.tsx": "5fecff622f4eecc06e8be32bface11c59d529be5c0a1484c78c9e40530b2b7d0",
+    "scroll-area.tsx": "829549f352f1e56dfe887446bcc3d1707c0ced739a9efcb75f0af364cd88c581",
+    "select.tsx": "4ba225fb838887a2493a8908774f1294ffbc2030af1e372425c6de76f598f0eb",
+    "separator.tsx": "8a1d9397433ccf70631104f377b0e778754582a74c93a57cf13a2f2dcba778bf",
+    "sonner.tsx": "2dd975ad2170ba2570b00e58713dcbda90f26a7fffdaceb1ef7255f450c2d2a6",
+    "switch.tsx": "367ad27cfe2f4ce5648fd3941410d3c3504876ee23e4360a220f1e6cd05f5c2d",
+    "table.tsx": "749b0501e97591f8d7c9ef81366d636e4b47857a15a28e6cf3b87841232e74bf",
+    "tabs.tsx": "04c251a62bddfe55d09bf157ce150b1fc527b1fcfdbb10d51188b1e36dd3e3c0",
+    "textarea.tsx": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
+    "toggle.tsx": "48ab6456afc25c4cf79537252cb9512c5c2846d2b1796170eab8aca91ebf7ddf"
+  }
+}
