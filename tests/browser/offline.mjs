@@ -8,13 +8,22 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(process.env.TEST_APP_URL ?? "http://localhost:8080");
   await page
-    .getByRole("button", { name: "Create local workspace", exact: true })
+    .getByRole("button", { name: "Create workspace", exact: true })
     .click();
+  await page.getByRole("button", { name: "Plugins", exact: true }).click();
   await page
     .getByRole("row")
     .filter({ has: page.getByText("Tasks", { exact: true }) })
     .getByRole("button", { name: "Install", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Confirm install", exact: true })
+    .click();
+  await page
+    .getByRole("row")
+    .filter({ has: page.getByText("Tasks", { exact: true }) })
+    .getByRole("button", { name: "Disable", exact: true })
+    .waitFor({ timeout: 30000 });
   await page
     .getByRole("navigation")
     .getByRole("button", { name: "Tasks", exact: true })

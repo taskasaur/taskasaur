@@ -204,7 +204,9 @@ export function pluginWorkspace(
             "PERMISSION_DENIED",
             "Resource is outside this workspace",
           );
-          return runtime.db.records.put(record);
+          return runtime
+            .collection(record.collection)
+            .put(record.data, record.id);
         },
         filter: (predicate: (record: ResourceRecord) => boolean) => {
           service("core.access");

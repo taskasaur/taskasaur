@@ -1,5 +1,4 @@
 "use client";
-import { serverFetch } from "./network";
 import { useState, useMemo, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -67,14 +66,13 @@ export function FilesView({ runtime }: { runtime: AppRuntime }) {
         ? await runtime.db.fileVersions.get(String(record.data.version_id))
         : undefined;
       if (version) download(String(record.data.name), version.blob);
-      else if (runtime.profile.connected) {
-        const url = new URL("/api/files", runtime.profile.serverUrl);
-        url.searchParams.set("workspaceId", runtime.profile.workspaceId);
-        url.searchParams.set("id", record.id);
-        const response = await serverFetch(url, { credentials: "include" });
-        if (!response.ok) throw new Error("File download failed");
-        download(String(record.data.name), await response.blob());
-      } else throw new Error("This file is not available on this device");
+      else {
+        await runtime.synchronize();
+        download(
+          String(record.data.name),
+          (await runtime.fileBytes(record.id)).blob,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -376,159 +374,4 @@ function UserTable({
     </div>
   );
 }
-export function DevicesView({ runtime }: { runtime: AppRuntime }) {
-  const [error, setError] = useState(""),
-    [enrollment, setEnrollment] = useState<{
-      code: string;
-      expiresAt: string;
-    } | null>(null),
-    [pairing, setPairing] = useState(false),
-    [capabilities, setCapabilities] = useState<{
-      terminalHost: boolean;
-      automationExecute: boolean;
-      secureCredentials: boolean;
-    } | null>(null);
-  useEffect(() => {
-    void window.taskasaurNative
-      ?.capabilities()
-      .then(setCapabilities)
-      .catch(() => undefined);
-  }, []);
-  return (
-    <div className="space-y-4">
-      <p className="page-description">
-        Linked devices share one identity and capability contract. Online
-        devices can offer automation execution or terminal access when enabled.
-      </p>
-      {error && (
-        <p role="alert" className="error-banner">
-          {error}
-        </p>
-      )}
-      <RecordTable
-        runtime={runtime}
-        collection="devices"
-        hideCreate
-        readOnly
-        renderActions={(row) => {
-          const online =
-            !row.data.revoked &&
-            Date.now() - Date.parse(String(row.data.last_seen)) < 45000;
-          return (
-            <span className="flex gap-1 items-center text-xs">
-              {online ? <Wifi size={14} /> : <WifiOff size={14} />}{" "}
-              {online ? "Online" : "Offline"}
-              {!row.data.revoked && row.data.platform !== "server" && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={async () => {
-                    try {
-                      await runtime.api("devices/revoke", { id: row.id });
-                      await runtime.synchronize();
-                    } catch (e) {
-                      setError(String(e));
-                    }
-                  }}
-                >
-                  Revoke
-                </Button>
-              )}
-            </span>
-          );
-        }}
-        toolbar={
-          <>
-            <Button
-              variant="outline"
-              disabled={!runtime.profile.connected}
-              onClick={async () => {
-                try {
-                  const enrollment = await runtime.api<{
-                    code: string;
-                    expiresAt: string;
-                  }>("devices/enroll", {});
-                  setEnrollment(enrollment);
-                  setError("");
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
-              }}
-            >
-              Link computer
-            </Button>
-            {capabilities?.secureCredentials && (
-              <Button
-                disabled={!runtime.profile.connected}
-                onClick={() => setPairing(true)}
-              >
-                Link this computer
-              </Button>
-            )}
-          </>
-        }
-      />
-      {enrollment && (
-        <div className="rounded-lg border p-4 space-y-2">
-          <p>
-            Pairing code: <code>{enrollment.code}</code>
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Expires {new Date(enrollment.expiresAt).toLocaleTimeString()}. Open
-            Taskasaur on the other computer and use its device pairing screen,
-            or run the device CLI with this code.
-          </p>
-          <Button variant="ghost" onClick={() => setEnrollment(null)}>
-            Dismiss
-          </Button>
-        </div>
-      )}
-      <Dialog open={pairing} onOpenChange={setPairing}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Link this computer</DialogTitle>
-          </DialogHeader>
-          <RecordForm
-            schema={{
-              id: "pair",
-              pluginId: "devices",
-              name: "Pair",
-              version: 1,
-              fields: [
-                field("code", "Pairing code (leave empty for this workspace)"),
-                field(
-                  "terminal",
-                  "Allow incoming terminal sessions",
-                  "boolean",
-                  { default: false },
-                ),
-                field("automation", "Allow TypeScript automations", "boolean", {
-                  default: false,
-                }),
-              ],
-            }}
-            onCancel={() => setPairing(false)}
-            onSave={async (data) => {
-              if (data.terminal && !capabilities?.terminalHost)
-                throw new Error("This host cannot run terminals");
-              if (data.automation && !capabilities?.automationExecute)
-                throw new Error("This host cannot execute automations");
-              const code =
-                data.code ||
-                (await runtime.api<{ code: string }>("devices/enroll", {}))
-                  .code;
-              await window.taskasaurNative!.pair({
-                serverUrl: runtime.profile.serverUrl,
-                code: String(code),
-                terminal: data.terminal === true,
-                automation: data.automation === true,
-              });
-              setPairing(false);
-              await runtime.synchronize();
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
+export { PeerDevicesView as DevicesView } from "./peer-devices";

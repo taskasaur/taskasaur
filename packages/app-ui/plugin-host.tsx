@@ -1,3 +1,5 @@
+import { coreModules } from "@taskasaur/platform/core/modules";
+import { peerService } from "../core/peer-service";
 import { pluginWorkspace, pluginModules } from "./plugin-modules";
 ("use client");
 import * as React from "react";
@@ -27,6 +29,7 @@ export interface ExtensionContract {
   grants: string[];
   digest: string;
   browserDigest?: string;
+  coreDigest?: string;
 }
 export interface Surface {
   id: string;
@@ -69,26 +72,23 @@ export async function createBrowserPluginHost(
         return scoped().collection(name);
       };
       const settings = () => ({
-        get: async (key: string) => local.getMetadata(`settings.${id}.${key}`),
+        get: async (key: string) =>
+          runtime.node.replica.read<{ value: unknown }>(
+            `setting/plugin.${id}.${key}`,
+          )?.value,
         set: (key: string, value: unknown) =>
-          local.setMetadata(`settings.${id}.${key}`, value),
+          runtime.node.replica.update(`setting/plugin.${id}.${key}`, { value }),
       });
       return new Map<string, unknown>([
         ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
         ["core.records", { collection }],
+        ["core.modules", coreModules],
         [
           "core.storage.local",
           {
             collection,
-            transaction: <T,>(execute: () => Promise<T>) =>
-              local.transaction(
-                "rw",
-                local.records,
-                local.outbox,
-                local.plugins,
-                local.metadata,
-                execute,
-              ),
+            capabilities: { atomicRecords: true, multiRecordTransactions: false },
+            transaction: async () => {throw new Error('Multi-record transactions are unavailable. Use durable individual writes with stable operation IDs.');},
           },
         ],
         ["core.fields", { field, getSchema, decodeField, validateRecord }],
@@ -97,7 +97,7 @@ export async function createBrowserPluginHost(
           "core.sync",
           {
             synchronize: () => runtime.synchronize(),
-            status: () => local.outbox.toArray(),
+            status: () => runtime.node.replica.status(),
           },
         ],
         [
@@ -124,6 +124,7 @@ export async function createBrowserPluginHost(
           },
         ],
         ["core.devices", { list: () => runtime.collection("devices").list() }],
+        ["core.peers", peerService(runtime.node)],
         [
           "core.access",
           { canWrite: (record: ResourceRecord) => local.canWrite(record) },
@@ -193,7 +194,36 @@ export async function createBrowserPluginHost(
                 "CONTRACT_COLLISION",
                 "UI surface is already registered",
               );
-              const registered = { ...surface, id: key, pluginId: id };
+              const render =
+                id === "remote-terminal" && manifest.version === "1.0.0"
+                  ? React.lazy(async () => {
+                      const { PeerTerminal } = await import("./peer-terminal");
+                      return {
+                        default: () => <PeerTerminal runtime={runtime} />,
+                      };
+                    })
+                  : id === "sharing" && manifest.version === "1.0.0"
+                    ? React.lazy(async () => {
+                        const { PeerSharing } = await import("./peer-sharing");
+                        return {
+                          default: () => <PeerSharing runtime={runtime} />,
+                        };
+                      })
+                    : id === "office-editor" && manifest.version === "1.0.0"
+                      ? React.lazy(async () => {
+                          const { PortableOffice } =
+                            await import("./portable-office");
+                          return {
+                            default: () => (
+                              <PortableOffice
+                                runtime={runtime}
+                                legacy={surface.render}
+                              />
+                            ),
+                          };
+                        })
+                      : surface.render;
+              const registered = { ...surface, render, id: key, pluginId: id };
               runtime.surfaces.set(key, registered);
               runtime.notifySurfaces();
               return () => {
@@ -207,12 +237,6 @@ export async function createBrowserPluginHost(
       ]);
     },
     call: async (command, input, principal, options) => {
-      invariant(
-        !options?.targetDeviceId ||
-          options.targetDeviceId === principal.deviceId,
-        "CAPABILITY_UNSUPPORTED",
-        "This command has no handler on the selected device",
-      );
       if (options?.targetDeviceId || !host.router.has(command)) {
         const result = await runtime.api<{
           result: unknown;
@@ -221,6 +245,7 @@ export async function createBrowserPluginHost(
           context: {
             workspaceId: actor.workspaceId,
             pluginId: principal.pluginId,
+            targetDeviceId: options?.targetDeviceId,
           },
           request: {
             jsonrpc: "2.0",
@@ -268,9 +293,10 @@ export async function createBrowserPluginHost(
         "PERMISSION_DENIED",
         "Event resource is unavailable",
       );
-      if (runtime.profile.connected)
-        await runtime.api("events", { pluginId: principal.pluginId, event });
-      await host.deliver(event);
+      await runtime.node.replica.update(
+        "event/" + event.id,
+        event as unknown as Record<string, unknown>,
+      );
     },
   });
   for (const manifest of runtime.registry.manifests.values())
@@ -306,56 +332,82 @@ export async function createBrowserPluginHost(
     }
   for (const extension of extensions) {
     const manifest = extension.manifest;
-    if (!runtime.registry.enabled(manifest.id) || !manifest.entrypoints.browser)
-      continue;
+    if (!runtime.registry.enabled(manifest.id)) continue;
+    const modules: PluginModule[] = [];
     try {
-      const key = `extension.source.${extension.digest}`;
-      let source = await local.getMetadata<string>(key);
-      if (!source && runtime.profile.connected) {
-        const result = await runtime.api<{ source: string }>(
-          "plugins/source?id=" + encodeURIComponent(manifest.id),
-        );
-        source = result.source;
-      }
-      invariant(
-        source && extension.browserDigest,
-        "INVALID_PACKAGE",
-        "Browser module is unavailable on this device",
-      );
-      const bytes = new TextEncoder().encode(source),
-        hash = Array.from(
-          new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
-        )
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-      invariant(
-        hash === extension.browserDigest,
-        "INTEGRITY_FAILED",
-        "Browser module integrity check failed",
-      );
-      await local.setMetadata(key, source);
-      const url = URL.createObjectURL(
-        new Blob([source], { type: "text/javascript" }),
-      );
-      try {
-        const imported = await import(
-          /* webpackIgnore: true */ /* @vite-ignore */ url
-        );
-        const module: PluginModule = { ...imported.default, manifest };
+      for (const [entry, digest, key] of [
+        [
+          manifest.entrypoints.core,
+          extension.coreDigest,
+          `extension.core.${extension.digest}`,
+        ],
+        [
+          manifest.entrypoints.browser,
+          extension.browserDigest,
+          `extension.source.${extension.digest}`,
+        ],
+      ]) {
+        if (!entry) continue;
+        const source = await local.getMetadata<string>(key!);
         invariant(
-          typeof module.activate === "function",
+          source && digest,
           "INVALID_PACKAGE",
-          "Browser entrypoint must export activate(context)",
+          "Plugin module is unavailable; reinstall the verified package",
         );
-        host.register(module, extension.grants);
-        await host.activate(manifest.id);
-      } finally {
-        URL.revokeObjectURL(url);
+        const bytes = new TextEncoder().encode(source),
+          hash = Array.from(
+            new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+          )
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+        invariant(
+          hash === digest,
+          "INTEGRITY_FAILED",
+          "Plugin module integrity check failed",
+        );
+        const url = URL.createObjectURL(
+          new Blob([source], { type: "text/javascript" }),
+        );
+        try {
+          const imported = await import(/* @vite-ignore */ url);
+          invariant(
+            typeof imported.default?.activate === "function",
+            "INVALID_PACKAGE",
+            "Plugin must export activate(context)",
+          );
+          modules.push(imported.default);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
       }
+      if (!modules.length) continue;
+      host.register(
+        {
+          manifest,
+          activate: async (context) => {
+            const cleanups: Array<() => void | Promise<void>> = [];
+            try {
+              for (const module of modules) {
+                const cleanup = await module.activate(context);
+                if (cleanup) cleanups.push(cleanup);
+              }
+            } catch (error) {
+              for (const cleanup of cleanups.reverse()) await cleanup();
+              throw error;
+            }
+            return async () => {
+              for (const cleanup of cleanups.reverse()) await cleanup();
+            };
+          },
+        },
+        extension.grants,
+      );
+      await host.activate(manifest.id);
     } catch (error) {
       host.unavailable(manifest.id, error);
     }
   }
+
   for (const extension of extensions) {
     const state = runtime.registry.states.get(extension.manifest.id);
     if (state)

@@ -10,7 +10,6 @@ import {
   artifactHash,
 } from "@taskasaur/platform/plugin-sdk/artifact";
 import { isRequiredCore } from "@taskasaur/platform/core/catalog";
-import { defaultServerUrl, serverFetch } from "./network";
 import Dexie, { type Table } from "dexie";
 import { LocalDatabase } from "../data-dexie";
 import { PluginRegistry } from "@taskasaur/platform/core/registry";
@@ -26,8 +25,15 @@ import type {
   Mutation,
   PluginEvent,
 } from "@taskasaur/platform/plugin-sdk";
-import { SyncEngine } from "../sync-supabase";
-import { SyncQueue } from "../sync-supabase/queue";
+import { browserDevice } from "../platform-browser/device";
+import type { DeviceCore, WorkspaceNode } from "../core/device";
+import { deviceRecordId } from "../core/records";
+import { currentPolicy } from "../core/identity";
+import { workflowTriggers, reminders } from "../core/schedules";
+import { PortableWorkflows } from "../core/workflows";
+import { runBrowserTypeScript } from "../platform-browser/typescript";
+import type { FileManifest } from "../core/files";
+import { SyncQueue } from "../sync/queue";
 import type { PluginState } from "@taskasaur/platform/core/registry";
 import {
   createBrowserPluginHost,
@@ -55,7 +61,12 @@ export class AppRuntime {
   readonly db: LocalDatabase;
   readonly registry: PluginRegistry;
   readonly principal: Principal;
-  readonly sync: SyncEngine;
+  device!: DeviceCore;
+  node!: WorkspaceNode;
+  automation!: PortableWorkflows;
+  automationOptions = { enabled: false, trustedCode: false };
+  private projectionQueue: Promise<unknown> = Promise.resolve();
+  private projectionListener?: (id: string) => void;
   private syncQueue = new SyncQueue();
   readonly surfaces = new Map<string, Surface>();
   readonly surfaceListeners = new Set<() => void>();
@@ -72,12 +83,10 @@ export class AppRuntime {
   private closed = false;
   async refreshInventory() {
     try {
-      const inventory = this.profile.connected
-        ? await this.api<PluginInventory>("plugins/inventory?refresh=1")
-        : await readInventory(
-            import.meta.env.VITE_PLUGIN_INVENTORY_URL || defaultInventoryUrl,
-            { allowHttp: import.meta.env.DEV, followRedirects: true },
-          );
+      const inventory = await readInventory(
+        import.meta.env.VITE_PLUGIN_INVENTORY_URL || defaultInventoryUrl,
+        { allowHttp: import.meta.env.DEV, followRedirects: true },
+      );
       if (this.closed) return;
       this.inventory = inventory;
       this.availablePlugins = inventory.plugins;
@@ -109,52 +118,55 @@ export class AppRuntime {
         "INVENTORY_CHANGED",
         "The release changed; review it again",
       );
-    if (existing && (!entry || existing.digest === entry.sha256)) return;
+    if (
+      existing &&
+      (!entry || existing.digest === entry.sha256) &&
+      (!existing.manifest.entrypoints.browser ||
+        (await this.db.getMetadata(`extension.source.${existing.digest}`))) &&
+      (!existing.manifest.entrypoints.core ||
+        (await this.db.getMetadata(`extension.core.${existing.digest}`)))
+    )
+      return;
     invariant(
       entry && this.inventory,
       "PLUGIN_NOT_FOUND",
       "Refresh the inventory to find this plugin",
     );
-    if (this.profile.connected) {
-      await this.api("plugins/install", {
-        id: entry.id,
-        version: entry.version,
-        sha256: entry.sha256,
-        grants: entry.grants,
-      });
-      this.registerPackages(
-        await this.api<ExtensionContract[]>("plugins/packages"),
+    const bytes = await boundedDownload(entry.downloadUrl, 50 * 1024 * 1024, {
+      allowHttp: import.meta.env.DEV,
+      followRedirects: true,
+    });
+    const verified = await verifyArtifact(
+      bytes,
+      this.inventory.publishers,
+      entry,
+    );
+    const browser = verified.manifest.entrypoints.browser,
+      core = verified.manifest.entrypoints.core;
+    const extension: ExtensionContract = {
+      manifest: verified.manifest,
+      schemas: verified.contracts,
+      grants: entry.grants,
+      digest: verified.digest,
+      coreDigest: core ? await artifactHash(verified.files[core]) : undefined,
+      browserDigest: browser
+        ? await artifactHash(verified.files[browser])
+        : undefined,
+    };
+    if (core)
+      await this.db.setMetadata(
+        `extension.core.${extension.digest}`,
+        new TextDecoder().decode(verified.files[core]),
       );
-    } else {
-      const bytes = await boundedDownload(entry.downloadUrl, 50 * 1024 * 1024, {
-        allowHttp: import.meta.env.DEV,
-        followRedirects: true,
-      });
-      const verified = await verifyArtifact(
-        bytes,
-        this.inventory.publishers,
-        entry,
+    if (browser)
+      await this.db.setMetadata(
+        `extension.source.${extension.digest}`,
+        new TextDecoder().decode(verified.files[browser]),
       );
-      const browser = verified.manifest.entrypoints.browser;
-      const extension: ExtensionContract = {
-        manifest: verified.manifest,
-        schemas: verified.contracts,
-        grants: entry.grants,
-        digest: verified.digest,
-        browserDigest: browser
-          ? await artifactHash(verified.files[browser])
-          : undefined,
-      };
-      if (browser)
-        await this.db.setMetadata(
-          `extension.source.${extension.digest}`,
-          new TextDecoder().decode(verified.files[browser]),
-        );
-      this.registerPackages([
-        ...this.extensions.filter((e) => e.manifest.id !== id),
-        extension,
-      ]);
-    }
+    this.registerPackages([
+      ...this.extensions.filter((e) => e.manifest.id !== id),
+      extension,
+    ]);
     await this.db.setMetadata("core.extensions", this.extensions);
   }
   async callPluginCommand(pluginId: string, command: string, input: unknown) {
@@ -238,29 +250,197 @@ export class AppRuntime {
       pluginId: "records",
       permissions: [],
     };
-    this.sync = new SyncEngine(this.db, {
-      push: (m) => this.push(m),
-      pull: (cursor) => this.api(`sync?cursor=${encodeURIComponent(cursor)}`),
-    });
   }
+
   async initialize() {
     let extensions =
       (await this.db.getMetadata<ExtensionContract[]>("core.extensions")) ?? [];
-    if (this.profile.connected && navigator.onLine) {
-      try {
-        extensions = await this.api("plugins/packages");
-        await this.db.setMetadata("core.extensions", extensions);
-      } catch (error) {
-        if (!extensions.length && !(error instanceof TypeError)) throw error;
-      }
-    }
     this.registerPackages(extensions);
     this.inventory =
       await this.db.getMetadata<PluginInventory>("core.inventory");
     this.availablePlugins = this.inventory?.plugins ?? [];
+    this.device = await browserDevice();
+    this.node = this.device
+      .profiles()
+      .some((p) => p.id === this.profile.workspaceId)
+      ? await this.device.workspace(this.profile.workspaceId)
+      : await this.device.createWorkspace(
+          this.profile.name,
+          this.profile.workspaceId,
+          this.profile.userId,
+        );
+    this.profile.connected = true;
+    this.profile.userId = this.node.replica.member.userId;
+    this.principal.userId = this.profile.userId;
+    this.principal.deviceId = deviceRecordId(this.device.identity.id);
+    this.automationOptions =
+      (await this.db.getMetadata("device.automation")) ??
+      this.automationOptions;
+    this.device.setCapabilities(() => [
+      "records.storage",
+      "files.storage",
+      "credentials.refresh",
+      ...(this.automationOptions.enabled
+        ? ["automation.*", "automation.execute"]
+        : []),
+    ]);
+    const native = window.taskasaurNative;
+    if (native) {
+      const info = await native.peer.info();
+      if (
+        !info.workspaces.includes(this.profile.workspaceId) &&
+        currentPolicy(this.node.replica.access).owner.id ===
+          this.device.identity.id
+      ) {
+        await native.peer.join(
+          await this.device.approve(this.profile.workspaceId, info.request),
+        );
+        info.workspaces.push(this.profile.workspaceId);
+      }
+      if (info.workspaces.includes(this.profile.workspaceId))
+        await this.device.setPeers(this.profile.workspaceId, [
+          "local:desktop",
+          ...this.node.link.peers,
+        ]);
+    }
+    // One-time import of previously downloaded records; retain the old database for rollback.
+    if (!(await this.db.getMetadata("peer.migrated"))) {
+      for (const record of await this.db.records.toArray()) {
+        if (!this.node.records.get(record.id))
+          await this.node.replica.update(
+            "record/" + record.id,
+            record as unknown as Record<string, unknown>,
+          );
+      }
+      for (const version of await this.db.fileVersions.toArray()) {
+        await this.node.protocol.files.save(
+          version.fileId,
+          new Uint8Array(await version.blob.arrayBuffer()),
+          version.blob.type,
+          version.parentVersionId,
+          version.id,
+        );
+      }
+      await this.db.setMetadata("peer.migrated", true);
+      await this.db.outbox.clear();
+    }
+    this.db.replicaBridge = {
+      canWrite: () => this.node.records.canWrite(),
+      put: async (collection, data, id) => {
+        const record = await this.node.records.put(collection, data, id);
+        await this.project();
+        return record;
+      },
+      delete: async (id) => {
+        await this.node.records.delete(id);
+        await this.project();
+      },
+      saveFile: async (id, blob, parent) => {
+        const file = this.node.records.get(id);
+        invariant(
+          file?.collection === "files",
+          "NOT_FOUND",
+          "File record was not found",
+        );
+        const version = await this.node.protocol.files.save(
+          id,
+          new Uint8Array(await blob.arrayBuffer()),
+          blob.type || "application/octet-stream",
+          parent,
+        );
+        await this.node.records.put(
+          "files",
+          {
+            ...file.data,
+            version_id: version.id,
+            size: String(version.size),
+            media_type: version.mediaType,
+            checksum: version.checksum,
+            upload_state: "available",
+          },
+          id,
+        );
+        await this.project();
+        return version.id;
+      },
+    };
+    this.projectionListener = (id) => {
+      void (async () => {
+        await this.project();
+        if (id.startsWith("event/") && this.host) {
+          const event =
+            this.node.replica.read<
+              import("@taskasaur/platform/plugin-sdk").PluginEvent
+            >(id);
+          if (event) await this.host.deliver(event);
+        }
+      })().catch((e) => {
+        this.node.replica.error = String(e);
+        this.notifySurfaces();
+      });
+    };
+    this.node.replica.listeners.add(this.projectionListener);
+    await this.project();
     await this.registry.initialize();
     this.extensions = extensions;
     await this.refreshHost();
+    this.automation = new PortableWorkflows(
+      this.node,
+      {
+        deviceId: this.principal.deviceId!,
+        call: async (command, input, operationId) => {
+          invariant(
+            this.host?.router.has(command),
+            "CAPABILITY_UNSUPPORTED",
+            "This device does not provide the workflow command",
+          );
+          const result = await this.host!.router.receive(
+            { jsonrpc: "2.0", id: operationId, method: command, params: input },
+            {
+              principal: {
+                ...this.principal,
+                permissions: [
+                  this.host!.router.permissionFor(command) ?? command,
+                ],
+              },
+              signal: AbortSignal.timeout(30000),
+              mutationId: operationId,
+            },
+          );
+          invariant(
+            result && "result" in result,
+            "COMMAND_FAILED",
+            result?.error?.message ?? "Workflow command failed",
+          );
+          return result.result as import("@taskasaur/platform/field-types").Value;
+        },
+        typescript: async (source, input) => {
+          invariant(
+            this.automationOptions.trustedCode,
+            "PERMISSION_DENIED",
+            "Trusted TypeScript was disabled",
+          );
+          return runBrowserTypeScript(source, input);
+        },
+      },
+      () => this.automationOptions,
+    );
+    this.node.protocol.setHandler(async (command, input) => {
+      if (command === "credentials.refresh") {
+        const request = input as {
+          id: string;
+          pluginId: string;
+          destination: string;
+        };
+        await this.node.vault.refresh(
+          request.id,
+          request.pluginId,
+          request.destination,
+        );
+        return { ok: true };
+      }
+      return this.localAutomation(command, input as Record<string, any>);
+    });
     void this.refreshInventory()
       .then(async () => {
         if (this.closed) return;
@@ -287,6 +467,63 @@ export class AppRuntime {
       });
     return this;
   }
+  async configureAutomation(value: { enabled: boolean; trustedCode: boolean }) {
+    this.automationOptions = value;
+    await this.db.setMetadata("device.automation", value);
+    await this.announce();
+    this.notifySurfaces();
+  }
+  private localAutomation(command: string, input: Record<string, any>) {
+    invariant(
+      !this.closed && this.automationOptions.enabled,
+      "CAPABILITY_UNSUPPORTED",
+      "Automation execution is disabled on this device",
+    );
+    if (command === "automation.run")
+      return this.automation.start(
+        input as Parameters<PortableWorkflows["start"]>[0],
+      );
+    if (command === "automation.cancel")
+      return this.automation.cancel(input.id).then(() => ({ ok: true }));
+    if (command === "automation.signal")
+      return this.automation.signal(input.id, input.name, input.data);
+    throw new CoreError(
+      "CAPABILITY_UNSUPPORTED",
+      "This operation needs a different device capability",
+    );
+  }
+  private lastAnnouncement = 0;
+  private async announce() {
+    if (
+      this.node.records.canWrite() &&
+      Date.now() - this.lastAnnouncement > 30000
+    ) {
+      const platform = window.taskasaurNative
+        ? "desktop"
+        : (await import("@capacitor/core")).Capacitor.getPlatform();
+      const data = {
+          name: window.taskasaurNative
+            ? "This computer (app)"
+            : this.device.identity.name,
+          platform: platform === "web" ? "browser" : platform,
+          capabilities: this.node.protocol.capabilities(),
+        },
+        old = this.node.records.get(this.principal.deviceId!);
+      if (
+        !old ||
+        Object.entries(data).some(
+          ([key, value]) =>
+            JSON.stringify(old.data[key]) !== JSON.stringify(value),
+        )
+      )
+        await this.node.records.put(
+          "devices",
+          { ...data, last_seen: new Date().toISOString() },
+          this.principal.deviceId,
+        );
+      this.lastAnnouncement = Date.now();
+    }
+  }
   collection(id: string) {
     const schema = getSchema(id);
     return this.db
@@ -297,79 +534,198 @@ export class AppRuntime {
       )
       .collection(id);
   }
+  async project() {
+    const work = async () => {
+      if (this.closed || !this.node) return;
+      const records = this.node.records.all(),
+        ids = new Set(records.map((r) => r.id));
+      await this.db.transaction("rw", this.db.records, async () => {
+        const obsolete = (
+          await this.db.records.toCollection().primaryKeys()
+        ).filter((id) => !ids.has(id));
+        if (obsolete.length) await this.db.records.bulkDelete(obsolete);
+        await this.db.records.bulkPut(records);
+      });
+      for (const version of this.node.protocol.files.manifests()) {
+        if (await this.db.fileVersions.get(version.id)) continue;
+        try {
+          const { bytes } = await this.node.protocol.files.read(version.id);
+          await this.db.fileVersions.put({
+            id: version.id,
+            fileId: version.fileId,
+            parentVersionId: version.parentVersionId,
+            blob: new Blob([new Uint8Array(bytes)], {
+              type: version.mediaType,
+            }),
+            createdAt: version.createdAt,
+            synced: true,
+          });
+        } catch (error) {
+          if ((error as { kind?: string }).kind !== "OFFLINE_UNAVAILABLE")
+            throw error;
+        }
+      }
+      this.notifySurfaces();
+    };
+    const next = this.projectionQueue.then(work);
+    this.projectionQueue = next.catch(() => {});
+    return next;
+  }
   async api<T = unknown>(
     path: string,
     body?: unknown,
     method = body === undefined ? "GET" : "POST",
   ): Promise<T> {
-    invariant(
-      this.profile.connected,
-      "ONLINE_REQUIRED",
-      "Connect a workspace to use this server feature",
-    );
-    const url = new URL(
-      `/api/${path}`,
-      this.profile.serverUrl || defaultServerUrl(),
-    );
-    url.searchParams.set("workspaceId", this.profile.workspaceId);
-    const response = await serverFetch(url, {
-      method,
-      credentials: "include",
-      headers:
-        body === undefined ? undefined : { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const payload = await response.json();
-    if (!response.ok || payload.error)
-      throw new CoreError(
-        payload.error?.data?.kind ?? payload.error?.kind ?? "NETWORK_ERROR",
-        payload.error?.message ?? "Server request failed",
+    const url = new URL(path, "https://local.invalid/"),
+      route = url.pathname.slice(1),
+      input = (body ?? {}) as Record<string, any>;
+    let result: unknown;
+    if (route === "records/get")
+      result = this.node.records.get(url.searchParams.get("id")!);
+    else if (route === "devices")
+      result = await this.db.records
+        .where("collection")
+        .equals("devices")
+        .toArray();
+    else if (route === "credentials/secret") {
+      await this.node.vault.set(input.id, input.secret, input.deviceIds);
+      await this.project();
+      result = { ok: true };
+    } else if (route === "credentials/revoke") {
+      await this.node.vault.revoke(input.id);
+      await this.project();
+      result = { ok: true };
+    } else if (route === "devices/revoke") {
+      const id =
+        Object.keys(currentPolicy(this.node.replica.access).members).find(
+          (id) => deviceRecordId(id) === input.id,
+        ) ?? input.id;
+      await this.device.revoke(this.profile.workspaceId, id);
+      result = { ok: true };
+    } else if (route === "rpc") {
+      const request = input.request;
+      if (this.host?.router.has(request.method))
+        result = await this.host.router.receive(request, {
+          principal: {
+            ...this.principal,
+            pluginId: input.context.pluginId,
+            permissions: [
+              this.host.router.permissionFor(request.method) ?? request.method,
+            ],
+          },
+          signal: AbortSignal.timeout(30000),
+        });
+      else
+        result = {
+          result: await this.node.call(
+            request.method,
+            request.params,
+            input.context?.targetDeviceId,
+            request.id,
+          ),
+        };
+    } else if (route === "access/members")
+      result = Object.values(
+        currentPolicy(this.node.replica.access).members,
+      ).map((m) => ({ user_id: m.userId, role: m.role }));
+    else if (route === "automation/webhook") {
+      const target = this.node.records.get(input.id)?.data.target_device_id;
+      invariant(
+        typeof target === "string",
+        "WRONG_EXECUTION_TARGET",
+        "Select a native execution device to receive webhooks",
       );
-    return payload as T;
-  }
-  async push(mutation: Mutation): Promise<ResourceRecord> {
-    const {
-      id,
-      resourceId,
-      pluginId,
-      collection,
-      operation,
-      baseRevision,
-      data,
-      createdAt,
-    } = mutation;
-    const response = await this.api<{
-      result?: ResourceRecord;
-      error?: { message: string; data: { kind: string } };
-    }>("rpc", {
-      context: {
-        workspaceId: this.profile.workspaceId,
-        pluginId: mutation.pluginId,
-      },
-      request: {
-        jsonrpc: "2.0",
-        id: mutation.id,
-        method: `${mutation.collection}.${mutation.operation}`,
-        params: {
-          id,
-          resourceId,
-          pluginId,
-          collection,
-          operation,
-          baseRevision,
-          data,
-          createdAt,
-        },
-      },
-    });
-    if (response.error)
-      throw new CoreError(response.error.data.kind, response.error.message);
-    invariant(
-      response.result,
-      "INVALID_RESPONSE",
-      "Server returned no mutation result",
-    );
-    return response.result;
+      await this.node.synchronize();
+      result = await this.node.call(
+        "core.http",
+        { path, body, method },
+        target,
+      );
+    } else if (
+      ["automation/run", "automation/cancel", "automation/signal"].includes(
+        route,
+      )
+    ) {
+      const target =
+        input.targetDeviceId ??
+        this.node.records.get(input.id)?.data.target_device_id;
+      invariant(
+        typeof target === "string",
+        "WRONG_EXECUTION_TARGET",
+        "Select an execution device",
+      );
+      if (target === this.principal.deviceId)
+        result = await this.localAutomation(route.replace("/", "."), input);
+      else {
+        await this.node.synchronize();
+        try {
+          result = await this.node.call(
+            route.replace("/", "."),
+            input,
+            target,
+            input.operationId,
+          );
+        } catch (error) {
+          const workflow = this.node.records.get(input.id);
+          if (
+            route !== "automation/run" ||
+            workflow?.data.offline_policy !== "waitForDevice" ||
+            !["DEVICE_UNAVAILABLE", "OFFLINE"].includes(
+              (error as { kind?: string }).kind ?? "",
+            )
+          )
+            throw error;
+          const operationId = input.operationId ?? crypto.randomUUID();
+          await this.node.enqueue(
+            "automation.run",
+            { ...input, operationId },
+            target,
+            operationId,
+            Date.now() +
+              Math.min(
+                86400,
+                Number(workflow.data.dispatch_timeout_seconds) || 3600,
+              ) *
+                1000,
+          );
+          result = await this.node.records.put(
+            "workflow_runs",
+            {
+              workflow_id: input.id,
+              target_device_id: target,
+              workflow_version: Number(workflow.data.published_version),
+              status: "queued",
+              input: input.input ?? {},
+            },
+            operationId,
+          );
+        }
+        await this.node.synchronize();
+        await this.project();
+      }
+    } else {
+      await this.node.synchronize();
+      const provider = [...this.registry.manifests.values()].find((m) =>
+        m.server?.routes.some((r) =>
+          r.path.endsWith("*")
+            ? route.startsWith(r.path.slice(0, -1))
+            : r.path === route,
+        ),
+      );
+      const assignment =
+        provider &&
+        this.node.replica.read<{ deviceId: string }>(
+          "setting/service." + provider.id,
+        );
+      result = await this.node.call(
+        "core.http",
+        { path, body: body ?? null, method },
+        input.targetDeviceId ?? input.deviceId ?? assignment?.deviceId,
+      );
+      await this.node.synchronize();
+      await this.project();
+    }
+    return result as T;
   }
   async pluginAction(
     id: string,
@@ -377,7 +733,6 @@ export class AppRuntime {
     reviewedDigest?: string,
   ) {
     if (action === "install") await this.ensurePackage(id, reviewedDigest);
-    if (this.profile.connected) await this.api("plugins", { id, action });
     const result = await this.registry[action](id);
     await this.refreshHost();
     if (action === "disable" || action === "uninstall")
@@ -419,146 +774,46 @@ export class AppRuntime {
     await this.pluginAction(id, "enable");
   }
   async configurePlugin(id: string, features: string[]) {
-    if (this.profile.connected)
-      await this.api("plugins/features", { id, features });
     await this.registry.configure(id, features);
     await this.refreshHost();
   }
   async synchronize() {
-    if (!this.profile.connected || !navigator.onLine) return;
-    const work = async () => {
-      this.registerPackages(
-        await this.api<ExtensionContract[]>("plugins/packages"),
-      );
-      await this.db.setMetadata("core.extensions", this.extensions);
-      const inventory =
-        await this.api<Array<{ state: PluginState }>>("plugins");
-      for (const { state } of inventory) {
-        const previous = this.registry.states.get(state.id);
-        if (
-          previous?.error &&
-          previous.version === state.version &&
-          previous.enabled === state.enabled &&
-          JSON.stringify(previous.features) === JSON.stringify(state.features)
-        )
-          state.error = previous.error;
-        this.registry.states.set(state.id, state);
-        await this.db.plugins.put(state);
-      }
-      await this.refreshHost();
-      await this.sync.synchronize();
-      for (let page = 0; page < 10; page++) {
-        const cursor =
-          (await this.db.getMetadata<string>("events.cursor")) ?? "0";
-        const batch = await this.api<{
-          events: PluginEvent[];
-          cursor: string;
-          hasMore: boolean;
-        }>(`events?cursor=${cursor}`);
-        for (const event of batch.events) await this.host?.deliver(event);
-        await this.db.setMetadata("events.cursor", batch.cursor);
-        if (!batch.hasMore) break;
-      }
-      const versions = (
-        await this.db.fileVersions.orderBy("createdAt").toArray()
-      ).filter((v) => !v.synced && !v.error && !v.recoveryFileId);
-      const blocked = new Set<string>();
-      for (const version of versions) {
-        if (blocked.has(version.fileId)) continue;
-        const file = await this.db.records.get(version.fileId);
-        if (
-          !file ||
-          file.deletedAt ||
-          file.revision === 0 ||
-          (await this.db.outbox.where("resourceId").equals(file.id).count())
-        )
-          continue;
-        try {
-          const url = new URL(
-            "/api/files",
-            this.profile.serverUrl || defaultServerUrl(),
-          );
-          url.searchParams.set("workspaceId", this.profile.workspaceId);
-          url.searchParams.set("id", version.fileId);
-          url.searchParams.set("version", version.id);
-          if (version.parentVersionId)
-            url.searchParams.set("parent", version.parentVersionId);
-          const response = await serverFetch(url, {
-            method: "PUT",
-            credentials: "include",
-            headers: {
-              "Content-Type": version.blob.type || "application/octet-stream",
-            },
-            body: version.blob,
-          });
-          const result = await response.json();
-          if (!response.ok)
-            throw new CoreError(
-              result.error?.kind ?? "UPLOAD_FAILED",
-              result.error?.message ?? "File upload failed",
-            );
-          await this.db.acknowledgeFile(version.id, result.record);
-        } catch (error) {
-          if (
-            error instanceof CoreError &&
-            [
-              "REVISION_CONFLICT",
-              "PERMISSION_DENIED",
-              "IDEMPOTENCY_CONFLICT",
-            ].includes(error.kind)
-          ) {
-            await this.db.fileVersions.update(version.id, {
-              error: error.message,
-            });
-            blocked.add(version.fileId);
-          } else throw error;
-        }
-      }
-      const devices = await this.api<ResourceRecord[]>("devices");
-      await this.db.ingest(
-        devices,
-        (await this.db.getMetadata<string>("sync.cursor")) ?? "0",
-      );
-    };
-    return this.syncQueue.run(work);
+    return this.syncQueue.run(async () => {
+      await this.announce();
+      await this.node.synchronize();
+      await this.node.flushCommands();
+      if (this.automationOptions.enabled)
+        await workflowTriggers(this.node, (input) =>
+          this.automation.start(
+            input as Parameters<PortableWorkflows["start"]>[0],
+          ),
+        );
+      await this.automation?.tick();
+      await reminders(this.node, (id) => this.registry.enabled(id));
+      await this.project();
+    });
   }
   async fileBytes(fileId: string) {
-    const file = await this.db.records.get(fileId);
-    invariant(
-      file?.collection === "files" && file.data.version_id,
-      "NOT_FOUND",
-      "File has no saved version",
+    const file = this.node.records.get(fileId);
+    invariant(file?.data.version_id, "NOT_FOUND", "File has no saved version");
+    const { manifest, bytes } = await this.node.protocol.files.read(
+      String(file.data.version_id),
     );
-    const id = String(file.data.version_id),
-      local = await this.db.fileVersions.get(id);
-    if (local) return local;
-    invariant(
-      this.profile.connected && navigator.onLine,
-      "OFFLINE_UNAVAILABLE",
-      "Download this file before opening it offline",
-    );
-    const url = new URL(
-      "/api/files",
-      this.profile.serverUrl || defaultServerUrl(),
-    );
-    url.searchParams.set("workspaceId", this.profile.workspaceId);
-    url.searchParams.set("id", fileId);
-    url.searchParams.set("version", id);
-    const response = await serverFetch(url, { credentials: "include" });
-    invariant(response.ok, "DOWNLOAD_FAILED", "File download failed");
-    const value = {
-      id,
+    return {
+      id: manifest.id,
       fileId,
-      parentVersionId: null,
-      blob: await response.blob(),
-      createdAt: new Date().toISOString(),
+      parentVersionId: manifest.parentVersionId,
+      blob: new Blob([new Uint8Array(bytes)], { type: manifest.mediaType }),
+      createdAt: manifest.createdAt,
       synced: true,
     };
-    await this.db.fileVersions.put(value);
-    return value;
   }
   async close() {
     this.closed = true;
+    await this.automation?.close();
+    if (this.projectionListener)
+      this.node?.replica.listeners.delete(this.projectionListener);
+    await this.projectionQueue;
     await this.host?.close();
     this.surfaces.clear();
     this.notifySurfaces();
@@ -582,14 +837,24 @@ export async function saveProfile(profile: WorkspaceProfile) {
   }
 }
 export async function createLocalWorkspace(name: string) {
+  const device = await browserDevice(),
+    node = await device.createWorkspace(name);
+  return profileForNode(node);
+}
+export async function joinWorkspace(invitation: string) {
+  const node = await (await browserDevice()).join(invitation);
+  return profileForNode(node);
+}
+async function profileForNode(node: WorkspaceNode) {
   const profile: WorkspaceProfile = {
-    id: crypto.randomUUID(),
-    workspaceId: crypto.randomUUID(),
-    userId: crypto.randomUUID(),
-    name,
+    id: node.replica.workspaceId,
+    workspaceId: node.replica.workspaceId,
+    userId: node.replica.member.userId,
+    name: node.link.name,
     serverUrl: "",
-    connected: false,
+    connected: true,
   };
   await saveProfile(profile);
   return profile;
 }
+export { browserDevice };

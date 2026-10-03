@@ -1,82 +1,103 @@
-import { chromium } from "@playwright/test";
-import JSZip from "jszip";
-import { readFile } from "node:fs/promises";
+import { chromium, expect } from "@playwright/test";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
-const context = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
-  }),
-  page = await context.newPage();
-const errors = [];
-page.on("pageerror", (e) => errors.push(e.message));
-await page.goto("http://localhost:8080/");
-await page
-  .getByRole("button", { name: "Create local workspace", exact: true })
-  .click();
-await page
-  .getByRole("row")
-  .filter({ has: page.getByText("Office Editor", { exact: true }) })
-  .getByRole("button", { name: "Install", exact: true })
-  .click();
-await page
-  .getByRole("navigation")
-  .getByRole("button", { name: "Office", exact: true })
-  .click();
-const results = [];
-for (const kind of ["Document", "Spreadsheet", "Presentation"]) {
-  await page.getByRole("button", { name: kind, exact: true }).click();
-  await page.getByText("Ready", { exact: true }).waitFor({ timeout: 90000 });
-  const frame = page
-    .frames()
-    .find((f) => f.url().includes("/office-engine/cool.html"));
-  const before = await frame.evaluate(() => ({
-    type: window.app.map.getDocType(),
-    files: window.Module.FS.readdir("/taskasaur"),
-  }));
-  await frame.evaluate((kind) => {
-    if (kind === "Document")
-      window.app.map.sendUnoCommand(".uno:InsertText", {
-        Text: { type: "string", value: "Taskasaur offline save fixture" },
-      });
-    else if (kind === "Spreadsheet")
-      window.app.map.sendUnoCommand(".uno:EnterString", {
-        StringName: { type: "string", value: "=SUM(2;3)" },
-      });
-  }, kind);
-  await page.waitForTimeout(1500);
+try {
+  const context = await browser.newContext({ acceptDownloads: true }),
+    page = await context.newPage();
+  page.setDefaultTimeout(30000);
+  page.on("pageerror", (error) => console.log("Page error:", error.message));
+  await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:58597");
+  await page
+    .getByRole("button", { name: "Create workspace", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  const row = page
+    .getByRole("row")
+    .filter({ has: page.getByText("Office Editor", { exact: true }) });
+  await row.getByRole("button", { name: "Install", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm install", exact: true })
+    .click();
+  await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Office", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Document", exact: true }).click();
+  await page.locator(".ql-editor").fill("Offline document content");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  try {
-    await page
-      .getByText("Saved on this device", { exact: true })
-      .waitFor({ timeout: 35000 });
-  } catch {
-    results.push({
-      kind,
-      before,
-      error: await page.locator("body").innerText(),
-    });
-    break;
-  }
-  const downloadPromise = page.waitForEvent("download");
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+  let downloading = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  const file = await downloadPromise;
-  const data = await readFile(await file.path()),
-    zip = await JSZip.loadAsync(data),
-    xml = await zip.file("content.xml").async("string");
-  results.push({
-    kind,
-    before,
-    size: data.length,
-    hasTypedText: xml.includes("Taskasaur offline save fixture"),
-    hasFormula: xml.includes("SUM"),
-  });
+  console.log("Exported", (await downloading).suggestedFilename());
   await page
     .getByRole("button", { name: "Office", exact: true })
     .last()
     .click();
+  await page.getByRole("button", { name: "Spreadsheet", exact: true }).click();
+  await page.getByRole("button", { name: "Cell A1", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Cell value or formula" })
+    .fill("=6*7");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Cell A1", exact: true }),
+  ).toHaveText("42");
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+  downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  console.log("Exported", (await downloading).suggestedFilename());
+  await page
+    .getByRole("button", { name: "Office", exact: true })
+    .last()
+    .click();
+  await page.getByRole("button", { name: "Presentation", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Slide title", exact: true })
+    .fill("Offline slides");
+  await page
+    .getByRole("textbox", { name: "Slide body", exact: true })
+    .fill("Local files synchronize with peers");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Saved on this device");
+  downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  console.log("Exported", (await downloading).suggestedFilename());
+  await page
+    .getByRole("button", { name: "Office", exact: true })
+    .last()
+    .click();
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => null));
+  await context.setOffline(true);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Untitled presentation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Slide title", exact: true }),
+  ).toHaveValue("Offline slides");
+  await page
+    .getByRole("button", { name: "Office", exact: true })
+    .last()
+    .click();
+  await page
+    .getByRole("button", { name: "Untitled spreadsheet", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Cell A1", exact: true }),
+  ).toHaveText("42");
+  await page
+    .getByRole("button", { name: "Office", exact: true })
+    .last()
+    .click();
+  await page
+    .getByRole("button", { name: "Untitled document", exact: true })
+    .click();
+  await expect(page.locator(".ql-editor")).toContainText(
+    "Offline document content",
+  );
+  console.log(
+    "Documents, spreadsheet formulas, presentations, exports and offline cold reopen passed.",
+  );
+} finally {
+  await browser.close();
 }
-console.log(JSON.stringify({ results, errors }, null, 2));
-await page.screenshot({
-  path: "/tmp/taskasaur-office-tested.png",
-  fullPage: true,
-});
-await browser.close();

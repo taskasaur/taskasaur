@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { SyncQueue } from "../packages/sync-supabase/queue";
+import { SyncQueue } from "../packages/sync/queue";
 
 function deferred() {
   let resolve!: () => void;

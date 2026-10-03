@@ -7,6 +7,7 @@ import { field, type RecordSchema } from "@taskasaur/platform/field-types";
 import { RecordTable } from "./record-table";
 import { RecordForm } from "../ui/fields";
 import { Button } from "../ui/primitives/button";
+import { currentPolicy } from "../core/identity";
 import {
   Dialog,
   DialogContent,
@@ -65,18 +66,15 @@ function secretSchema(kind: string): RecordSchema {
 export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
   const [selected, setSelected] = useState<ResourceRecord | null>(null),
     [error, setError] = useState("");
+  const [deviceIds, setDeviceIds] = useState<string[]>([
+    runtime.device.identity.id,
+  ]);
   return (
     <div className="space-y-4">
       <p className="page-description">
         Authorize one credential for the plugins and destinations that need it.
         Secret values are sent directly to the encrypted vault.
       </p>
-      {!runtime.profile.connected && (
-        <div className="notice">
-          Connect to a server to configure secrets. You can prepare credential
-          metadata locally.
-        </div>
-      )}
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -91,8 +89,10 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
               variant="ghost"
               size="icon"
               aria-label="Set credential secret"
-              disabled={!runtime.profile.connected}
-              onClick={() => setSelected(row)}
+              onClick={() => {
+                setDeviceIds([runtime.device.identity.id]);
+                setSelected(row);
+              }}
             >
               <KeyRound size={14} />
             </Button>
@@ -100,9 +100,7 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
               variant="ghost"
               size="icon"
               aria-label="Revoke credential"
-              disabled={
-                !runtime.profile.connected || row.data.status === "revoked"
-              }
+              disabled={row.data.status === "revoked"}
               onClick={async () => {
                 try {
                   await runtime.api("credentials/revoke", { id: row.id });
@@ -129,6 +127,28 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
               Connect {String(selected?.data.name ?? "credential")}
             </DialogTitle>
           </DialogHeader>
+          <fieldset className="space-y-2">
+            <legend>Devices allowed to use this secret</legend>
+            {Object.values(currentPolicy(runtime.node.replica.access).members)
+              .filter((m) => m.role !== "viewer")
+              .map((m) => (
+                <label key={m.identity.id} className="flex gap-2 items-center">
+                  <input
+                    type="checkbox"
+                    checked={deviceIds.includes(m.identity.id)}
+                    disabled={m.identity.id === runtime.device.identity.id}
+                    onChange={(e) =>
+                      setDeviceIds(
+                        e.target.checked
+                          ? [...deviceIds, m.identity.id]
+                          : deviceIds.filter((id) => id !== m.identity.id),
+                      )
+                    }
+                  />
+                  {m.identity.name}
+                </label>
+              ))}
+          </fieldset>
           {selected && (
             <RecordForm
               key={selected.id}
@@ -149,6 +169,7 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
                 await runtime.api("credentials/secret", {
                   id: selected.id,
                   secret,
+                  deviceIds,
                 });
                 setSelected(null);
                 await runtime.synchronize();

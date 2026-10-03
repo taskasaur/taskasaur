@@ -1,5 +1,4 @@
 "use client";
-import { defaultServerUrl, serverFetch } from "./network";
 import {
   useEffect,
   useState,
@@ -42,12 +41,15 @@ import {
   createLocalWorkspace,
   profiles,
   saveProfile,
+  joinWorkspace,
+  browserDevice,
   type WorkspaceProfile,
 } from "./runtime";
 import { RecordTable } from "./record-table";
 import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
 import { field } from "@taskasaur/platform/field-types";
 import { SyncConflicts } from "./sync-conflicts";
+import { RestoreBackup } from "./restore-backup";
 import { download } from "./download";
 import { catalog, isRequiredCore } from "@taskasaur/platform/core/catalog";
 import {
@@ -148,12 +150,11 @@ function Welcome({
   error: string;
 }) {
   const [name, setName] = useState("My workspace"),
-    [server, setServer] = useState(""),
-    [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [error, setError] = useState(externalError),
+    [invitation, setInvitation] = useState(""),
+    [request, setRequest] = useState(""),
+    [joining, setJoining] = useState(false),
     [busy, setBusy] = useState(false),
-    [connect, setConnect] = useState(false);
+    [error, setError] = useState(externalError);
   async function create() {
     setBusy(true);
     try {
@@ -161,65 +162,6 @@ function Welcome({
     } catch (e) {
       setError(String(e));
     } finally {
-      setBusy(false);
-    }
-  }
-  async function signIn(signup = false) {
-    setBusy(true);
-    setError("");
-    try {
-      const base = server || defaultServerUrl();
-      const result = await serverFetch(
-        new URL(`/api/auth/${signup ? "signup" : "login"}`, base),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        },
-      );
-      const auth = await result.json();
-      if (!result.ok) throw new Error(auth.error?.message ?? "Sign-in failed");
-      if (auth.confirmationRequired) {
-        setError("Check your email to confirm your account, then sign in.");
-        return;
-      }
-      const response = await serverFetch(new URL("/api/workspaces", base), {
-        credentials: "include",
-      });
-      const workspaces = await response.json();
-      if (!response.ok)
-        throw new Error(
-          workspaces.error?.message ?? "Could not load workspaces",
-        );
-      let workspace = workspaces.workspaces[0];
-      if (!workspace) {
-        const created = await serverFetch(new URL("/api/workspaces", base), {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        });
-        workspace = await created.json();
-        if (!created.ok)
-          throw new Error(
-            workspace.error?.message ?? "Could not create workspace",
-          );
-      }
-      const profile: WorkspaceProfile = {
-        id: workspace.id,
-        userId: auth.user.id,
-        workspaceId: workspace.id,
-        name: workspace.name ?? name,
-        serverUrl: base,
-        connected: true,
-      };
-      await saveProfile(profile);
-      await onOpen(profile);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPassword("");
       setBusy(false);
     }
   }
@@ -234,71 +176,89 @@ function Welcome({
           goes with you.
         </h1>
         <p className="text-muted-foreground my-5">
-          Tasks, time, files, and the tools you choose. Start on this device, or
-          connect to your Taskasaur server.
+          Your workspace lives on this device. Work offline and synchronize
+          directly with your approved devices.
         </p>
-        <label className="field-row">
-          Workspace name
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </label>
-        {connect ? (
-          <div className="space-y-3 mt-4">
+        {!joining ? (
+          <>
             <label className="field-row">
-              Server URL
-              <Input
-                placeholder={
-                  typeof location === "undefined"
-                    ? "https://taskasaur.example"
-                    : defaultServerUrl()
-                }
-                value={server}
-                onChange={(e) => setServer(e.target.value)}
-              />
+              Workspace name
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
             </label>
-            <label className="field-row">
-              Email
-              <Input
-                type="email"
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            <label className="field-row">
-              Password
-              <Input
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
-            <div className="flex gap-2">
-              <Button disabled={busy} onClick={() => void signIn()}>
-                Sign in
+            <div className="flex gap-3 mt-6">
+              <Button disabled={busy} onClick={() => void create()}>
+                Create workspace
               </Button>
               <Button
                 variant="outline"
-                disabled={busy}
-                onClick={() => void signIn(true)}
+                onClick={async () => {
+                  try {
+                    setRequest((await browserDevice()).pairingRequest());
+                    setJoining(true);
+                  } catch (e) {
+                    setError(String(e));
+                  }
+                }}
               >
-                Create account
+                Join workspace
               </Button>
             </div>
-            <Button variant="ghost" onClick={() => setConnect(false)}>
-              Work on this device instead
-            </Button>
-          </div>
+          </>
         ) : (
-          <div className="flex gap-3 mt-6">
-            <Button disabled={busy} onClick={() => void create()}>
-              Create local workspace
+          <div className="space-y-4">
+            <p className="text-sm">
+              Send this device request to the workspace owner. In Devices, they
+              can approve it and return an encrypted invitation for this device.
+            </p>
+            <label className="field-row">
+              Device request
+              <textarea
+                className="core-input min-h-20"
+                value={request}
+                readOnly
+              />
+            </label>
+            <Button
+              variant="outline"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(request)
+                  .catch((e) => setError(String(e)))
+              }
+            >
+              Copy device request
             </Button>
-            <Button variant="outline" onClick={() => setConnect(true)}>
-              Connect to server
-            </Button>
+            <label className="field-row">
+              Workspace invitation
+              <textarea
+                className="core-input min-h-28"
+                value={invitation}
+                onChange={(e) => setInvitation(e.target.value)}
+              />
+            </label>
+            <div className="flex gap-2">
+              <Button
+                disabled={busy || !invitation}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await onOpen(await joinWorkspace(invitation));
+                  } catch (e) {
+                    setError(String(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Join and save local copy
+              </Button>
+              <Button variant="ghost" onClick={() => setJoining(false)}>
+                Back
+              </Button>
+            </div>
           </div>
         )}
+        <RestoreBackup onOpen={onOpen} />
         {error && (
           <p role="alert" className="error-banner mt-4">
             {error}
@@ -513,9 +473,9 @@ function Shell({
             )}{" "}
             {runtime.profile.connected
               ? online
-                ? "Connected workspace"
+                ? `${runtime.node?.replica.peers ?? 0} peers · saved locally`
                 : "Working offline"
-              : "Local workspace"}
+              : "Saved on this device"}
           </div>
         </div>
       </aside>
@@ -801,7 +761,8 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
               </p>
               {entry.grants.includes("core.server") && (
                 <p className="text-sm">
-                  Includes trusted code that runs on your server.
+                  Includes native code. Enable it only on computers you choose
+                  in Devices.
                 </p>
               )}
             </section>
@@ -1059,9 +1020,8 @@ function SettingsView({
         <h2>Workspace</h2>
         <p>{runtime.profile.name}</p>
         <p className="text-muted-foreground text-sm">
-          {runtime.profile.connected
-            ? runtime.profile.serverUrl
-            : "Data is stored on this device."}
+          Every device keeps a local copy. Changes synchronize with approved
+          peers.
         </p>
         <div className="flex gap-2 mt-4">
           <Button

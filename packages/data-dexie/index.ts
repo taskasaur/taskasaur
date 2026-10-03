@@ -42,6 +42,12 @@ interface Metadata {
   value: unknown;
 }
 export class LocalDatabase extends Dexie {
+  replicaBridge?: {
+    canWrite(): boolean;
+    put(collection: string, data: unknown, id: string): Promise<ResourceRecord>;
+    delete(id: string): Promise<void>;
+    saveFile(id: string, blob: Blob, parent: string | null): Promise<string>;
+  };
   records!: Table<ResourceRecord, string>;
   outbox!: Table<PendingMutation, number>;
   metadata!: Table<Metadata, string>;
@@ -76,6 +82,7 @@ export class LocalDatabase extends Dexie {
     await this.metadata.put({ key, value });
   }
   async canWrite(record?: ResourceRecord) {
+    if (this.replicaBridge) return this.replicaBridge.canWrite();
     const snapshot = await this.getMetadata<{
       writableIds: string[];
       workspaceWrite: boolean;
@@ -154,6 +161,10 @@ export class LocalDatabase extends Dexie {
             "Cache projections are ingestion-only",
           );
           const data = validateRecord(schema, input);
+          if (this.replicaBridge) {
+            await authorize();
+            return this.replicaBridge.put(id, data, resourceId);
+          }
           const now = new Date().toISOString();
           return this.transaction(
             "rw",
@@ -239,6 +250,16 @@ export class LocalDatabase extends Dexie {
           );
         },
         delete: async (resourceId: string) => {
+          if (this.replicaBridge) {
+            await authorize();
+            const old = await this.records.get(resourceId);
+            invariant(
+              old?.collection === id,
+              "PERMISSION_DENIED",
+              "Resource belongs to another collection",
+            );
+            return this.replicaBridge.delete(resourceId);
+          }
           invariant(
             sync !== "cache",
             "READ_ONLY",
@@ -295,6 +316,8 @@ export class LocalDatabase extends Dexie {
       "PERMISSION_DENIED",
       "Storage scope mismatch",
     );
+    if (this.replicaBridge)
+      return this.replicaBridge.saveFile(fileId, blob, parentVersionId);
     const id = crypto.randomUUID(),
       now = new Date().toISOString();
     // Blob and metadata share an IndexedDB transaction. Failure cannot acknowledge a partial save.
