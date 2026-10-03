@@ -42,6 +42,9 @@ import {
 } from "@taskasaur/platform/field-types";
 import { RecordForm, displayValue } from "../ui/fields";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
+import { schemaById } from "@taskasaur/platform/core/catalog";
+import { belongsToTable } from "./collection-tables";
+import { pgTypes } from "@taskasaur/platform/field-types";
 
 export function FilesView({ runtime }: { runtime: AppRuntime }) {
   const [error, setError] = useState(""),
@@ -133,11 +136,19 @@ export function TablesView({ runtime }: { runtime: AppRuntime }) {
     [name, setName] = useState(""),
     [error, setError] = useState("");
   return selected ? (
-    <UserTable
-      runtime={runtime}
-      table={selected}
-      onBack={() => setSelected(null)}
-    />
+    selected.data.collection_id ? (
+      <ManagedCollectionTable
+        runtime={runtime}
+        table={selected}
+        onBack={() => setSelected(null)}
+      />
+    ) : (
+      <UserTable
+        runtime={runtime}
+        table={selected}
+        onBack={() => setSelected(null)}
+      />
+    )
   ) : (
     <>
       <RecordTable
@@ -260,10 +271,17 @@ function UserTable({
         </Button>
         <h2 className="font-semibold">{String(table.data.name)}</h2>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setColumn(true)}>
+          <Button
+            variant="outline"
+            disabled={Boolean(table.managedBy)}
+            onClick={() => setColumn(true)}
+          >
             Add column
           </Button>
-          <Button onClick={() => setEditing("new")}>
+          <Button
+            disabled={Boolean(table.managedBy)}
+            onClick={() => setEditing("new")}
+          >
             <Plus size={14} />
             New row
           </Button>
@@ -281,6 +299,7 @@ function UserTable({
         schemaOverride={schema}
         storeOverride={store}
         hideCreate
+        readOnly={Boolean(table.managedBy)}
       />
       <Dialog
         open={Boolean(editing)}
@@ -338,17 +357,7 @@ function UserTable({
                 field("pg_type", "PostgreSQL type", "text", {
                   required: true,
                   nullable: false,
-                  choices: [
-                    "text",
-                    "integer",
-                    "bigint",
-                    "numeric",
-                    "boolean",
-                    "date",
-                    "timestamp with time zone",
-                    "uuid",
-                    "jsonb",
-                  ],
+                  choices: [...pgTypes],
                   default: "text",
                 }),
               ],
@@ -377,3 +386,71 @@ function UserTable({
   );
 }
 export { PeerDevicesView as DevicesView } from "./peer-devices";
+
+function ManagedCollectionTable({
+  runtime,
+  table,
+  onBack,
+}: {
+  runtime: AppRuntime;
+  table: ResourceRecord;
+  onBack: () => void;
+}) {
+  const collection = String(table.data.collection_id);
+  const fields = fieldDescriptor.array().parse(table.data.columns);
+  const base = schemaById.get(collection);
+  const schema: RecordSchema = {
+    id: collection,
+    pluginId: table.managedBy ?? "tables",
+    name: String(table.data.name),
+    version: base?.version ?? 1,
+    fields,
+  };
+  const store = useMemo(
+    () => ({
+      list: async () =>
+        (
+          await runtime.db.records
+            .where("collection")
+            .equals(collection)
+            .filter((r) => !r.deletedAt)
+            .toArray()
+        )
+          .filter((r) => belongsToTable(r, table))
+          .map((r) => ({
+            ...r,
+            data: {
+              ...r.data,
+              ...((r.data.custom_fields as Record<string, Value>) ?? {}),
+            },
+          })),
+      put: async (): Promise<ResourceRecord> => {
+        throw Error("Edit this table in its owning plugin");
+      },
+      delete: async () => {
+        throw Error("Edit this table in its owning plugin");
+      },
+    }),
+    [runtime, collection, table],
+  );
+  return (
+    <div className="space-y-4">
+      <Button variant="ghost" onClick={onBack}>
+        <ArrowLeft />
+        Tables
+      </Button>
+      <p className="text-sm text-muted-foreground">
+        Managed by {table.managedBy}. Open that plugin to edit its columns and
+        entries.
+      </p>
+      <RecordTable
+        runtime={runtime}
+        collection={base ? collection : "table_rows"}
+        schemaOverride={schema}
+        storeOverride={store}
+        readOnly
+        viewKey={"storage." + table.id}
+      />
+    </div>
+  );
+}

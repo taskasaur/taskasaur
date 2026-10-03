@@ -287,3 +287,21 @@
     padding-top: max(24px, env(safe-area-inset-top));
   }
 }
+
+@layer components {
+  .workspace-shell {
+    @apply min-h-dvh;
+  }
+  .workspace-topbar {
+    @apply sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b bg-background px-4;
+    padding-top: env(safe-area-inset-top);
+  }
+  .workspace-content {
+    @apply min-w-0 p-4 md:p-6;
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  .workspace-bottom-bar {
+    @apply fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t bg-background px-3 py-2;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}

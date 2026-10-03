@@ -1,5 +1,8 @@
 import { executionSlots } from "../core/execution";
 import { ExecutionTarget } from "./execution-target";
+import { selectedCollectionTable, belongsToTable } from "./collection-tables";
+import { resourceManagers } from "./managed-resources";
+import { collectionColumns } from "@taskasaur/platform/core/collection-tables";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, Trash2, Pencil, Monitor } from "lucide-react";
@@ -18,7 +21,7 @@ import {
   DialogTitle,
   DialogHeader,
 } from "../ui/primitives/dialog";
-import { RecordForm } from "../ui/fields";
+import { RecordForm, displayValue } from "../ui/fields";
 import { QueryControls } from "../ui/query-controls";
 import {
   CollectionView,
@@ -51,6 +54,8 @@ export interface RecordTableProps {
   };
   viewKey?: string;
   readOnly?: boolean;
+  /** Host supplies the owning plugin when editing managed shared resources. */
+  managedAccess?: string;
   defaultView?: Partial<CollectionViewState>;
   renderCell?: (context: CellContext) => ReactNode;
   renderCard?: (row: ResourceRecord, defaultContent: ReactNode) => ReactNode;
@@ -68,12 +73,28 @@ export function RecordTable({
   storeOverride,
   viewKey,
   readOnly = false,
+  managedAccess,
   defaultView,
   renderCell,
   renderCard,
   columnOptions,
 }: RecordTableProps) {
-  const schema = schemaOverride ?? getSchema(collection);
+  const baseSchema = getSchema(collection);
+  const activeTable = useLiveQuery(
+    () =>
+      baseSchema.tables && !schemaOverride
+        ? selectedCollectionTable(runtime, collection)
+        : Promise.resolve(undefined),
+    [runtime, collection, Boolean(schemaOverride)],
+  );
+  const schema =
+    schemaOverride ??
+    (activeTable
+      ? {
+          ...baseSchema,
+          fields: collectionColumns(baseSchema, activeTable.data.columns),
+        }
+      : baseSchema);
   const slots = executionSlots().filter(
     (slot) => slot.collection === collection,
   );
@@ -88,11 +109,57 @@ export function RecordTable({
         ),
     ),
   };
-  const store = useMemo(
+  const source = useMemo(
     () => storeOverride ?? runtime.collection(collection),
     [runtime, collection, storeOverride],
   );
+  const store = useMemo(
+    () =>
+      !activeTable || schemaOverride
+        ? source
+        : {
+            list: async () =>
+              (await source.list())
+                .filter((row) => belongsToTable(row, activeTable))
+                .map((row) => ({
+                  ...row,
+                  data: {
+                    ...row.data,
+                    ...((row.data.custom_fields as Record<string, Value>) ??
+                      {}),
+                  },
+                })),
+            put: async (data: Record<string, Value>, id?: string) => {
+              const old = id ? await runtime.db.records.get(id) : undefined;
+              const values = { ...old?.data },
+                custom = {
+                  ...((old?.data.custom_fields as Record<string, Value>) ?? {}),
+                };
+              for (const [key, value] of Object.entries(data)) {
+                if (baseSchema.fields.some((f) => f.id === key))
+                  values[key] = value;
+                else custom[key] = value;
+              }
+              const row = await source.put(
+                { ...values, table_id: activeTable.id, custom_fields: custom },
+                id,
+              );
+              return {
+                ...row,
+                data: {
+                  ...row.data,
+                  ...((row.data.custom_fields as Record<string, Value>) ?? {}),
+                },
+              };
+            },
+            delete: source.delete,
+          },
+    [runtime, source, activeTable, schemaOverride, baseSchema],
+  );
   const rows = useLiveQuery(() => store.list(), [store]) ?? [];
+  const managedRecords =
+    useLiveQuery(() => runtime.db.records.toArray(), [runtime]) ?? [];
+  const managers = resourceManagers(managedRecords);
   const access = useLiveQuery(
     () =>
       runtime.db.getMetadata<{
@@ -104,6 +171,10 @@ export function RecordTable({
   );
   const writable = (row?: ResourceRecord) =>
     !readOnly &&
+    (!row ||
+      !["tables", "variables", "credentials", "files"].includes(collection) ||
+      !managers.has(row.id) ||
+      managers.get(row.id) === managedAccess) &&
     (!access
       ? !row || row.ownerId === runtime.principal.userId
       : access.workspaceWrite &&
@@ -111,12 +182,15 @@ export function RecordTable({
         (!row ||
           (row.revision === 0 && row.ownerId === runtime.principal.userId) ||
           access.writableIds.includes(row.id)));
-  const key = "view." + (viewKey ?? collection);
+  const key =
+    "view." +
+    (viewKey ?? (activeTable ? collection + "." + activeTable.id : collection));
   const [state, setState] = useState(() => normalizeView(defaultView, schema));
   const current = useRef(state),
     writeQueue = useRef(Promise.resolve()),
     edits = useRef(0);
   const [editor, setEditor] = useState<ResourceRecord | "new" | null>(null),
+    [inspecting, setInspecting] = useState<ResourceRecord | null>(null),
     [error, setError] = useState(""),
     [confirmDelete, setConfirmDelete] = useState<ResourceRecord | null>(null);
   useEffect(() => {
@@ -127,7 +201,11 @@ export function RecordTable({
     setState(initial);
     void runtime.db
       .getMetadata<Partial<CollectionViewState>>(key)
-      .then((saved) => {
+      .then(async (saved) => {
+        if (!saved && activeTable?.data.is_default)
+          saved = await runtime.db.getMetadata<Partial<CollectionViewState>>(
+            "view." + collection,
+          );
         if (canceled || edits.current !== revision) return;
         const next = normalizeView(saved ?? defaultView, schema);
         current.current = next;
@@ -140,7 +218,7 @@ export function RecordTable({
       canceled = true;
     };
     // Schema changes are keyed by version; object identities from plugin renders need not be stable.
-  }, [runtime, key, schema.id, schema.version]);
+  }, [runtime, key, schema.id, schema.version, activeTable?.revision]);
   const change = (patch: Partial<CollectionViewState>) => {
     edits.current++;
     const next = normalizeView({ ...current.current, ...patch }, schema);
@@ -160,7 +238,21 @@ export function RecordTable({
   const open = (row: ResourceRecord) => {
     if (onOpen) onOpen(row);
     else if (writable(row)) setEditor(row);
+    else setInspecting(row);
   };
+  useEffect(() => {
+    const reveal = () => {
+      const id = new URLSearchParams(location.hash.split("?")[1]).get("record");
+      const row = rows.find((r) => r.id === id);
+      if (id && row) {
+        history.replaceState(null, "", location.hash.split("?")[0]);
+        open(row);
+      }
+    };
+    reveal();
+    window.addEventListener("hashchange", reveal);
+    return () => window.removeEventListener("hashchange", reveal);
+  }, [rows, onOpen]);
   const update = async (row: ResourceRecord, patch: Record<string, Value>) => {
     try {
       if (!writable(row)) throw Error("This entry is read-only");
@@ -175,6 +267,13 @@ export function RecordTable({
   };
   const actions = (row: ResourceRecord) => (
     <>
+      {["tables", "variables", "credentials", "files"].includes(collection) &&
+        managers.has(row.id) &&
+        !managedAccess && (
+          <span className="text-xs text-muted-foreground">
+            Managed by {managers.get(row.id)}
+          </span>
+        )}
       {renderActions?.(row, {
         writable: writable(row),
         update: (patch) => update(row, patch),
@@ -226,7 +325,7 @@ export function RecordTable({
           mode={state.mode}
           onMode={(mode) => change({ mode })}
         />
-        <div className="flex gap-2">
+        <div className="flex max-w-full flex-wrap gap-2">
           {toolbar}
           {!hideCreate && writable() && (
             <Button onClick={() => setEditor("new")}>
@@ -280,7 +379,15 @@ export function RecordTable({
             <RecordForm
               key={editor === "new" ? "new" : editor.id}
               schema={editSchema}
-              initial={editor === "new" ? undefined : editor.data}
+              initial={
+                editor === "new"
+                  ? undefined
+                  : Object.fromEntries(
+                      Object.entries(editor.data).filter(([id]) =>
+                        editSchema.fields.some((f) => f.id === id),
+                      ),
+                    )
+              }
               onCancel={() => setEditor(null)}
               onSave={async (data: Record<string, Value>) => {
                 const saved = await store.put(
@@ -295,6 +402,35 @@ export function RecordTable({
               }}
             />
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(inspecting)}
+        onOpenChange={(open) => {
+          if (!open) setInspecting(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>{schema.name} entry</DialogTitle>
+          </DialogHeader>
+          {inspecting?.managedBy && (
+            <p className="text-sm text-muted-foreground">
+              Managed by {inspecting.managedBy}
+            </p>
+          )}
+          <dl className="space-y-3">
+            {schema.fields
+              .filter((f) => !f.sensitive)
+              .map((f) => (
+                <div key={f.id}>
+                  <dt className="text-sm font-medium">{f.label}</dt>
+                  <dd className="break-words whitespace-pre-wrap text-sm text-muted-foreground">
+                    {displayValue(inspecting?.data[f.id], f)}
+                  </dd>
+                </div>
+              ))}
+          </dl>
         </DialogContent>
       </Dialog>
       <Dialog

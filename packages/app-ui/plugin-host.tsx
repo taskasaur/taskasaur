@@ -1,3 +1,4 @@
+import { navigationService } from "./navigation-service";
 import { ExecutionTarget, type ExecutionTargetProps } from "./execution-target";
 import { executionService, executionRecord } from "../core/execution";
 import { coreModules } from "@taskasaur/platform/core/modules";
@@ -42,6 +43,8 @@ export interface Surface {
   id: string;
   pluginId: string;
   label: string;
+  main?: boolean;
+  icon?: string;
   render: React.ComponentType;
 }
 export async function createBrowserPluginHost(
@@ -59,6 +62,10 @@ export async function createBrowserPluginHost(
       : "browser",
     {
       cleanup: (id) => {
+        for (const [key, command] of runtime.commands)
+          if (command.pluginId === id) runtime.commands.delete(key);
+        for (const [key] of runtime.searchOptions)
+          if (getSchema(key).pluginId === id) runtime.searchOptions.delete(key);
         for (const [key, surface] of runtime.surfaces)
           if (surface.pluginId === id) runtime.surfaces.delete(key);
         for (const style of document.querySelectorAll<HTMLStyleElement>(
@@ -96,6 +103,36 @@ export async function createBrowserPluginHost(
               value,
             }),
         });
+        const sharedStore = (name: string) => {
+          const store = local.scoped(principal, name).collection(name);
+          const owned = async (resourceId?: string) => {
+            const record = resourceId
+              ? await local.records.get(resourceId)
+              : undefined;
+            invariant(
+              !record || record.managedBy === id,
+              "PERMISSION_DENIED",
+              "Use declared write commands to modify resources your plugin does not manage",
+            );
+          };
+          return {
+            list: store.list,
+            put: async (
+              data: Record<
+                string,
+                import("@taskasaur/platform/field-types").Value
+              >,
+              resourceId?: string,
+            ) => {
+              await owned(resourceId);
+              return store.put(data, resourceId);
+            },
+            delete: async (resourceId: string) => {
+              await owned(resourceId);
+              await store.delete(resourceId);
+            },
+          };
+        };
         return new Map<string, unknown>([
           ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
           ["core.records", { collection }],
@@ -144,27 +181,38 @@ export async function createBrowserPluginHost(
               status: () => runtime.node.replica.status(),
             },
           ],
-          [
-            "core.variables",
-            { list: () => runtime.collection("variables").list() },
-          ],
+          ["core.variables", sharedStore("variables")],
           [
             "core.tables",
             {
-              list: () => runtime.collection("tables").list(),
-              rows: (id: string) =>
-                runtime.collection("table_rows").list({
-                  filters: [
-                    {
-                      id: "table",
-                      field: "table_id",
-                      operator: "eq",
-                      value: id,
-                      enabled: true,
-                      link: "and",
-                    },
-                  ],
-                }),
+              ...sharedStore("tables"),
+              rows: async (tableId: string) => {
+                const table = await local.records.get(tableId);
+                invariant(
+                  table?.collection === "tables" && !table.deletedAt,
+                  "NOT_FOUND",
+                  "Table is unavailable",
+                );
+                const target =
+                  typeof table.data.collection_id === "string"
+                    ? table.data.collection_id
+                    : "table_rows";
+                invariant(
+                  target === "table_rows" ||
+                    table.managedBy === id ||
+                    (manifest.consumes.commands.includes(target + ".list") &&
+                      grants.includes(target + ".list")),
+                  "PERMISSION_DENIED",
+                  "Declare permission to read another plugin's table",
+                );
+                return (await runtime.collection(target, true).list()).filter(
+                  (row) =>
+                    row.data.table_id === tableId ||
+                    (target !== "table_rows" &&
+                      table.data.is_default &&
+                      !row.data.table_id),
+                );
+              },
             },
           ],
           [
@@ -237,6 +285,7 @@ export async function createBrowserPluginHost(
               CollectionView,
               QueryControls,
               ChoiceSelect,
+              ...navigationService(runtime, manifest),
               ExecutionTarget: (
                 props: Omit<ExecutionTargetProps, "runtime">,
               ) => {
@@ -256,12 +305,19 @@ export async function createBrowserPluginHost(
                   "UI collection is not owned by this plugin",
                 );
                 return (
-                  <RecordTable {...props} runtime={runtime} collection={name} />
+                  <RecordTable
+                    {...props}
+                    runtime={runtime}
+                    collection={name}
+                    managedAccess={id}
+                  />
                 );
               },
               registerSurface: (surface: {
                 id: string;
                 label: string;
+                main?: boolean;
+                icon?: string;
                 render: React.ComponentType;
               }) => {
                 invariant(
@@ -277,54 +333,65 @@ export async function createBrowserPluginHost(
                   "UI surface is already registered",
                 );
                 const render =
-                  id === "automation-editor" && manifest.version === "1.0.0"
+                  id === "email-client" && manifest.version === "1.0.0"
                     ? React.lazy(async () => {
-                        const { default: AutomationView } =
-                          await import("./automation-view");
+                        const { default: MailView } =
+                          await import("./mail-view");
                         return {
-                          default: () => <AutomationView runtime={runtime} />,
+                          default: () => <MailView runtime={runtime} />,
                         };
                       })
-                    : id === "tasks" && manifest.version === "1.0.0"
+                    : id === "automation-editor" && manifest.version === "1.0.0"
                       ? React.lazy(async () => {
-                          const { TasksView } = await import("./tasks-view");
+                          const { default: AutomationView } =
+                            await import("./automation-view");
                           return {
-                            default: () => <TasksView runtime={runtime} />,
+                            default: () => <AutomationView runtime={runtime} />,
                           };
                         })
-                      : id === "remote-terminal" && manifest.version === "1.0.0"
+                      : id === "tasks" && manifest.version === "1.0.0"
                         ? React.lazy(async () => {
-                            const { PeerTerminal } =
-                              await import("./peer-terminal");
+                            const { TasksView } = await import("./tasks-view");
                             return {
-                              default: () => <PeerTerminal runtime={runtime} />,
+                              default: () => <TasksView runtime={runtime} />,
                             };
                           })
-                        : id === "sharing" && manifest.version === "1.0.0"
+                        : id === "remote-terminal" &&
+                            manifest.version === "1.0.0"
                           ? React.lazy(async () => {
-                              const { PeerSharing } =
-                                await import("./peer-sharing");
+                              const { PeerTerminal } =
+                                await import("./peer-terminal");
                               return {
                                 default: () => (
-                                  <PeerSharing runtime={runtime} />
+                                  <PeerTerminal runtime={runtime} />
                                 ),
                               };
                             })
-                          : id === "office-editor" &&
-                              manifest.version === "1.0.0"
+                          : id === "sharing" && manifest.version === "1.0.0"
                             ? React.lazy(async () => {
-                                const { PortableOffice } =
-                                  await import("./portable-office");
+                                const { PeerSharing } =
+                                  await import("./peer-sharing");
                                 return {
                                   default: () => (
-                                    <PortableOffice
-                                      runtime={runtime}
-                                      legacy={surface.render}
-                                    />
+                                    <PeerSharing runtime={runtime} />
                                   ),
                                 };
                               })
-                            : surface.render;
+                            : id === "office-editor" &&
+                                manifest.version === "1.0.0"
+                              ? React.lazy(async () => {
+                                  const { PortableOffice } =
+                                    await import("./portable-office");
+                                  return {
+                                    default: () => (
+                                      <PortableOffice
+                                        runtime={runtime}
+                                        legacy={surface.render}
+                                      />
+                                    ),
+                                  };
+                                })
+                              : surface.render;
                 const registered = {
                   ...surface,
                   render,
@@ -422,7 +489,7 @@ export async function createBrowserPluginHost(
         execute: async (input, context) => {
           const store = local
             .scoped(
-              { ...context.principal, pluginId: manifest.id },
+              context.principal,
               manifest.id,
               runtime.profile.connected ? "synced" : "local-only",
             )

@@ -300,8 +300,14 @@ export function RecordForm({
 }) {
   const [values, setValues] = useState<Record<string, Value>>(() => {
     const data: Record<string, Value> = {};
-    for (const f of schema.fields)
+    for (const f of schema.fields) {
       if (f.default !== undefined) data[f.id] = f.default as Value;
+      if (f.generated)
+        data[f.id] =
+          f.generated === "uuid"
+            ? crypto.randomUUID()
+            : new Date().toISOString();
+    }
     if (schema.id === "calendar")
       Object.assign(data, {
         uid: crypto.randomUUID(),
@@ -323,7 +329,7 @@ export function RecordForm({
       (f.id === "parent_id" && /^-?P/.test(String(values.trigger))) ||
       (f.id === "duration" && values.repeat != null) ||
       (f.id === "repeat" && values.duration != null));
-  const generated = schema.id === "calendar" ? ["uid", "dtstamp"] : [];
+  const generated = schema.fields.filter((f) => f.generated).map((f) => f.id);
   const requiredFields = schema.fields.filter(
     (f) => (f.required || conditional(f)) && !generated.includes(f.id),
   );

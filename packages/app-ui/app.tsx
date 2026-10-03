@@ -13,31 +13,7 @@ import {
 } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ThemeProvider, useTheme } from "next-themes";
-import {
-  CheckSquare,
-  Clock3,
-  Activity,
-  CalendarDays,
-  Bell,
-  Mail,
-  Workflow,
-  Terminal,
-  FileText,
-  Folder,
-  KeyRound,
-  Table2,
-  Braces,
-  Settings,
-  Blocks,
-  Monitor,
-  Cloud,
-  CloudOff,
-  RefreshCw,
-  Menu,
-  Moon,
-  Sun,
-  ArrowLeft,
-} from "lucide-react";
+import { CheckSquare, ArrowLeft } from "lucide-react";
 import {
   AppRuntime,
   createLocalWorkspace,
@@ -48,6 +24,15 @@ import {
   type WorkspaceProfile,
 } from "./runtime";
 import { RecordTable } from "./record-table";
+import { getSchema } from "@taskasaur/platform/core/catalog";
+import { WorkspaceNavigation } from "./workspace-navigation";
+import { pluginNavigation, pageRoute, resolveNavigation } from "./navigation";
+import {
+  CollectionTablePicker,
+  CollectionTableSettings,
+} from "./collection-table-settings";
+import { tableSelectionKey } from "./collection-tables";
+import { ChoiceSelect } from "../ui/choice-select";
 import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
 import { field } from "@taskasaur/platform/field-types";
 import { SyncConflicts } from "./sync-conflicts";
@@ -79,15 +64,6 @@ import {
   TablesView,
   DevicesView,
 } from "./storage-views";
-const navigation = [
-  { id: "files", label: "Files", icon: Folder },
-  { id: "tables", label: "Tables", icon: Table2 },
-  { id: "variables", label: "Variables", icon: Braces },
-  { id: "credentials", label: "Credentials", icon: KeyRound },
-  { id: "devices", label: "Devices", icon: Monitor },
-  { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "jobs", label: "Jobs", icon: Workflow },
-];
 export default function Application() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -291,7 +267,7 @@ function Shell({
       () => runtime.db.records.filter((r) => !r.deletedAt).toArray(),
       [runtime],
     ) ?? [];
-  useSyncExternalStore(
+  const version = useSyncExternalStore(
     (listener) => {
       runtime.surfaceListeners.add(listener);
       return () => {
@@ -301,20 +277,16 @@ function Shell({
     () => runtime.surfacesVersion,
     () => 0,
   );
-  const contributed = [...runtime.surfaces.values()];
-  const appNavigation = [
-    ...navigation,
-    ...[...runtime.registry.manifests.values()]
-      .filter(
-        (m) =>
-          !isRequiredCore(m.id) &&
-          !contributed.some((surface) => surface.pluginId === m.id) &&
-          m.ui.mode === "shared" &&
-          m.storage.local.collections.length,
-      )
-      .map((m) => ({ id: m.id, label: m.name, icon: Blocks })),
-    ...contributed.map((s) => ({ id: s.id, label: s.label, icon: Blocks })),
-  ];
+  const states = useLiveQuery(() => runtime.db.plugins.toArray(), [runtime]);
+  const entries = useMemo(
+    () => pluginNavigation(runtime),
+    [runtime, version, states],
+  );
+  const pending = useLiveQuery(() => runtime.db.outbox.count(), [runtime]) ?? 0;
+  const [view, setView] = useState(() => location.hash.slice(1) || "plugins"),
+    [error, setError] = useState(""),
+    [syncing, setSyncing] = useState(false),
+    [online, setOnline] = useState(navigator.onLine);
   const referenceOptions = useMemo(() => {
     const result: Record<string, Array<{ id: string; label: string }>> = {
       resources: [],
@@ -335,15 +307,10 @@ function Shell({
     }
     return result;
   }, [referenceRecords]);
-  const states =
-      useLiveQuery(() => runtime.db.plugins.toArray(), [runtime]) ?? [],
-    pending = useLiveQuery(() => runtime.db.outbox.count(), [runtime]) ?? 0;
-  const [view, setView] = useState(() => location.hash.slice(1) || "plugins"),
-    [menu, setMenu] = useState(false),
-    [error, setError] = useState(""),
-    [syncing, setSyncing] = useState(false),
-    [online, setOnline] = useState(navigator.onLine);
-  const { theme, setTheme } = useTheme();
+  function navigate(route: string) {
+    location.hash = route;
+    setView(route);
+  }
   useEffect(() => {
     const hash = () => setView(location.hash.slice(1) || "plugins"),
       network = () => setOnline(navigator.onLine);
@@ -357,46 +324,86 @@ function Shell({
     };
   }, []);
   useEffect(() => {
-    if (!runtime.profile.connected) return;
-    const sync = () => {
-      void runtime.synchronize().catch((e) => setError(e.message));
+    runtime.navigate = async (pluginId, pageId, recordId) => {
+      try {
+        const record = recordId
+          ? await runtime.db.records.get(recordId)
+          : undefined;
+        const plugin =
+          entries.find((p) => p.id === pluginId) ??
+          (record && entries.find((p) => p.id === record.pluginId));
+        if (!plugin) throw Error("Enable this plugin to open its content");
+        const page = pageId
+          ? (plugin.pages.find((p) => p.id === pageId) ?? plugin.main)
+          : record
+            ? ([plugin.main, ...plugin.pages].find(
+                (p) => p.collection === record.collection && !p.columns,
+              ) ?? plugin.main)
+            : plugin.main;
+        if (
+          record &&
+          getSchema(record.collection).tables &&
+          record.data.table_id
+        )
+          await runtime.db.setMetadata(
+            tableSelectionKey(record.collection),
+            record.data.table_id,
+          );
+        else if (record && getSchema(record.collection).tables)
+          await runtime.db.metadata.delete(
+            tableSelectionKey(record.collection),
+          );
+        navigate(
+          pageRoute(plugin, page) +
+            (recordId ? "?record=" + encodeURIComponent(recordId) : ""),
+        );
+      } catch (e) {
+        setError(String(e));
+      }
     };
+    return () => {
+      runtime.navigate = () => {};
+    };
+  }, [runtime, entries]);
+  const synchronize = async () => {
+    setSyncing(true);
+    try {
+      await runtime.synchronize();
+      setError("");
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
+  useEffect(() => {
+    if (!runtime.profile.connected) return;
+    const sync = () =>
+      void runtime.synchronize().catch((e) => setError(e.message));
     sync();
-    const id = setInterval(sync, 15000);
-    return () => clearInterval(id);
+    const timer = setInterval(sync, 15000);
+    return () => clearInterval(timer);
   }, [runtime, online]);
-  const enabled = new Set(states.filter((s) => s.enabled).map((s) => s.id));
-  function navigate(id: string) {
-    location.hash = id;
-    setView(id);
-    setMenu(false);
-  }
-  const selected = appNavigation.find((n) => n.id === view),
-    title =
-      selected?.label ??
-      (view === "plugins"
-        ? "Plugins"
-        : view === "settings"
-          ? "Settings"
-          : "Workspace");
-  const shown =
-    enabled.has(view.split(":")[0]) || ["plugins", "settings"].includes(view);
-  let content;
-  if (!shown)
+  const { plugin, page } = resolveNavigation(entries, view);
+  let content: ReactNode;
+  const id = plugin?.id;
+  if (!plugin || !page || plugin.enabled === false)
     content = (
       <div className="empty-state">
-        <h3>This plugin is not enabled</h3>
-        <p>Install and enable it from Plugins to use its workspace views.</p>
+        <h3>This page is not available</h3>
+        <p>Enable the plugin to open its pages.</p>
         <Button onClick={() => navigate("plugins")}>Open Plugins</Button>
       </div>
     );
-  else if (view === "plugins") content = <PluginsView runtime={runtime} />;
-  else if (view === "files") content = <FilesView runtime={runtime} />;
-  else if (view === "credentials")
+  else if (id === "plugins") content = <PluginsView runtime={runtime} />;
+  else if (id === "settings")
+    content = <SettingsView runtime={runtime} onSwitch={onSwitch} />;
+  else if (id === "files") content = <FilesView runtime={runtime} />;
+  else if (id === "credentials")
     content = <CredentialsView runtime={runtime} />;
-  else if (view === "tables") content = <TablesView runtime={runtime} />;
-  else if (view === "devices") content = <DevicesView runtime={runtime} />;
-  else if (view === "jobs")
+  else if (id === "tables") content = <TablesView runtime={runtime} />;
+  else if (id === "devices") content = <DevicesView runtime={runtime} />;
+  else if (id === "jobs")
     content = (
       <RecordTable
         runtime={runtime}
@@ -418,143 +425,77 @@ function Shell({
         }
       />
     );
-  else if (view === "settings")
-    content = <SettingsView runtime={runtime} onSwitch={onSwitch} />;
-  else if (runtime.surfaces.has(view)) {
-    const Surface = runtime.surfaces.get(view)!.render;
+  else if (page.columns && page.collection)
     content = (
-      <PluginBoundary key={view}>
+      <CollectionTableSettings
+        key={page.collection}
+        runtime={runtime}
+        collection={page.collection}
+      />
+    );
+  else if (page.surface && runtime.surfaces.has(page.surface)) {
+    const Surface = runtime.surfaces.get(page.surface)!.render;
+    content = (
+      <PluginBoundary key={page.surface}>
         <Surface />
       </PluginBoundary>
     );
-  } else if (!isRequiredCore(view))
-    content = <ExtensionCollections key={view} runtime={runtime} id={view} />;
-  else content = <RecordTable runtime={runtime} collection={view} />;
+  } else if (page.collection)
+    content = (
+      <RecordTable
+        key={page.collection}
+        runtime={runtime}
+        collection={page.collection}
+        readOnly={page.readOnly}
+        managedAccess={id}
+      />
+    );
+  else if (id && isRequiredCore(id))
+    content = <RecordTable runtime={runtime} collection={id} />;
+  else
+    content = (
+      <p className="text-sm text-muted-foreground">
+        This plugin provides commands and background services.
+      </p>
+    );
   return (
-    <div className="app-shell">
-      <aside className={`sidebar ${menu ? "is-open" : ""}`}>
-        <button className="brand" onClick={() => navigate("plugins")}>
-          <img src="/taskasaur_icon.png" width="30" height="30" alt="" />
-          <span>Taskasaur</span>
-        </button>
-        <div className="workspace-label">{runtime.profile.name}</div>
-        <nav aria-label="Workspace">
-          {appNavigation
-            .filter((n) => enabled.has(n.id.split(":")[0]))
-            .map((n) => (
-              <button
-                className={view === n.id ? "nav-item active" : "nav-item"}
-                key={n.id}
-                onClick={() => navigate(n.id)}
-              >
-                <n.icon size={17} />
-                {n.label}
-              </button>
-            ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <button
-            className={view === "plugins" ? "nav-item active" : "nav-item"}
-            onClick={() => navigate("plugins")}
-          >
-            <Blocks size={17} />
-            Plugins
-          </button>
-          <button
-            className={view === "settings" ? "nav-item active" : "nav-item"}
-            onClick={() => navigate("settings")}
-          >
-            <Settings size={17} />
-            Settings
-          </button>
-          <div className="local-status">
-            {runtime.profile.connected ? (
-              <Cloud size={14} />
-            ) : (
-              <CloudOff size={14} />
-            )}{" "}
-            {runtime.profile.connected
-              ? online
-                ? `${runtime.node?.replica.peers ?? 0} peers · saved locally`
-                : "Working offline"
-              : "Saved on this device"}
-          </div>
+    <WorkspaceNavigation
+      runtime={runtime}
+      entries={entries}
+      view={view}
+      navigate={navigate}
+      pending={pending}
+      online={online}
+      syncing={syncing}
+      synchronize={synchronize}
+    >
+      {error && (
+        <div role="alert" className="error-banner mb-4">
+          {error}
+          <Button variant="ghost" onClick={() => setError("")}>
+            Dismiss
+          </Button>
         </div>
-      </aside>
-      <main className="main-content">
-        <header className="page-header">
-          <div className="flex items-center gap-3">
-            <Button
-              className="md:hidden"
-              variant="ghost"
-              size="icon"
-              aria-label="Open navigation"
-              onClick={() => setMenu(!menu)}
-            >
-              <Menu size={20} />
-            </Button>
-            <div>
-              <p className="eyebrow">{runtime.profile.name}</p>
-              <h1>{title}</h1>
-            </div>
+      )}
+      <Suspense
+        fallback={
+          <div className="empty-state">
+            Opening {plugin?.label ?? "plugin"}…
           </div>
-          <div className="flex items-center gap-2">
-            {pending > 0 && (
-              <Badge variant="secondary">{pending} pending</Badge>
-            )}
-            {runtime.profile.connected && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Synchronize workspace"
-                disabled={syncing || !online}
-                onClick={async () => {
-                  setSyncing(true);
-                  try {
-                    await runtime.synchronize();
-                    setError("");
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : String(e));
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-              >
-                <RefreshCw
-                  size={17}
-                  className={syncing ? "animate-spin" : ""}
-                />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Toggle theme"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            >
-              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-            </Button>
-          </div>
-        </header>
-        {error && (
-          <div role="alert" className="error-banner mb-4">
-            {error}
-            <button className="ml-3 underline" onClick={() => setError("")}>
-              Dismiss
-            </button>
-          </div>
-        )}
-        <Suspense
-          fallback={
-            <div className="empty-state">Opening {title.toLowerCase()}…</div>
-          }
-        >
-          <ReferenceOptionsContext.Provider value={referenceOptions}>
-            {content}
-          </ReferenceOptionsContext.Provider>
-        </Suspense>
-      </main>
-    </div>
+        }
+      >
+        <ReferenceOptionsContext.Provider value={referenceOptions}>
+          {page?.collection && getSchema(page.collection).tables && (
+            <CollectionTablePicker
+              key={page.collection}
+              runtime={runtime}
+              collection={page.collection}
+            />
+          )}
+          {content}
+        </ReferenceOptionsContext.Provider>
+      </Suspense>
+    </WorkspaceNavigation>
   );
 }
 class PluginBoundary extends Component<
@@ -575,45 +516,6 @@ class PluginBoundary extends Component<
       this.props.children
     );
   }
-}
-function ExtensionCollections({
-  runtime,
-  id,
-}: {
-  runtime: AppRuntime;
-  id: string;
-}) {
-  const manifest = runtime.registry.manifests.get(id),
-    collections = manifest?.storage.local.collections ?? [];
-  const [collection, setCollection] = useState(collections[0]);
-  return (
-    <PluginBoundary>
-      <div className="space-y-4">
-        <div className="flex gap-2">
-          {collections.map((name) => (
-            <Button
-              key={name}
-              variant={name === collection ? "default" : "outline"}
-              onClick={() => setCollection(name)}
-            >
-              {name
-                .replace(id.replaceAll(/[.-]/g, "_") + "_", "")
-                .replaceAll("_", " ")}
-            </Button>
-          ))}
-        </div>
-        {collection ? (
-          <RecordTable
-            key={collection}
-            runtime={runtime}
-            collection={collection}
-          />
-        ) : (
-          <p>This plugin provides commands and background services.</p>
-        )}
-      </div>
-    </PluginBoundary>
-  );
 }
 type ReviewEntry = Omit<InventoryEntry, "downloadUrl"> & {
   downloadUrl?: string;
@@ -1016,8 +918,25 @@ function SettingsView({
   onSwitch: () => void;
 }) {
   const [error, setError] = useState("");
+  const { theme, setTheme } = useTheme();
   return (
     <div className="space-y-6">
+      <section className="settings-card">
+        <h2>Appearance</h2>
+        <label className="field-row mt-3">
+          Color theme
+          <ChoiceSelect
+            aria-label="Color theme"
+            value={theme ?? "system"}
+            options={[
+              { value: "system", label: "Use device setting" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+            onValueChange={setTheme}
+          />
+        </label>
+      </section>
       <section className="settings-card">
         <h2>Workspace</h2>
         <p>{runtime.profile.name}</p>

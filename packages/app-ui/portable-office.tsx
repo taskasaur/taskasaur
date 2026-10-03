@@ -45,11 +45,14 @@ export function PortableOffice({
       if (file && file.size > 20 * 1024 * 1024)
         throw Error("Import files up to 20 MB.");
       if (file) {
-        const original = await runtime.collection("files").put({
-          name: file.name,
-          media_type: file.type || "application/octet-stream",
-          size: String(file.size),
-        });
+        const original = await runtime.db
+          .scoped({ ...runtime.principal, pluginId: "office-editor" }, "files")
+          .collection("files")
+          .put({
+            name: file.name,
+            media_type: file.type || "application/octet-stream",
+            size: String(file.size),
+          });
         await runtime.db.saveFile(runtime.principal, original.id, file, null);
       }
       let blob: Blob,
@@ -100,7 +103,8 @@ export function PortableOffice({
           ],
           { type: officeMedia },
         );
-      const resource = await runtime
+      const resource = await runtime.db
+        .scoped({ ...runtime.principal, pluginId: "office-editor" }, "files")
         .collection("files")
         .put({ name, media_type: blob.type, size: String(blob.size) });
       await runtime.db.saveFile(runtime.principal, resource.id, blob, null);

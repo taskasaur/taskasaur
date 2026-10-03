@@ -44,6 +44,12 @@ import type {
 import { browserDevice } from "../platform-browser/device";
 import type { DeviceCore, WorkspaceNode } from "../core/device";
 import { deviceRecordId } from "../core/records";
+import { ensureCollectionTables, scopedTableStore } from "./collection-tables";
+import { WorkspaceSearch } from "./search-index";
+import type {
+  PluginCommand,
+  SearchCollectionOptions,
+} from "@taskasaur/platform/plugin-sdk/navigation";
 import { currentPolicy } from "../core/identity";
 import { workflowTriggers, reminders, operationId } from "../core/schedules";
 import { PortableWorkflows } from "../core/workflows";
@@ -86,6 +92,14 @@ export class AppRuntime {
   private projectionListener?: (id: string) => void;
   private syncQueue = new SyncQueue();
   readonly surfaces = new Map<string, Surface>();
+  readonly commands = new Map<string, PluginCommand & { pluginId: string }>();
+  readonly searchOptions = new Map<string, SearchCollectionOptions>();
+  readonly search = new WorkspaceSearch(this);
+  navigate: (
+    pluginId: string,
+    page?: string,
+    recordId?: string,
+  ) => void | Promise<void> = () => {};
   readonly surfaceListeners = new Set<() => void>();
   surfacesVersion = 0;
   private host?: PluginHost;
@@ -353,8 +367,10 @@ export class AppRuntime {
     }
     this.db.replicaBridge = {
       canWrite: () => this.node.records.canWrite(),
-      put: async (collection, data, id) => {
-        const record = await this.node.records.put(collection, data, id);
+      put: async (collection, data, id, managedBy) => {
+        const record = await this.node.records.put(collection, data, id, {
+          managedBy,
+        });
         const slot = slotFor(record);
         if (
           slot?.targetField &&
@@ -617,6 +633,7 @@ export class AppRuntime {
         this.inventoryError = String(error);
         this.notifySurfaces();
       });
+    await ensureCollectionTables(this);
     return this;
   }
   pluginDeviceStatus(): DevicePluginStatus {
@@ -795,28 +812,38 @@ export class AppRuntime {
       this.lastAnnouncement = Date.now();
     }
   }
-  collection(id: string) {
+  collection(id: string, allTables = false) {
     const schema = getSchema(id);
-    return this.db
+    const source = this.db
       .scoped(
         { ...this.principal, pluginId: schema.pluginId },
         schema.pluginId,
         this.profile.connected ? "synced" : "local-only",
       )
       .collection(id);
+    return allTables ? source : scopedTableStore(this, id, source);
   }
   async project() {
     const work = async () => {
       if (this.closed || !this.node) return;
       const records = this.node.records.all(),
         ids = new Set(records.map((r) => r.id));
-      await this.db.transaction("rw", this.db.records, async () => {
-        const obsolete = (
-          await this.db.records.toCollection().primaryKeys()
-        ).filter((id) => !ids.has(id));
-        if (obsolete.length) await this.db.records.bulkDelete(obsolete);
-        await this.db.records.bulkPut(records);
-      });
+      await this.db.transaction(
+        "rw",
+        this.db.records,
+        this.db.searchDocuments,
+        async () => {
+          const obsolete = (
+            await this.db.records.toCollection().primaryKeys()
+          ).filter((id) => !ids.has(id));
+          if (obsolete.length) await this.db.records.bulkDelete(obsolete);
+          await this.db.searchDocuments.bulkDelete([
+            ...obsolete,
+            ...records.filter((r) => r.deletedAt).map((r) => r.id),
+          ]);
+          await this.db.records.bulkPut(records);
+        },
+      );
       for (const version of this.node.protocol.files.manifests()) {
         if (await this.db.fileVersions.get(version.id)) continue;
         try {
@@ -1116,6 +1143,7 @@ export class AppRuntime {
     if (action === "install") await this.ensurePackage(id, reviewedDigest);
     const result = await this.registry[action](id);
     await this.refreshHost();
+    if (action === "enable") await ensureCollectionTables(this);
     if (action === "disable" || action === "uninstall")
       await this.db.metadata.put({
         key: `plugin.${id}.disabledAt`,

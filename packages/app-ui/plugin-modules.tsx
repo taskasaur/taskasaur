@@ -1,8 +1,11 @@
 import { ExecutionTarget } from "./execution-target";
+import { scopedTableStore } from "./collection-tables";
 import * as Execution from "@taskasaur/platform/plugin-sdk/execution";
 import * as AlertDialog from "../ui/primitives/alert-dialog";
 import * as CalendarUI from "../ui/primitives/calendar";
 import * as Card from "../ui/primitives/card";
+import * as Command from "../ui/primitives/command";
+import * as Sheet from "../ui/primitives/sheet";
 import * as Collapsible from "../ui/primitives/collapsible";
 import * as DropdownMenu from "../ui/primitives/dropdown-menu";
 import * as InputGroup from "../ui/primitives/input-group";
@@ -126,7 +129,7 @@ export function pluginWorkspace(
             runtime.profile.connected ? "synced" : "local-only",
           )
           .collection(name);
-        return {
+        return scopedTableStore(runtime, name, {
           list: (query?: Parameters<typeof store.list>[0]) => {
             allowed(name);
             return store.list(query);
@@ -143,7 +146,7 @@ export function pluginWorkspace(
             allowed(name, "delete");
             return store.delete(id);
           },
-        };
+        });
       }
       return {
         list: (query?: unknown) => call("list", query),
@@ -278,6 +281,8 @@ export function pluginModules(
     "react-dom": ReactDOM,
     "dexie-react-hooks": DexieReact,
     "@taskasaur/ui/fields": Fields,
+    "@taskasaur/ui/primitives/command": Command,
+    "@taskasaur/ui/primitives/sheet": Sheet,
     "@taskasaur/ui/primitives/button": Button,
     "@taskasaur/ui/primitives/input": Input,
     "@taskasaur/ui/primitives/dialog": Dialog,
@@ -339,6 +344,7 @@ export function pluginModules(
           <RecordTable
             {...props}
             runtime={runtime}
+            managedAccess={manifest.id}
             storeOverride={
               props.storeOverride ??
               (workspace.collection(props.collection) as never)

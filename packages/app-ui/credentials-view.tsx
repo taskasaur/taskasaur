@@ -85,37 +85,39 @@ export default function CredentialsView({ runtime }: { runtime: AppRuntime }) {
       <RecordTable
         runtime={runtime}
         collection="credentials"
-        renderActions={(row) => (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Set credential secret"
-              onClick={() => {
-                setDeviceIds([runtime.device.identity.id]);
-                setSelected(row);
-              }}
-            >
-              <KeyRound size={14} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Revoke credential"
-              disabled={row.data.status === "revoked"}
-              onClick={async () => {
-                try {
-                  await runtime.api("credentials/revoke", { id: row.id });
-                  await runtime.synchronize();
-                } catch (e) {
-                  setError(e instanceof Error ? e.message : String(e));
-                }
-              }}
-            >
-              <ShieldOff size={14} />
-            </Button>
-          </>
-        )}
+        renderActions={(row, { writable }) =>
+          writable ? (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Set credential secret"
+                onClick={() => {
+                  setDeviceIds([runtime.device.identity.id]);
+                  setSelected(row);
+                }}
+              >
+                <KeyRound size={14} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Revoke credential"
+                disabled={row.data.status === "revoked"}
+                onClick={async () => {
+                  try {
+                    await runtime.api("credentials/revoke", { id: row.id });
+                    await runtime.synchronize();
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : String(e));
+                  }
+                }}
+              >
+                <ShieldOff size={14} />
+              </Button>
+            </>
+          ) : null
+        }
       />
       <Dialog
         open={Boolean(selected)}

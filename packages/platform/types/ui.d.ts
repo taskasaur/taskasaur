@@ -326,12 +326,24 @@ function CalendarDayButton({ className, day, modifiers, locale, ...props }: Reac
 export { Calendar, CalendarDayButton };
 
 }
-declare module "@taskasaur/ui/primitives/collapsible" {
-import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
-function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
-function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
-function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props): import("react/jsx-runtime").JSX.Element;
-export { Collapsible, CollapsibleTrigger, CollapsibleContent };
+declare module "@taskasaur/ui/primitives/dialog" {
+import * as React from "react";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+function Dialog({ ...props }: DialogPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
+function DialogPortal({ ...props }: DialogPrimitive.Portal.Props): import("react/jsx-runtime").JSX.Element;
+function DialogClose({ ...props }: DialogPrimitive.Close.Props): import("react/jsx-runtime").JSX.Element;
+function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props): import("react/jsx-runtime").JSX.Element;
+function DialogContent({ className, children, showCloseButton, ...props }: DialogPrimitive.Popup.Props & {
+    showCloseButton?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+function DialogFooter({ className, showCloseButton, children, ...props }: React.ComponentProps<"div"> & {
+    showCloseButton?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props): import("react/jsx-runtime").JSX.Element;
+function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props): import("react/jsx-runtime").JSX.Element;
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger, };
 
 }
 declare module "@taskasaur/ui/primitives/input-group" {
@@ -353,6 +365,53 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">): 
 function InputGroupInput({ className, ...props }: React.ComponentProps<"input">): import("react/jsx-runtime").JSX.Element;
 function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">): import("react/jsx-runtime").JSX.Element;
 export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput, InputGroupTextarea, };
+
+}
+declare module "@taskasaur/ui/primitives/command" {
+import * as React from "react";
+import { Command as CommandPrimitive } from "cmdk";
+import { Dialog } from "@taskasaur/ui/primitives/dialog";
+function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>): import("react/jsx-runtime").JSX.Element;
+function CommandDialog({ title, description, children, className, showCloseButton, ...props }: Omit<React.ComponentProps<typeof Dialog>, "children"> & {
+    title?: string;
+    description?: string;
+    className?: string;
+    showCloseButton?: boolean;
+    children: React.ReactNode;
+}): import("react/jsx-runtime").JSX.Element;
+function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>): import("react/jsx-runtime").JSX.Element;
+function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>): import("react/jsx-runtime").JSX.Element;
+function CommandEmpty({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Empty>): import("react/jsx-runtime").JSX.Element;
+function CommandGroup({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Group>): import("react/jsx-runtime").JSX.Element;
+function CommandSeparator({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Separator>): import("react/jsx-runtime").JSX.Element;
+function CommandItem({ className, children, ...props }: React.ComponentProps<typeof CommandPrimitive.Item>): import("react/jsx-runtime").JSX.Element;
+function CommandShortcut({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
+export { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut, CommandSeparator, };
+
+}
+declare module "@taskasaur/ui/primitives/sheet" {
+import * as React from "react";
+import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
+function Sheet({ ...props }: SheetPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
+function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
+function SheetClose({ ...props }: SheetPrimitive.Close.Props): import("react/jsx-runtime").JSX.Element;
+function SheetContent({ className, children, side, showCloseButton, ...props }: SheetPrimitive.Popup.Props & {
+    side?: "top" | "right" | "bottom" | "left";
+    showCloseButton?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function SheetHeader({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+function SheetFooter({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props): import("react/jsx-runtime").JSX.Element;
+function SheetDescription({ className, ...props }: SheetPrimitive.Description.Props): import("react/jsx-runtime").JSX.Element;
+export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription, };
+
+}
+declare module "@taskasaur/ui/primitives/collapsible" {
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
+function Collapsible({ ...props }: CollapsiblePrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
+function CollapsibleTrigger({ ...props }: CollapsiblePrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
+function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props): import("react/jsx-runtime").JSX.Element;
+export { Collapsible, CollapsibleTrigger, CollapsibleContent };
 
 }
 declare module "@taskasaur/ui/primitives/scroll-area" {
@@ -425,26 +484,6 @@ function useComboboxAnchor(): React.RefObject<HTMLDivElement | null>;
 export { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxGroup, ComboboxLabel, ComboboxCollection, ComboboxEmpty, ComboboxSeparator, ComboboxChips, ComboboxChip, ComboboxChipsInput, ComboboxTrigger, ComboboxValue, useComboboxAnchor, };
 
 }
-declare module "@taskasaur/ui/primitives/dialog" {
-import * as React from "react";
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-function Dialog({ ...props }: DialogPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
-function DialogPortal({ ...props }: DialogPrimitive.Portal.Props): import("react/jsx-runtime").JSX.Element;
-function DialogClose({ ...props }: DialogPrimitive.Close.Props): import("react/jsx-runtime").JSX.Element;
-function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props): import("react/jsx-runtime").JSX.Element;
-function DialogContent({ className, children, showCloseButton, ...props }: DialogPrimitive.Popup.Props & {
-    showCloseButton?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
-function DialogFooter({ className, showCloseButton, children, ...props }: React.ComponentProps<"div"> & {
-    showCloseButton?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props): import("react/jsx-runtime").JSX.Element;
-function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props): import("react/jsx-runtime").JSX.Element;
-export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger, };
-
-}
 declare module "@taskasaur/ui/primitives/badge" {
 import { useRender } from "@base-ui/react/use-render";
 import { type VariantProps } from "class-variance-authority";
@@ -496,12 +535,14 @@ export interface RecordTableProps {
     };
     viewKey?: string;
     readOnly?: boolean;
+    /** Host supplies the owning plugin when editing managed shared resources. */
+    managedAccess?: string;
     defaultView?: Partial<CollectionViewState>;
     renderCell?: (context: CellContext) => ReactNode;
     renderCard?: (row: ResourceRecord, defaultContent: ReactNode) => ReactNode;
     columnOptions?: Record<string, ColumnOptions>;
 }
 /** Storage/permissions adapter. Every plugin gets the same collection presentation. */
-export function RecordTable({ runtime, collection, toolbar, renderActions, onOpen, hideCreate, schemaOverride, storeOverride, viewKey, readOnly, defaultView, renderCell, renderCard, columnOptions, }: RecordTableProps): import("react/jsx-runtime").JSX.Element;
+export function RecordTable({ runtime, collection, toolbar, renderActions, onOpen, hideCreate, schemaOverride, storeOverride, viewKey, readOnly, managedAccess, defaultView, renderCell, renderCard, columnOptions, }: RecordTableProps): import("react/jsx-runtime").JSX.Element;
 
 }
