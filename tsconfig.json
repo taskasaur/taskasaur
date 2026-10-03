@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2023"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -14,9 +18,14 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["packages/*"]
+      "@/*": [
+        "packages/*"
+      ]
     },
-    "types": ["node", "vite/client"],
+    "types": [
+      "node",
+      "vite/client"
+    ],
     "allowJs": true
   },
   "include": [
@@ -31,5 +40,12 @@
     "vite.config.ts",
     "capacitor.config.ts"
   ],
-  "exclude": ["node_modules", "dist", "dist-electron", "vendor"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "vendor",
+    "packages/platform/dist",
+    "packages/platform/host-types"
+  ]
 }

@@ -1,7 +1,7 @@
 {
   "name": "taskasaur",
   "version": "0.2.0",
-  "description": "Taskasaur web, desktop and mobile client",
+  "description": "Taskasaur distributed workspace: local replicas, peer synchronization, desktop, mobile and headless",
   "author": {
     "name": "Taskasaur Contributors",
     "email": "taskasaur@users.noreply.github.com"
@@ -39,31 +39,47 @@
     "device": "tsx scripts/device.ts",
     "format": "prettier --write packages src electron scripts tests docs",
     "build:desktop": "node scripts/desktop.mjs",
-    "postinstall": "node scripts/native-prepare.mjs",
+    "postinstall": "node scripts/native-prepare.mjs && npm run sdk:build",
     "prebuild:web": "npm run sdk:verify && npm run core:verify",
     "postbuild:web": "node scripts/offline-assets.mjs",
     "core:verify": "node scripts/core-release.mjs",
     "postbuild:client": "node scripts/offline-assets.mjs",
-    "sdk:verify": "node scripts/verify-sdk.mjs"
+    "sdk:verify": "node scripts/verify-sdk.mjs",
+    "sdk:build": "node scripts/build-platform.mjs"
   },
   "dependencies": {
+    "@automerge/automerge": "^3.5.0",
+    "@automerge/automerge-repo": "^2.6.0-alpha.3",
     "@base-ui/react": "^1.5.0",
     "@capacitor/android": "^7.6.8",
     "@capacitor/core": "^7.1.0",
+    "@capacitor/filesystem": "^7.1.9",
     "@capacitor/ios": "^7.1.0",
+    "@chainsafe/libp2p-noise": "^17.0.0",
+    "@chainsafe/libp2p-yamux": "^8.0.1",
+    "@electric-sql/pglite": "^0.5.8",
     "@fontsource-variable/geist": "^5.2.9",
+    "@libp2p/circuit-relay-v2": "^4.2.13",
+    "@libp2p/crypto": "^5.1.23",
+    "@libp2p/identify": "^4.1.14",
+    "@libp2p/peer-id": "^6.0.15",
+    "@libp2p/ping": "^3.1.13",
+    "@libp2p/webrtc": "^6.0.33",
+    "@libp2p/websockets": "^10.1.21",
+    "@multiformats/multiaddr": "^13.0.3",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-dropdown-menu": "^2.1.15",
     "@radix-ui/react-popover": "^1.1.14",
     "@radix-ui/react-select": "^2.2.5",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@taskasaur/platform": "file:vendor/taskasaur-platform-0.3.0.tgz",
+    "@taskasaur/platform": "file:packages/platform",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.3.0",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
+    "libp2p": "^3.3.11",
     "lucide-react": "^0.511.0",
     "next-themes": "^0.4.6",
     "openworkflow": "0.10.1",
@@ -159,5 +175,8 @@
   },
   "engines": {
     "node": ">=24"
-  }
+  },
+  "workspaces": [
+    "packages/platform"
+  ]
 }

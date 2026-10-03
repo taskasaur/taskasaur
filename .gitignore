@@ -1,6 +1,8 @@
 node_modules/
 dist/
 dist-electron/
+packages/platform/dist/
+packages/platform/host-types/
 release/
 .codex-tmp/
 @/

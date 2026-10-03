@@ -1,0 +1,136 @@
+{
+  "name": "@taskasaur/platform",
+  "version": "0.3.0",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "files": [
+    "dist",
+    "plugins",
+    "LICENSE",
+    "README.md",
+    "scripts",
+    "types",
+    "host-types"
+  ],
+  "exports": {
+    "./field-types": {
+      "types": "./dist/field-types/index.d.ts",
+      "import": "./dist/field-types/index.js"
+    },
+    "./core/errors": {
+      "types": "./dist/core/errors.d.ts",
+      "import": "./dist/core/errors.js"
+    },
+    "./core/workflows": {
+      "types": "./dist/core/workflows.d.ts",
+      "import": "./dist/core/workflows.js"
+    },
+    "./core/messages": {
+      "types": "./dist/core/messages.d.ts",
+      "import": "./dist/core/messages.js"
+    },
+    "./core/calendar": {
+      "types": "./dist/core/calendar.d.ts",
+      "import": "./dist/core/calendar.js"
+    },
+    "./core/dynamic-fields": {
+      "types": "./dist/core/dynamic-fields.d.ts",
+      "import": "./dist/core/dynamic-fields.js"
+    },
+    "./core/registry": {
+      "types": "./dist/core/registry.d.ts",
+      "import": "./dist/core/registry.js"
+    },
+    "./core/host": {
+      "types": "./dist/core/host.d.ts",
+      "import": "./dist/core/host.js"
+    },
+    "./core/release": {
+      "types": "./dist/core/release.d.ts",
+      "import": "./dist/core/release.js"
+    },
+    "./core/calendar-values": {
+      "types": "./dist/core/calendar-values.d.ts",
+      "import": "./dist/core/calendar-values.js"
+    },
+    "./core/catalog": {
+      "types": "./dist/core/catalog.d.ts",
+      "import": "./dist/core/catalog.js"
+    },
+    "./plugin-sdk/device": {
+      "types": "./dist/plugin-sdk/device.d.ts",
+      "import": "./dist/plugin-sdk/device.js"
+    },
+    "./plugin-sdk": {
+      "types": "./dist/plugin-sdk/index.d.ts",
+      "import": "./dist/plugin-sdk/index.js"
+    },
+    "./automation/engine": {
+      "types": "./dist/automation/engine.d.ts",
+      "import": "./dist/automation/engine.js"
+    },
+    "./automation/automation-v1": {
+      "types": "./dist/automation/automation-v1.d.ts",
+      "import": "./dist/automation/automation-v1.js"
+    },
+    "./automation/typescript": {
+      "types": "./dist/automation/typescript.d.ts",
+      "import": "./dist/automation/typescript.js"
+    },
+    "./device-host/stream-transport": {
+      "types": "./dist/device-host/stream-transport.d.ts",
+      "import": "./dist/device-host/stream-transport.js"
+    },
+    "./device-host/native-host": {
+      "types": "./dist/device-host/native-host.d.ts",
+      "import": "./dist/device-host/native-host.js"
+    },
+    "./device-host/native-runner": {
+      "types": "./dist/device-host/native-runner.d.ts",
+      "import": "./dist/device-host/native-runner.js"
+    },
+    "./release.json": "./plugins/core/release.json",
+    "./build-plugin": "./scripts/build-plugin.mjs",
+    "./plugin-sdk/inventory": {
+      "types": "./dist/plugin-sdk/inventory.d.ts",
+      "import": "./dist/plugin-sdk/inventory.js"
+    },
+    "./plugin-sdk/artifact": {
+      "types": "./dist/plugin-sdk/artifact.d.ts",
+      "import": "./dist/plugin-sdk/artifact.js"
+    },
+    "./host-types": "./types/host.d.ts"
+  },
+  "dependencies": {
+    "zod": "^3.25.42",
+    "@js-temporal/polyfill": "0.5.1",
+    "ical.js": "2.2.1",
+    "json-rpc-2.0": "1.8.1",
+    "cloudevents": "10.0.0",
+    "jszip": "3.10.2"
+  },
+  "peerDependencies": {
+    "openworkflow": "0.10.1",
+    "typescript": "^5.9.3",
+    "ws": "8.22.0",
+    "ssh2": "1.17.0",
+    "node-pty": "1.1.0"
+  },
+  "peerDependenciesMeta": {
+    "openworkflow": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    },
+    "ws": {
+      "optional": true
+    },
+    "ssh2": {
+      "optional": true
+    },
+    "node-pty": {
+      "optional": true
+    }
+  }
+}
