@@ -57,6 +57,23 @@ try {
   docker("volume", "create", volume);
   const first = await start(true);
   assert.equal((await fetch(first)).status, 200);
+  assert.match(
+    docker(
+      "exec",
+      name,
+      "node",
+      "-e",
+      `
+    const pty = require('node-pty');
+    const terminal = pty.spawn('/bin/sh', ['-c', 'printf taskasaur-container-pty'], {name:'xterm', cols:80, rows:24, env:process.env});
+    let output = '';
+    const timer = setTimeout(() => {terminal.kill(); process.exit(1)}, 10000);
+    terminal.onData(data => output += data);
+    terminal.onExit(({exitCode}) => {clearTimeout(timer); console.log(output); process.exit(exitCode)});
+  `,
+    ),
+    /taskasaur-container-pty/,
+  );
   const original = fingerprint();
   docker("stop", "-t", "40", name);
   docker("rm", name);
@@ -68,7 +85,7 @@ try {
     "Replacement lost the device identity or workspace",
   );
   console.log(
-    "Container replacement preserves its identity/workspace volume; GUI-disabled mode and health checks passed.",
+    "Container replacement preserves its identity/workspace volume; native Linux PTY, GUI-disabled mode and health checks passed.",
   );
 } catch (error) {
   try {
