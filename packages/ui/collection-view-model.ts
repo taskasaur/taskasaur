@@ -38,6 +38,8 @@ export interface CollectionViewState {
   version: 2;
   query: Query;
   columns: string[];
+  /** Full field order, including hidden columns; older callers may omit it. */
+  columnOrder?: string[];
   groups: Grouping[];
   mode: ViewMode;
   path: GroupSegment[];
@@ -52,12 +54,32 @@ export interface GroupNode {
   children: GroupNode[];
 }
 
+/** Keep hidden fields in the same order so toggling visibility never moves them. */
+export function resolveColumnOrder(
+  fields: Field[],
+  preferred: string[] = [],
+): string[] {
+  const ids = new Set(fields.map((field) => field.id));
+  return [...new Set([...preferred.filter((id) => ids.has(id)), ...ids])];
+}
+
 /** Display preferences are local; search from older table preferences is deliberately retired. */
 export function normalizeView(
   saved: Partial<CollectionViewState> | undefined,
   schema: RecordSchema,
 ): CollectionViewState {
   const ids = new Set(schema.fields.map((f) => f.id));
+  const columns = [
+    ...new Set(
+      (
+        saved?.columns ?? schema.fields.slice(0, 5).map((field) => field.id)
+      ).filter((id) => ids.has(id)),
+    ),
+  ];
+  const columnOrder = resolveColumnOrder(
+    schema.fields,
+    saved?.columnOrder ?? columns,
+  );
   const query = saved?.query ?? {};
   const { search: _search, groupBy, ...rest } = query;
   const groups =
@@ -72,13 +94,8 @@ export function normalizeView(
       filters: rest.filters?.filter((f) => ids.has(f.field)),
       sorts: rest.sorts?.filter((s) => ids.has(s.field)),
     },
-    columns: [
-      ...new Set(
-        (saved?.columns ?? schema.fields.slice(0, 5).map((f) => f.id)).filter(
-          (id) => ids.has(id),
-        ),
-      ),
-    ],
+    columns: columnOrder.filter((id) => columns.includes(id)),
+    columnOrder,
     groups: groups.filter((g) => ids.has(g.field)),
     mode: viewModes.includes(saved?.mode as ViewMode)
       ? saved!.mode!

@@ -113,54 +113,6 @@ function PopoverDescription({ className, ...props }: PopoverPrimitive.Descriptio
 export { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, };
 
 }
-declare module "@taskasaur/ui/primitives/input-group" {
-import * as React from "react";
-import { type VariantProps } from "class-variance-authority";
-import { Button } from "@taskasaur/ui/primitives/button";
-function InputGroup({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
-const inputGroupAddonVariants: (props?: ({
-    align?: "inline-end" | "inline-start" | "block-start" | "block-end" | null | undefined;
-} & import("class-variance-authority/types").ClassProp) | undefined) => string;
-function InputGroupAddon({ className, align, ...props }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>): import("react/jsx-runtime").JSX.Element;
-const inputGroupButtonVariants: (props?: ({
-    size?: "sm" | "xs" | "icon-xs" | "icon-sm" | null | undefined;
-} & import("class-variance-authority/types").ClassProp) | undefined) => string;
-function InputGroupButton({ className, type, variant, size, ...props }: Omit<React.ComponentProps<typeof Button>, "size" | "type"> & VariantProps<typeof inputGroupButtonVariants> & {
-    type?: "button" | "submit" | "reset";
-}): import("react/jsx-runtime").JSX.Element;
-function InputGroupText({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
-function InputGroupInput({ className, ...props }: React.ComponentProps<"input">): import("react/jsx-runtime").JSX.Element;
-function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">): import("react/jsx-runtime").JSX.Element;
-export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput, InputGroupTextarea, };
-
-}
-declare module "@taskasaur/ui/primitives/combobox" {
-import * as React from "react";
-import { Combobox as ComboboxPrimitive } from "@base-ui/react";
-const Combobox: typeof ComboboxPrimitive.Root;
-function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxTrigger({ className, children, ...props }: ComboboxPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxInput({ className, children, disabled, showTrigger, showClear, ...props }: ComboboxPrimitive.Input.Props & {
-    showTrigger?: boolean;
-    showClear?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function ComboboxContent({ className, side, sideOffset, align, alignOffset, anchor, ...props }: ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset" | "anchor">): import("react/jsx-runtime").JSX.Element;
-function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxItem({ className, children, ...props }: ComboboxPrimitive.Item.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxGroup({ className, ...props }: ComboboxPrimitive.Group.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxLabel({ className, ...props }: ComboboxPrimitive.GroupLabel.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxCollection({ ...props }: ComboboxPrimitive.Collection.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxSeparator({ className, ...props }: ComboboxPrimitive.Separator.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxChips({ className, ...props }: React.ComponentPropsWithRef<typeof ComboboxPrimitive.Chips> & ComboboxPrimitive.Chips.Props): import("react/jsx-runtime").JSX.Element;
-function ComboboxChip({ className, children, showRemove, ...props }: ComboboxPrimitive.Chip.Props & {
-    showRemove?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function ComboboxChipsInput({ className, ...props }: ComboboxPrimitive.Input.Props): import("react/jsx-runtime").JSX.Element;
-function useComboboxAnchor(): React.RefObject<HTMLDivElement | null>;
-export { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxGroup, ComboboxLabel, ComboboxCollection, ComboboxEmpty, ComboboxSeparator, ComboboxChips, ComboboxChip, ComboboxChipsInput, ComboboxTrigger, ComboboxValue, useComboboxAnchor, };
-
-}
 declare module "@taskasaur/ui/primitives/dropdown-menu" {
 import * as React from "react";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
@@ -212,6 +164,8 @@ export interface CollectionViewState {
     version: 2;
     query: Query;
     columns: string[];
+    /** Full field order, including hidden columns; older callers may omit it. */
+    columnOrder?: string[];
     groups: Grouping[];
     mode: ViewMode;
     path: GroupSegment[];
@@ -225,6 +179,8 @@ export interface GroupNode {
     rows: ResourceRecord[];
     children: GroupNode[];
 }
+/** Keep hidden fields in the same order so toggling visibility never moves them. */
+export function resolveColumnOrder(fields: Field[], preferred?: string[]): string[];
 /** Display preferences are local; search from older table preferences is deliberately retired. */
 export function normalizeView(saved: Partial<CollectionViewState> | undefined, schema: RecordSchema): CollectionViewState;
 export function moveRule<T>(rules: T[], index: number, direction: -1 | 1): T[];
@@ -247,12 +203,13 @@ export function OrderButtons({ index, count, kind, onMove, }: {
     kind: string;
     onMove: (direction: -1 | 1) => void;
 }): import("react/jsx-runtime").JSX.Element;
-export function QueryControls({ fields, query, onChange, columns, onColumns, groups, onGroups, mode, onMode, }: {
+export function QueryControls({ fields, query, onChange, columns, columnOrder, onColumns, groups, onGroups, mode, onMode, }: {
     fields: Field[];
     query: Query;
     onChange: (query: Query) => void;
     columns: string[];
-    onColumns: (columns: string[]) => void;
+    columnOrder?: string[];
+    onColumns: (columns: string[], order?: string[]) => void;
     groups: Grouping[];
     onGroups: (groups: Grouping[]) => void;
     mode: ViewMode;
@@ -377,6 +334,27 @@ function CollapsibleContent({ ...props }: CollapsiblePrimitive.Panel.Props): imp
 export { Collapsible, CollapsibleTrigger, CollapsibleContent };
 
 }
+declare module "@taskasaur/ui/primitives/input-group" {
+import * as React from "react";
+import { type VariantProps } from "class-variance-authority";
+import { Button } from "@taskasaur/ui/primitives/button";
+function InputGroup({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+const inputGroupAddonVariants: (props?: ({
+    align?: "inline-end" | "inline-start" | "block-start" | "block-end" | null | undefined;
+} & import("class-variance-authority/types").ClassProp) | undefined) => string;
+function InputGroupAddon({ className, align, ...props }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>): import("react/jsx-runtime").JSX.Element;
+const inputGroupButtonVariants: (props?: ({
+    size?: "sm" | "xs" | "icon-xs" | "icon-sm" | null | undefined;
+} & import("class-variance-authority/types").ClassProp) | undefined) => string;
+function InputGroupButton({ className, type, variant, size, ...props }: Omit<React.ComponentProps<typeof Button>, "size" | "type"> & VariantProps<typeof inputGroupButtonVariants> & {
+    type?: "button" | "submit" | "reset";
+}): import("react/jsx-runtime").JSX.Element;
+function InputGroupText({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
+function InputGroupInput({ className, ...props }: React.ComponentProps<"input">): import("react/jsx-runtime").JSX.Element;
+function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">): import("react/jsx-runtime").JSX.Element;
+export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput, InputGroupTextarea, };
+
+}
 declare module "@taskasaur/ui/primitives/scroll-area" {
 import { ScrollArea as ScrollAreaPrimitive } from "@base-ui/react/scroll-area";
 function ScrollArea({ className, children, ...props }: ScrollAreaPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
@@ -418,6 +396,33 @@ const toggleVariants: (props?: ({
 } & import("class-variance-authority/types").ClassProp) | undefined) => string;
 function Toggle({ className, variant, size, ...props }: TogglePrimitive.Props & VariantProps<typeof toggleVariants>): import("react/jsx-runtime").JSX.Element;
 export { Toggle, toggleVariants };
+
+}
+declare module "@taskasaur/ui/primitives/combobox" {
+import * as React from "react";
+import { Combobox as ComboboxPrimitive } from "@base-ui/react";
+const Combobox: typeof ComboboxPrimitive.Root;
+function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxTrigger({ className, children, ...props }: ComboboxPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxInput({ className, children, disabled, showTrigger, showClear, ...props }: ComboboxPrimitive.Input.Props & {
+    showTrigger?: boolean;
+    showClear?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function ComboboxContent({ className, side, sideOffset, align, alignOffset, anchor, ...props }: ComboboxPrimitive.Popup.Props & Pick<ComboboxPrimitive.Positioner.Props, "side" | "align" | "sideOffset" | "alignOffset" | "anchor">): import("react/jsx-runtime").JSX.Element;
+function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxItem({ className, children, ...props }: ComboboxPrimitive.Item.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxGroup({ className, ...props }: ComboboxPrimitive.Group.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxLabel({ className, ...props }: ComboboxPrimitive.GroupLabel.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxCollection({ ...props }: ComboboxPrimitive.Collection.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxSeparator({ className, ...props }: ComboboxPrimitive.Separator.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxChips({ className, ...props }: React.ComponentPropsWithRef<typeof ComboboxPrimitive.Chips> & ComboboxPrimitive.Chips.Props): import("react/jsx-runtime").JSX.Element;
+function ComboboxChip({ className, children, showRemove, ...props }: ComboboxPrimitive.Chip.Props & {
+    showRemove?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function ComboboxChipsInput({ className, ...props }: ComboboxPrimitive.Input.Props): import("react/jsx-runtime").JSX.Element;
+function useComboboxAnchor(): React.RefObject<HTMLDivElement | null>;
+export { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxGroup, ComboboxLabel, ComboboxCollection, ComboboxEmpty, ComboboxSeparator, ComboboxChips, ComboboxChip, ComboboxChipsInput, ComboboxTrigger, ComboboxValue, useComboboxAnchor, };
 
 }
 declare module "@taskasaur/ui/primitives/dialog" {

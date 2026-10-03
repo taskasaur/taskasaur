@@ -219,7 +219,8 @@ export function RecordTable({
           query={state.query}
           onChange={(query) => change({ query })}
           columns={state.columns}
-          onColumns={(columns) => change({ columns })}
+          columnOrder={state.columnOrder}
+          onColumns={(columns, columnOrder) => change({ columns, columnOrder })}
           groups={state.groups}
           onGroups={(groups) => change({ groups })}
           mode={state.mode}

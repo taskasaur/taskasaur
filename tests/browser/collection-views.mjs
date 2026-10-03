@@ -7,10 +7,22 @@ const context = await browser.newContext({
 page.setDefaultTimeout(20000);
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
-const click = (name) =>
-  name === "Columns"
-    ? page.locator("[data-slot=combobox-trigger]").click()
-    : page.getByRole("button", { name, exact: true }).click();
+const click = (name) => page.getByRole("button", { name, exact: true }).click();
+const expectToggleAfterArrows = async (kind) => {
+  const arrows = await page
+    .getByLabel(`Move ${kind} 1 down`, { exact: true })
+    .boundingBox();
+  const toggle = await page
+    .getByRole("switch", { name: `Enable ${kind} 1`, exact: true })
+    .boundingBox();
+  const field = await page
+    .getByLabel(`${kind === "sort" ? "Sort" : "Group"} field 1`, {
+      exact: true,
+    })
+    .boundingBox();
+  expect(toggle.x).toBeGreaterThan(arrows.x + arrows.width);
+  expect(toggle.x + toggle.width).toBeLessThan(field.x);
+};
 const choose = async (label, value) => {
   await page.getByLabel(label, { exact: true }).click();
   await page
@@ -130,27 +142,71 @@ try {
   ).toHaveCount(0);
   await click("Add sort");
   await choose("Sort field 1", "Title");
+  await expectToggleAfterArrows("sort");
   await click("Sort 1 ascending");
   await expect(records().first()).toContainText("Delta");
   await click("Columns");
   await expect(
     page.getByRole("dialog", { name: "Sort", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("option", { name: "Description", exact: true }).click();
-  await expect(page.locator("[data-slot=combobox-trigger]")).toHaveText(
-    "Columns",
+  const visibleFields = () =>
+    page
+      .locator("[data-record-id]")
+      .first()
+      .locator("td[data-field]")
+      .evaluateAll((cells) => cells.map((cell) => cell.dataset.field));
+  const initialFields = await visibleFields();
+  const reorderedFields = [
+    "description",
+    ...initialFields.filter((id) => id !== "description"),
+  ];
+  await page
+    .getByRole("switch", { name: "Show column Description", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Columns", exact: true }),
+  ).toHaveText("Columns");
+  await expect(page.locator('[data-column-row="title"]')).toBeVisible();
+  await expect(page.locator('td[data-field="description"]')).toHaveCount(0);
+  // Hidden columns retain their positions while reordered and across reloads.
+  const description = page.locator('[data-column-row="description"]');
+  for (let i = 0; i < initialFields.indexOf("description"); i++)
+    await description.getByRole("button", { name: /up$/ }).click();
+  await page
+    .getByRole("switch", { name: "Show column Description", exact: true })
+    .click();
+  await expect.poll(visibleFields).toEqual(reorderedFields);
+  const columnArrows = await description
+      .getByRole("button", { name: /down$/ })
+      .boundingBox(),
+    columnToggle = await description.getByRole("switch").boundingBox();
+  expect(columnToggle.x).toBeGreaterThan(columnArrows.x + columnArrows.width);
+  await page
+    .getByRole("switch", { name: "Show column Description", exact: true })
+    .click();
+  await page.reload();
+  await expect(records()).toHaveCount(4);
+  await click("Columns");
+  await expect(page.locator("[data-column-row]").first()).toHaveAttribute(
+    "data-column-row",
+    "description",
   );
   await expect(
-    page.getByRole("option", { name: "Title", exact: true }),
-  ).toBeVisible();
-  await expect(page.locator('td[data-field="description"]')).toHaveCount(0);
-  await page.getByRole("option", { name: "Description", exact: true }).click();
+    page.getByRole("switch", { name: "Show column Description", exact: true }),
+  ).not.toBeChecked();
+  await page
+    .getByRole("switch", { name: "Show column Description", exact: true })
+    .click();
+  await expect.poll(visibleFields).toEqual(reorderedFields);
+  for (let i = 0; i < initialFields.indexOf("description"); i++)
+    await description.getByRole("button", { name: /down$/ }).click();
+  await expect.poll(visibleFields).toEqual(initialFields);
+  await page.screenshot({ path: "/private/tmp/taskasaur-columns.png" });
   await click("Group");
-  await expect(
-    page.getByRole("option", { name: "Description", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.locator("[data-column-row]")).toHaveCount(0);
   await click("Add group");
   await choose("Group field 1", "Status");
+  await expectToggleAfterArrows("group");
   await click("Add group");
   await choose("Group field 2", "Description");
   await click("Move group 2 up");
@@ -281,18 +337,20 @@ try {
   await click("Toggle theme");
   await expect(page.locator("html")).toHaveClass(/dark/);
   await click("Columns");
-  await page.getByRole("combobox", { name: "Find columns" }).fill("Status");
+  await page.getByRole("textbox", { name: "Find columns" }).fill("Status");
   await expect(
-    page.getByRole("option", { name: "Status", exact: true }),
+    page.getByRole("switch", { name: "Show column Status", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("option", { name: "Title", exact: true }),
+    page.getByRole("switch", { name: "Show column Title", exact: true }),
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(page.locator("[data-slot=combobox-trigger]")).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Columns", exact: true }),
+  ).toBeFocused();
   expect(errors).toEqual([]);
   console.log(
-    "Filtering, ordering, exclusive popovers, multiselect columns, recursive grouping, six views, breadcrumbs, persisted state and mobile controls passed",
+    "Filtering, ordering, exclusive popovers, ordered columns and visibility switches, recursive grouping, six views, breadcrumbs, persisted state and mobile controls passed",
   );
 } catch (error) {
   console.error(await page.locator("body").innerText());

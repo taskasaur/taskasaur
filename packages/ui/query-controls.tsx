@@ -26,15 +26,7 @@ import {
   PopoverContent,
   PopoverTitle,
 } from "./primitives/popover";
-import {
-  Combobox,
-  ComboboxTrigger,
-  ComboboxInput,
-  ComboboxContent,
-  ComboboxList,
-  ComboboxItem,
-  ComboboxEmpty,
-} from "./primitives/combobox";
+import { Input } from "./primitives/input";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -44,6 +36,7 @@ import {
 } from "./primitives/dropdown-menu";
 import {
   moveRule,
+  resolveColumnOrder,
   viewModes,
   viewLabels,
   type Grouping,
@@ -100,6 +93,7 @@ export function QueryControls({
   query,
   onChange,
   columns,
+  columnOrder,
   onColumns,
   groups,
   onGroups,
@@ -110,7 +104,8 @@ export function QueryControls({
   query: Query;
   onChange: (query: Query) => void;
   columns: string[];
-  onColumns: (columns: string[]) => void;
+  columnOrder?: string[];
+  onColumns: (columns: string[], order?: string[]) => void;
   groups: Grouping[];
   onGroups: (groups: Grouping[]) => void;
   mode: ViewMode;
@@ -118,6 +113,21 @@ export function QueryControls({
 }) {
   type Panel = "filter" | "sort" | "columns" | "group" | "view";
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [columnSearch, setColumnSearch] = useState("");
+  const [localColumnOrder, setLocalColumnOrder] = useState(() =>
+    resolveColumnOrder(fields, columns),
+  );
+  const orderedColumns = resolveColumnOrder(
+    fields,
+    columnOrder ?? localColumnOrder,
+  );
+  const updateColumns = (order: string[], visible: string[]) => {
+    setLocalColumnOrder(order);
+    onColumns(
+      order.filter((id) => visible.includes(id)),
+      order,
+    );
+  };
   const openPanel = (name: Panel, open: boolean) =>
     setPanel((current) => (open ? name : current === name ? null : current));
   const filters = query.filters ?? [],
@@ -136,7 +146,7 @@ export function QueryControls({
   const updateGroup = (id: string, patch: Partial<Grouping>) =>
     onGroups(groups.map((g) => (g.id === id ? { ...g, ...patch } : g)));
   const popover = (
-    name: "filter" | "sort" | "group",
+    name: "filter" | "sort" | "group" | "columns",
     title: string,
     icon: ReactNode,
     body: ReactNode,
@@ -349,6 +359,11 @@ export function QueryControls({
                   })
                 }
               />
+              <Switch
+                aria-label={"Enable sort " + (index + 1)}
+                checked={sort.enabled}
+                onCheckedChange={(enabled) => updateSort(index, { enabled })}
+              />
               <ChoiceSelect
                 aria-label={"Sort field " + (index + 1)}
                 options={choices}
@@ -371,11 +386,6 @@ export function QueryControls({
               >
                 {sort.direction === "asc" ? <ArrowUp /> : <ArrowDown />}
               </Button>
-              <Switch
-                aria-label={"Enable sort " + (index + 1)}
-                checked={sort.enabled}
-                onCheckedChange={(enabled) => updateSort(index, { enabled })}
-              />
               <Button
                 variant="ghost"
                 size="icon-xs"
@@ -417,35 +427,72 @@ export function QueryControls({
         </>,
         "w-[27rem]",
       )}
-      <Combobox
-        multiple
-        items={fields.map((f) => f.id)}
-        itemToStringLabel={(id) => fields.find((f) => f.id === id)?.label ?? id}
-        value={columns}
-        onValueChange={onColumns}
-        open={panel === "columns"}
-        onOpenChange={(open) => openPanel("columns", open)}
-      >
-        <ComboboxTrigger render={<Button variant="outline" />}>
-          <Columns3 />
-          Columns
-        </ComboboxTrigger>
-        <ComboboxContent className="w-64" aria-label="Choose columns">
-          <ComboboxInput
+      {popover(
+        "columns",
+        "Columns",
+        <Columns3 />,
+        <>
+          <Input
             aria-label="Find columns"
             placeholder="Find a column…"
-            showTrigger={false}
+            value={columnSearch}
+            onChange={(event) => setColumnSearch(event.target.value)}
           />
-          <ComboboxEmpty>No columns found.</ComboboxEmpty>
-          <ComboboxList>
-            {(id: string) => (
-              <ComboboxItem key={id} value={id}>
-                {fields.find((f) => f.id === id)?.label ?? id}
-              </ComboboxItem>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {orderedColumns.map((id, index) => {
+              const field = fields.find((field) => field.id === id)!;
+              if (
+                !field.label
+                  .toLocaleLowerCase()
+                  .includes(columnSearch.trim().toLocaleLowerCase())
+              )
+                return null;
+              return (
+                <div
+                  key={id}
+                  data-column-row={id}
+                  className="grid grid-cols-[3.25rem_2rem_minmax(0,1fr)] items-center gap-2"
+                >
+                  <OrderButtons
+                    kind="column"
+                    index={index}
+                    count={orderedColumns.length}
+                    onMove={(direction) =>
+                      updateColumns(
+                        moveRule(orderedColumns, index, direction),
+                        columns,
+                      )
+                    }
+                  />
+                  <Switch
+                    aria-label={"Show column " + field.label}
+                    checked={columns.includes(id)}
+                    onCheckedChange={(visible) =>
+                      updateColumns(
+                        orderedColumns,
+                        visible
+                          ? [...columns, id]
+                          : columns.filter((column) => column !== id),
+                      )
+                    }
+                  />
+                  <span className="min-w-0 break-words text-sm">
+                    {field.label}
+                  </span>
+                </div>
+              );
+            })}
+            {!fields.some((field) =>
+              field.label
+                .toLocaleLowerCase()
+                .includes(columnSearch.trim().toLocaleLowerCase()),
+            ) && (
+              <p className="text-sm text-muted-foreground">No columns found.</p>
             )}
-          </ComboboxList>
-        </ComboboxContent>
-      </Combobox>
+          </div>
+        </>,
+        "w-80",
+      )}
       {popover(
         "group",
         "Group",
@@ -470,6 +517,13 @@ export function QueryControls({
                   onGroups(moveRule(groups, index, direction))
                 }
               />
+              <Switch
+                aria-label={"Enable group " + (index + 1)}
+                checked={group.enabled}
+                onCheckedChange={(enabled) =>
+                  updateGroup(group.id, { enabled })
+                }
+              />
               <ChoiceSelect
                 aria-label={"Group field " + (index + 1)}
                 value={group.field}
@@ -480,13 +534,6 @@ export function QueryControls({
                   ),
                 }))}
                 onValueChange={(field) => updateGroup(group.id, { field })}
-              />
-              <Switch
-                aria-label={"Enable group " + (index + 1)}
-                checked={group.enabled}
-                onCheckedChange={(enabled) =>
-                  updateGroup(group.id, { enabled })
-                }
               />
               <Button
                 variant="ghost"
