@@ -18,7 +18,7 @@ This repository owns the shared core, UI, platform adapters, headless peer and p
 
 ## Run
 
-Use Node.js 26.10 or later (`nvm use`). The container and CI pin 26.10.0 to avoid a [Node 24 WebAssembly runtime crash](https://github.com/nodejs/node/issues/66366).
+Use Node.js 26.10 or later (`nvm install && nvm use`). The container and CI pin 26.10.0 to avoid a [Node 24 WebAssembly runtime crash](https://github.com/nodejs/node/issues/66366). CloudEvents 10 currently emits an engine warning because its declared range stops at Node 24; its messaging integration is tested on Node 26.
 
 ```sh
 npm ci
