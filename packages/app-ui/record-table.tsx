@@ -1,3 +1,4 @@
+import { StorageCopiesButton } from "./storage-placement";
 import { executionSlots } from "../core/execution";
 import { ExecutionTarget } from "./execution-target";
 import { selectedCollectionTable, belongsToTable } from "./collection-tables";
@@ -274,6 +275,7 @@ export function RecordTable({
             Managed by {managers.get(row.id)}
           </span>
         )}
+      <StorageCopiesButton runtime={runtime} record={row} />
       {renderActions?.(row, {
         writable: writable(row),
         update: (patch) => update(row, patch),

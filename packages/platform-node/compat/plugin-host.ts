@@ -1,3 +1,4 @@
+import { storageService } from "../../core/storage-service";
 import { deviceRecordId } from "../../core/records";
 import { credentialHttp } from "../../core/credential-http";
 import {
@@ -183,6 +184,13 @@ export async function serverPluginHost(
           },
         });
         return new Map<string, unknown>([
+          [
+            "core.storage.placement",
+            storageService(
+              repo.db.core.workspaces.get(actor.workspaceId)!,
+              actor.pluginId,
+            ),
+          ],
           ["core.server", serverAdapter(repo, actor)],
           [
             "core.execution",

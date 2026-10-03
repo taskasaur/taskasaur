@@ -180,11 +180,35 @@ export class WorkspaceSearch {
       await runtime.db.transaction(
         "rw",
         runtime.db.searchDocuments,
+        runtime.db.records,
+        runtime.db.fileVersions,
         async () => {
           await runtime.db.searchDocuments.bulkDelete(
             [...old.keys()].filter((id) => !keep.has(id)),
           );
-          if (changed.length) await runtime.db.searchDocuments.bulkPut(changed);
+          // Projection/retention can change while file text is extracted. Never restore
+          // evicted content from the earlier search snapshot.
+          const valid: SearchDocument[] = [];
+          for (const document of changed) {
+            const current = await runtime.db.records.get(document.id);
+            const original = rows.find((r) => r.id === document.id);
+            const bytesStillPresent =
+              !document.revision.endsWith(":bytes=true") ||
+              Boolean(
+                current?.data.version_id &&
+                (await runtime.db.fileVersions.get(
+                  String(current.data.version_id),
+                )),
+              );
+            if (
+              current &&
+              JSON.stringify(current) === JSON.stringify(original) &&
+              bytesStillPresent
+            )
+              valid.push(document);
+            else await runtime.db.searchDocuments.delete(document.id);
+          }
+          if (valid.length) await runtime.db.searchDocuments.bulkPut(valid);
         },
       );
     });

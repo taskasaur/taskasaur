@@ -55,7 +55,8 @@ export const coreNavigation: NavPlugin[] = [
     id,
     label: id[0].toUpperCase() + id.slice(1),
     main: { id, label: id },
-    pages: [],
+    pages:
+      id === "settings" ? [{ id: "storage", label: "Storage copies" }] : [],
     side: "right" as const,
   })),
   {

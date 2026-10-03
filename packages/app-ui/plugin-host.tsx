@@ -1,3 +1,4 @@
+import { storageService } from "../core/storage-service";
 import { navigationService } from "./navigation-service";
 import { ExecutionTarget, type ExecutionTargetProps } from "./execution-target";
 import { executionService, executionRecord } from "../core/execution";
@@ -134,6 +135,7 @@ export async function createBrowserPluginHost(
           };
         };
         return new Map<string, unknown>([
+          ["core.storage.placement", storageService(runtime.node, id)],
           ["core.workspace", pluginWorkspace(runtime, manifest, grants)],
           ["core.records", { collection }],
           ["core.modules", coreModules],

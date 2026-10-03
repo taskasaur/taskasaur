@@ -1,4 +1,5 @@
-"use client";
+import { StoragePlacementView } from "./storage-placement";
+("use client");
 
 import { SharedTextarea } from "../ui/html-controls";
 import {
@@ -396,6 +397,15 @@ function Shell({
       </div>
     );
   else if (id === "plugins") content = <PluginsView runtime={runtime} />;
+  else if (id === "settings" && page.id === "storage")
+    content = (
+      <StoragePlacementView
+        runtime={runtime}
+        itemKey={
+          new URLSearchParams(view.split("?")[1]).get("item") ?? undefined
+        }
+      />
+    );
   else if (id === "settings")
     content = <SettingsView runtime={runtime} onSwitch={onSwitch} />;
   else if (id === "files") content = <FilesView runtime={runtime} />;
@@ -939,10 +949,19 @@ function SettingsView({
       </section>
       <section className="settings-card">
         <h2>Workspace</h2>
+        <Button
+          variant="outline"
+          className="my-3"
+          onClick={() => {
+            location.hash = "settings:storage";
+          }}
+        >
+          Manage storage copies
+        </Button>
         <p>{runtime.profile.name}</p>
         <p className="text-muted-foreground text-sm">
-          Every device keeps a local copy. Changes synchronize with approved
-          peers.
+          Choose which approved devices keep each item. Changes synchronize
+          between the devices keeping a copy.
         </p>
         <div className="flex gap-2 mt-4">
           <Button

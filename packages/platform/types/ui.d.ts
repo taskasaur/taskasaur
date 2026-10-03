@@ -292,6 +292,38 @@ export interface CollectionViewProps {
 export function CollectionView({ schema, rows, state, onChange, onOpen, renderActions, renderCell, renderCard, columnOptions, writable, onUpdate, }: CollectionViewProps): import("react/jsx-runtime").JSX.Element;
 
 }
+declare module "@taskasaur/ui/primitives/dialog" {
+import * as React from "react";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+function Dialog({ ...props }: DialogPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
+function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
+function DialogPortal({ ...props }: DialogPrimitive.Portal.Props): import("react/jsx-runtime").JSX.Element;
+function DialogClose({ ...props }: DialogPrimitive.Close.Props): import("react/jsx-runtime").JSX.Element;
+function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props): import("react/jsx-runtime").JSX.Element;
+function DialogContent({ className, children, showCloseButton, ...props }: DialogPrimitive.Popup.Props & {
+    showCloseButton?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function DialogHeader({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+function DialogFooter({ className, showCloseButton, children, ...props }: React.ComponentProps<"div"> & {
+    showCloseButton?: boolean;
+}): import("react/jsx-runtime").JSX.Element;
+function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props): import("react/jsx-runtime").JSX.Element;
+function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props): import("react/jsx-runtime").JSX.Element;
+export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger, };
+
+}
+declare module "@taskasaur/ui/execution-target" {
+import type { AppRuntime } from "@taskasaur/plugin-host";
+export interface ExecutionTargetProps {
+    runtime: AppRuntime;
+    resourceId: string;
+    slotId?: string;
+    readOnly?: boolean;
+}
+/** Shared per-item execution controls; only declared execution slots get a picker. */
+export function ExecutionTarget({ runtime, resourceId, slotId, readOnly, }: ExecutionTargetProps): import("react/jsx-runtime").JSX.Element | null;
+
+}
 declare module "@taskasaur/ui/primitives/alert-dialog" {
 import * as React from "react";
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
@@ -324,26 +356,6 @@ function CalendarDayButton({ className, day, modifiers, locale, ...props }: Reac
     locale?: Partial<Locale>;
 }): import("react/jsx-runtime").JSX.Element;
 export { Calendar, CalendarDayButton };
-
-}
-declare module "@taskasaur/ui/primitives/dialog" {
-import * as React from "react";
-import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-function Dialog({ ...props }: DialogPrimitive.Root.Props): import("react/jsx-runtime").JSX.Element;
-function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props): import("react/jsx-runtime").JSX.Element;
-function DialogPortal({ ...props }: DialogPrimitive.Portal.Props): import("react/jsx-runtime").JSX.Element;
-function DialogClose({ ...props }: DialogPrimitive.Close.Props): import("react/jsx-runtime").JSX.Element;
-function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props): import("react/jsx-runtime").JSX.Element;
-function DialogContent({ className, children, showCloseButton, ...props }: DialogPrimitive.Popup.Props & {
-    showCloseButton?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function DialogHeader({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
-function DialogFooter({ className, showCloseButton, children, ...props }: React.ComponentProps<"div"> & {
-    showCloseButton?: boolean;
-}): import("react/jsx-runtime").JSX.Element;
-function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props): import("react/jsx-runtime").JSX.Element;
-function DialogDescription({ className, ...props }: DialogPrimitive.Description.Props): import("react/jsx-runtime").JSX.Element;
-export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger, };
 
 }
 declare module "@taskasaur/ui/primitives/input-group" {
@@ -496,18 +508,6 @@ export { Badge, badgeVariants };
 }
 declare module "@taskasaur/ui/download" {
 export function download(name: string, blob: Blob): void;
-
-}
-declare module "@taskasaur/ui/execution-target" {
-import type { AppRuntime } from "@taskasaur/plugin-host";
-export interface ExecutionTargetProps {
-    runtime: AppRuntime;
-    resourceId: string;
-    slotId?: string;
-    readOnly?: boolean;
-}
-/** Shared per-item execution controls; only declared execution slots get a picker. */
-export function ExecutionTarget({ runtime, resourceId, slotId, readOnly, }: ExecutionTargetProps): import("react/jsx-runtime").JSX.Element | null;
 
 }
 declare module "@taskasaur/ui/record-table" {

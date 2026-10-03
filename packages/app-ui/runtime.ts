@@ -844,7 +844,15 @@ export class AppRuntime {
           await this.db.records.bulkPut(records);
         },
       );
+      const released = (await this.db.fileVersions.toArray()).filter(
+        (v) => !this.node.protocol.files.retainedVersion(v.id),
+      );
+      if (released.length) {
+        await this.db.fileVersions.bulkDelete(released.map((v) => v.id));
+        await this.db.searchDocuments.bulkDelete(released.map((v) => v.fileId));
+      }
       for (const version of this.node.protocol.files.manifests()) {
+        if (!this.node.protocol.files.retainedVersion(version.id)) continue;
         if (await this.db.fileVersions.get(version.id)) continue;
         try {
           const { bytes } = await this.node.protocol.files.read(version.id);
