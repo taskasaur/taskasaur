@@ -9,6 +9,11 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(process.env.TEST_APP_URL ?? "http://localhost:5173");
     if (connected) {
+      // Installed manifests can arrive before the remote inventory; review must still be shown.
+      await page.route("**/api/plugins/inventory?**", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        await route.continue();
+      });
       await page
         .getByRole("button", { name: "Connect to server", exact: true })
         .click();

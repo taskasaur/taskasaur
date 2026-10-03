@@ -63,6 +63,9 @@ export class AppRuntime {
   private host?: PluginHost;
   private hostState = "";
   private extensions: ExtensionContract[] = [];
+  installedPackage(id: string) {
+    return this.extensions.find((extension) => extension.manifest.id === id);
+  }
   availablePlugins: InventoryEntry[] = [];
   inventoryError = "";
   private inventory?: PluginInventory;
@@ -96,10 +99,16 @@ export class AppRuntime {
     }
     this.extensions = extensions;
   }
-  private async ensurePackage(id: string) {
+  private async ensurePackage(id: string, reviewedDigest?: string) {
     if (isRequiredCore(id)) return;
     const existing = this.extensions.find((e) => e.manifest.id === id);
     const entry = this.availablePlugins.find((p) => p.id === id);
+    if (reviewedDigest)
+      invariant(
+        (entry?.sha256 ?? existing?.digest) === reviewedDigest,
+        "INVENTORY_CHANGED",
+        "The release changed; review it again",
+      );
     if (existing && (!entry || existing.digest === entry.sha256)) return;
     invariant(
       entry && this.inventory,
@@ -365,8 +374,9 @@ export class AppRuntime {
   async pluginAction(
     id: string,
     action: "install" | "enable" | "disable" | "uninstall",
+    reviewedDigest?: string,
   ) {
-    if (action === "install") await this.ensurePackage(id);
+    if (action === "install") await this.ensurePackage(id, reviewedDigest);
     if (this.profile.connected) await this.api("plugins", { id, action });
     const result = await this.registry[action](id);
     await this.refreshHost();
@@ -377,7 +387,11 @@ export class AppRuntime {
       });
     return result;
   }
-  async installAndEnable(id: string, visiting = new Set<string>()) {
+  async installAndEnable(
+    id: string,
+    visiting = new Set<string>(),
+    reviewed?: Map<string, string>,
+  ) {
     invariant(
       !visiting.has(id),
       "DEPENDENCY_CYCLE",
@@ -386,14 +400,22 @@ export class AppRuntime {
     visiting.add(id);
     if (!this.inventory) await this.refreshInventory();
     const entry = this.availablePlugins.find((p) => p.id === id);
+    if (reviewed && !isRequiredCore(id))
+      invariant(
+        reviewed.has(id) &&
+          (entry?.sha256 ?? this.installedPackage(id)?.digest) ===
+            reviewed.get(id),
+        "INVENTORY_CHANGED",
+        "The release or dependencies changed; review them again",
+      );
     const dependencies =
       entry?.dependencies ??
       this.registry.manifests.get(id)?.dependencies ??
       [];
     for (const dep of dependencies)
       if (!this.registry.enabled(dep))
-        await this.installAndEnable(dep, new Set(visiting));
-    await this.pluginAction(id, "install");
+        await this.installAndEnable(dep, new Set(visiting), reviewed);
+    await this.pluginAction(id, "install", reviewed?.get(id));
     await this.pluginAction(id, "enable");
   }
   async configurePlugin(id: string, features: string[]) {

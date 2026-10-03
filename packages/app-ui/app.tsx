@@ -653,14 +653,17 @@ function ExtensionCollections({
     </PluginBoundary>
   );
 }
+type ReviewEntry = Omit<InventoryEntry, "downloadUrl"> & {
+  downloadUrl?: string;
+};
 function PluginsView({ runtime }: { runtime: AppRuntime }) {
   const [review, setReview] = useState<{
     id: string;
-    entries: InventoryEntry[];
+    entries: ReviewEntry[];
   } | null>(null);
   function reviewInstall(id: string) {
     try {
-      const pending: InventoryEntry[] = [],
+      const pending: ReviewEntry[] = [],
         visiting = new Set<string>(),
         seen = new Set<string>();
       const collect = (id: string) => {
@@ -668,7 +671,22 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
         if (visiting.has(id))
           throw Error("Plugin dependencies contain a cycle");
         visiting.add(id);
-        const entry = runtime.availablePlugins.find((p) => p.id === id);
+        const installed = runtime.installedPackage(id);
+        const entry: ReviewEntry | undefined =
+          runtime.availablePlugins.find((p) => p.id === id) ??
+          (installed
+            ? {
+                ...installed.manifest,
+                sha256: installed.digest,
+                grants: installed.grants,
+                tags: [],
+                platforms: [],
+              }
+            : undefined);
+        if (!entry)
+          throw Error(
+            "Refresh the inventory to review this plugin before installing it",
+          );
         if (entry) {
           for (const dep of entry.dependencies)
             if (!runtime.registry.enabled(dep)) collect(dep);
@@ -679,7 +697,7 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
       };
       collect(id);
       if (pending.length) setReview({ id, entries: pending });
-      else void action(id, "install");
+      else throw Error("No reviewed plugin package is available");
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     }
@@ -704,10 +722,16 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
   async function action(
     id: string,
     kind: "install" | "disable" | "enable" | "uninstall",
+    reviewed?: ReviewEntry[],
   ) {
     setBusy(id);
     try {
-      if (kind === "install") await runtime.installAndEnable(id);
+      if (kind === "install")
+        await runtime.installAndEnable(
+          id,
+          new Set(),
+          new Map(reviewed?.map((entry) => [entry.id, entry.sha256])),
+        );
       else await runtime.pluginAction(id, kind);
       setError("");
     } catch (e) {
@@ -758,14 +782,20 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
               <p className="text-sm">
                 {entry.publisher} · {entry.license}
               </p>
-              <a
-                className="text-xs underline break-all"
-                href={entry.downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {entry.downloadUrl}
-              </a>
+              {entry.downloadUrl ? (
+                <a
+                  className="text-xs underline break-all"
+                  href={entry.downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {entry.downloadUrl}
+                </a>
+              ) : (
+                <p className="text-sm">
+                  Already downloaded and verified by core.
+                </p>
+              )}
               <p className="text-sm break-words">
                 Capabilities: {entry.grants.join(", ") || "None"}
               </p>
@@ -783,15 +813,19 @@ function PluginsView({ runtime }: { runtime: AppRuntime }) {
               if (
                 review.entries.some(
                   (entry) =>
-                    runtime.availablePlugins.find((p) => p.id === entry.id)
-                      ?.sha256 !== entry.sha256,
+                    (runtime.availablePlugins.find((p) => p.id === entry.id)
+                      ?.sha256 ??
+                      runtime.installedPackage(entry.id)?.digest) !==
+                    entry.sha256,
                 )
               ) {
                 setError("The inventory changed. Review this release again.");
                 setReview(null);
                 return;
               }
-              void action(review.id, "install").then(() => setReview(null));
+              void action(review.id, "install", review.entries).then(() =>
+                setReview(null),
+              );
             }}
           >
             {busy ? "Installing…" : "Confirm install"}
