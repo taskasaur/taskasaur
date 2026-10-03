@@ -454,6 +454,18 @@ declare module "@taskasaur/ui/download" {
 export function download(name: string, blob: Blob): void;
 
 }
+declare module "@taskasaur/ui/execution-target" {
+import type { AppRuntime } from "@taskasaur/plugin-host";
+export interface ExecutionTargetProps {
+    runtime: AppRuntime;
+    resourceId: string;
+    slotId?: string;
+    readOnly?: boolean;
+}
+/** Shared per-item execution controls; only declared execution slots get a picker. */
+export function ExecutionTarget({ runtime, resourceId, slotId, readOnly, }: ExecutionTargetProps): import("react/jsx-runtime").JSX.Element | null;
+
+}
 declare module "@taskasaur/ui/record-table" {
 import { type ReactNode } from "react";
 import { type Value, type RecordSchema } from "@taskasaur/platform/field-types";

@@ -1,3 +1,5 @@
+import { ExecutionTarget, type ExecutionTargetProps } from "./execution-target";
+import { executionService, executionRecord } from "../core/execution";
 import { coreModules } from "@taskasaur/platform/core/modules";
 import { sharedReact } from "../ui/html-controls";
 import { Capacitor } from "@capacitor/core";
@@ -170,6 +172,7 @@ export async function createBrowserPluginHost(
             { list: () => runtime.collection("devices").list() },
           ],
           ["core.peers", peerService(runtime.node)],
+          ["core.execution", executionService(runtime.node, id, grants)],
           [
             "core.access",
             { canWrite: (record: ResourceRecord) => local.canWrite(record) },
@@ -194,8 +197,25 @@ export async function createBrowserPluginHost(
           [
             "core.jobs",
             {
-              enqueue: (command: string, input: unknown, dueAt?: string) =>
-                runtime.api("jobs", { pluginId: id, command, input, dueAt }),
+              enqueue: (
+                command: string,
+                input: unknown,
+                options?:
+                  | string
+                  | {
+                      dueAt?: string;
+                      operationId?: string;
+                      targetDeviceId?: string;
+                    },
+              ) =>
+                runtime.api("jobs", {
+                  pluginId: id,
+                  command,
+                  input,
+                  ...(typeof options === "string"
+                    ? { dueAt: options }
+                    : options),
+                }),
             },
           ],
           [
@@ -217,6 +237,17 @@ export async function createBrowserPluginHost(
               CollectionView,
               QueryControls,
               ChoiceSelect,
+              ExecutionTarget: (
+                props: Omit<ExecutionTargetProps, "runtime">,
+              ) => {
+                const record = runtime.node.records.get(props.resourceId);
+                invariant(
+                  record?.pluginId === id,
+                  "UNDECLARED_COLLECTION",
+                  "Execution item must belong to this plugin",
+                );
+                return <ExecutionTarget {...props} runtime={runtime} />;
+              },
               RecordTable: (props: Omit<RecordTableProps, "runtime">) => {
                 const name = props.collection;
                 invariant(
@@ -246,43 +277,54 @@ export async function createBrowserPluginHost(
                   "UI surface is already registered",
                 );
                 const render =
-                  id === "tasks" && manifest.version === "1.0.0"
+                  id === "automation-editor" && manifest.version === "1.0.0"
                     ? React.lazy(async () => {
-                        const { TasksView } = await import("./tasks-view");
+                        const { default: AutomationView } =
+                          await import("./automation-view");
                         return {
-                          default: () => <TasksView runtime={runtime} />,
+                          default: () => <AutomationView runtime={runtime} />,
                         };
                       })
-                    : id === "remote-terminal" && manifest.version === "1.0.0"
+                    : id === "tasks" && manifest.version === "1.0.0"
                       ? React.lazy(async () => {
-                          const { PeerTerminal } =
-                            await import("./peer-terminal");
+                          const { TasksView } = await import("./tasks-view");
                           return {
-                            default: () => <PeerTerminal runtime={runtime} />,
+                            default: () => <TasksView runtime={runtime} />,
                           };
                         })
-                      : id === "sharing" && manifest.version === "1.0.0"
+                      : id === "remote-terminal" && manifest.version === "1.0.0"
                         ? React.lazy(async () => {
-                            const { PeerSharing } =
-                              await import("./peer-sharing");
+                            const { PeerTerminal } =
+                              await import("./peer-terminal");
                             return {
-                              default: () => <PeerSharing runtime={runtime} />,
+                              default: () => <PeerTerminal runtime={runtime} />,
                             };
                           })
-                        : id === "office-editor" && manifest.version === "1.0.0"
+                        : id === "sharing" && manifest.version === "1.0.0"
                           ? React.lazy(async () => {
-                              const { PortableOffice } =
-                                await import("./portable-office");
+                              const { PeerSharing } =
+                                await import("./peer-sharing");
                               return {
                                 default: () => (
-                                  <PortableOffice
-                                    runtime={runtime}
-                                    legacy={surface.render}
-                                  />
+                                  <PeerSharing runtime={runtime} />
                                 ),
                               };
                             })
-                          : surface.render;
+                          : id === "office-editor" &&
+                              manifest.version === "1.0.0"
+                            ? React.lazy(async () => {
+                                const { PortableOffice } =
+                                  await import("./portable-office");
+                                return {
+                                  default: () => (
+                                    <PortableOffice
+                                      runtime={runtime}
+                                      legacy={surface.render}
+                                    />
+                                  ),
+                                };
+                              })
+                            : surface.render;
                 const registered = {
                   ...surface,
                   render,
@@ -302,7 +344,11 @@ export async function createBrowserPluginHost(
         ]);
       },
       call: async (command, input, principal, options) => {
-        if (options?.targetDeviceId || !host.router.has(command)) {
+        if (
+          options?.targetDeviceId ||
+          executionRecord(runtime.node, command, input) ||
+          !host.router.has(command)
+        ) {
           const result = await runtime.api<{
             result: unknown;
             error?: { message: string };

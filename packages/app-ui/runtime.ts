@@ -1,4 +1,20 @@
 import {
+  bindingFor,
+  slotFor,
+  configureExecution,
+  inspectExecution,
+  executionRecord,
+  executionRequirements,
+  executionReady,
+  executionActive,
+  requireExecution,
+} from "../core/execution";
+import { releaseService } from "../core/services";
+import type {
+  ExecutionSlot,
+  DevicePluginStatus,
+} from "@taskasaur/platform/plugin-sdk/execution";
+import {
   defaultInventoryUrl,
   readInventory,
   boundedDownload,
@@ -29,7 +45,7 @@ import { browserDevice } from "../platform-browser/device";
 import type { DeviceCore, WorkspaceNode } from "../core/device";
 import { deviceRecordId } from "../core/records";
 import { currentPolicy } from "../core/identity";
-import { workflowTriggers, reminders } from "../core/schedules";
+import { workflowTriggers, reminders, operationId } from "../core/schedules";
 import { PortableWorkflows } from "../core/workflows";
 import { runBrowserTypeScript } from "../platform-browser/typescript";
 import type { FileManifest } from "../core/files";
@@ -65,6 +81,7 @@ export class AppRuntime {
   node!: WorkspaceNode;
   automation!: PortableWorkflows;
   automationOptions = { enabled: false, trustedCode: false };
+  allowRemotePlugins = false;
   private projectionQueue: Promise<unknown> = Promise.resolve();
   private projectionListener?: (id: string) => void;
   private syncQueue = new SyncQueue();
@@ -199,18 +216,20 @@ export class AppRuntime {
       method: command,
       params: input,
     };
-    const response = this.host.router.has(command)
-      ? await this.host.router.receive(request, {
-          principal,
-          signal: AbortSignal.timeout(30000),
-        })
-      : await this.api<{ result?: unknown; error?: { message: string } }>(
-          "rpc",
-          {
-            context: { workspaceId: this.profile.workspaceId, pluginId },
-            request,
-          },
-        );
+    const response =
+      this.host.router.has(command) &&
+      !executionRecord(this.node, command, input)
+        ? await this.host.router.receive(request, {
+            principal,
+            signal: AbortSignal.timeout(30000),
+          })
+        : await this.api<{ result?: unknown; error?: { message: string } }>(
+            "rpc",
+            {
+              context: { workspaceId: this.profile.workspaceId, pluginId },
+              request,
+            },
+          );
     invariant(
       response && "result" in response,
       "COMMAND_FAILED",
@@ -276,7 +295,15 @@ export class AppRuntime {
     this.automationOptions =
       (await this.db.getMetadata("device.automation")) ??
       this.automationOptions;
+    this.allowRemotePlugins =
+      (await this.db.getMetadata<boolean>("device.remotePlugins")) ?? false;
     this.device.setCapabilities(() => [
+      "core.plugins.status",
+      "core.services.release",
+      ...(this.allowRemotePlugins ? ["core.plugins.install"] : []),
+      ...(this.automationOptions.enabled && this.automationOptions.trustedCode
+        ? ["automation.typescript"]
+        : []),
       "records.storage",
       "files.storage",
       "credentials.refresh",
@@ -328,8 +355,31 @@ export class AppRuntime {
       canWrite: () => this.node.records.canWrite(),
       put: async (collection, data, id) => {
         const record = await this.node.records.put(collection, data, id);
+        const slot = slotFor(record);
+        if (
+          slot?.targetField &&
+          typeof record.data[slot.targetField] === "string"
+        ) {
+          const current = bindingFor(this.node, slot, record.id);
+          const enabled = slot.enabledField
+            ? record.data[slot.enabledField] === true
+            : (current?.enabled ?? false);
+          if (
+            !current ||
+            deviceRecordId(current.deviceId) !==
+              record.data[slot.targetField] ||
+            current.enabled !== enabled
+          )
+            await configureExecution(
+              this.node,
+              record,
+              slot,
+              String(record.data[slot.targetField]),
+              enabled,
+            );
+        }
         await this.project();
-        return record;
+        return this.node.records.get(record.id)!;
       },
       delete: async (id) => {
         await this.node.records.delete(id);
@@ -388,7 +438,18 @@ export class AppRuntime {
       this.node,
       {
         deviceId: this.principal.deviceId!,
+        canRun: async (execution) => {
+          const run = this.node.records.get(execution.id),
+            record = run && this.node.records.get(String(run.data.workflow_id));
+          return Boolean(
+            record &&
+            executionReady(record, slotFor(record)!, this.pluginDeviceStatus()),
+          );
+        },
         call: async (command, input, operationId) => {
+          const routed = executionRecord(this.node, command, input);
+          if (routed)
+            await requireExecution(this.node, routed.record, routed.slot);
           invariant(
             this.host?.router.has(command),
             "CAPABILITY_UNSUPPORTED",
@@ -425,7 +486,63 @@ export class AppRuntime {
       },
       () => this.automationOptions,
     );
-    this.node.protocol.setHandler(async (command, input) => {
+    this.node.protocol.setHandler(async (command, input, context) => {
+      if (command === "core.plugins.status") return this.pluginDeviceStatus();
+      if (command === "core.plugins.install") {
+        invariant(
+          this.allowRemotePlugins,
+          "CAPABILITY_UNSUPPORTED",
+          "Allow remote plugin installation on this device first",
+        );
+        const policy = currentPolicy(this.node.replica.access);
+        invariant(
+          policy.members[context.deviceId]?.userId ===
+            policy.members[policy.owner.id].userId,
+          "PERMISSION_DENIED",
+          "The workspace owner must approve plugin installation",
+        );
+        const pin = input as {
+          id: string;
+          version: string;
+          sha256: string;
+          grants: string[];
+        };
+        await this.refreshInventory();
+        const entry = this.availablePlugins.find((p) => p.id === pin.id);
+        invariant(
+          entry && entry.version === pin.version && entry.sha256 === pin.sha256,
+          "INVENTORY_CHANGED",
+          "The plugin release changed; review it again",
+        );
+        invariant(
+          entry.grants.every((g) => pin.grants.includes(g)),
+          "PERMISSION_DENIED",
+          "Review the required permissions",
+        );
+        await this.pluginAction(pin.id, "install", pin.sha256);
+        await this.pluginAction(pin.id, "enable");
+        return { ok: true };
+      }
+      if (command === "core.services.release") {
+        const request = input as {
+          id: string;
+          token: string;
+          successor?: { deviceId: string; generation: string };
+        };
+        invariant(
+          request.id.startsWith("execution."),
+          "UNSUPPORTED_SERVICE",
+          "This app only hosts per-item execution",
+        );
+        await releaseService(
+          this.node,
+          request.id,
+          request.token,
+          () => this.automation.releaseWorkflow(request.id.split(".")[1]),
+          request.successor,
+        );
+        return { ok: true };
+      }
       if (command === "credentials.refresh") {
         const request = input as {
           id: string;
@@ -438,6 +555,41 @@ export class AppRuntime {
           request.destination,
         );
         return { ok: true };
+      }
+      if (
+        !command.startsWith("automation.") &&
+        this.host?.router.has(command)
+      ) {
+        const routed = executionRecord(this.node, command, input);
+        if (routed)
+          await requireExecution(this.node, routed.record, routed.slot);
+        const member = currentPolicy(this.node.replica.access).members[
+          context.deviceId
+        ];
+        const response = await this.host.router.receive(
+          {
+            jsonrpc: "2.0",
+            id: context.requestId,
+            method: command,
+            params: input,
+          },
+          {
+            principal: {
+              ...this.principal,
+              userId: member.userId,
+              deviceId: deviceRecordId(context.deviceId),
+              permissions: [this.host.router.permissionFor(command) ?? command],
+            },
+            signal: AbortSignal.timeout(30000),
+            mutationId: context.requestId,
+          },
+        );
+        invariant(
+          response && "result" in response,
+          "COMMAND_FAILED",
+          response?.error?.message ?? "Plugin command failed",
+        );
+        return response.result;
       }
       return this.localAutomation(command, input as Record<string, any>);
     });
@@ -467,6 +619,116 @@ export class AppRuntime {
       });
     return this;
   }
+  pluginDeviceStatus(): DevicePluginStatus {
+    return {
+      deviceId: this.device.identity.id,
+      capabilities: this.node.protocol.capabilities(),
+      canInstall: this.allowRemotePlugins,
+      plugins: this.registry.list().map(({ manifest, state }) => ({
+        id: manifest.id,
+        version: state.version,
+        installed: state.installed,
+        enabled: state.enabled,
+        ...((state.error ?? this.host?.failures.get(manifest.id))
+          ? { error: state.error ?? this.host?.failures.get(manifest.id) }
+          : {}),
+      })),
+    };
+  }
+  async configureRemotePlugins(enabled: boolean) {
+    this.allowRemotePlugins = enabled;
+    await this.db.setMetadata("device.remotePlugins", enabled);
+    this.notifySurfaces();
+  }
+  async configureItemExecution(
+    record: ResourceRecord,
+    slot: ExecutionSlot,
+    deviceId: string,
+    enabled: boolean,
+  ) {
+    await configureExecution(this.node, record, slot, deviceId, enabled);
+    await this.project();
+    await this.node.synchronize();
+    this.notifySurfaces();
+  }
+  async executionInstallPlan(
+    record: ResourceRecord,
+    slot: ExecutionSlot,
+    deviceId: string,
+  ) {
+    await this.refreshInventory();
+    const status = (
+      await inspectExecution(this.node, record, slot)
+    ).candidates.find((p) => p.id === deviceId || p.recordId === deviceId);
+    invariant(
+      status?.online && status.statusKnown,
+      "DEVICE_UNAVAILABLE",
+      "Connect the execution computer before installing plugins",
+    );
+    invariant(
+      status.canInstall,
+      "CAPABILITY_UNSUPPORTED",
+      "Allow remote plugin installation on that computer first",
+    );
+    const plan: InventoryEntry[] = [],
+      seen = new Set<string>(),
+      visiting = new Set<string>();
+    const visit = (id: string) => {
+      if (seen.has(id)) return;
+      invariant(
+        !visiting.has(id),
+        "DEPENDENCY_CYCLE",
+        "Plugin dependencies contain a cycle",
+      );
+      visiting.add(id);
+      const entry = this.availablePlugins.find((p) => p.id === id);
+      if (!entry) {
+        invariant(
+          isRequiredCore(id),
+          "PLUGIN_NOT_FOUND",
+          `${id} is missing from the plugin inventory`,
+        );
+        return;
+      }
+      for (const dependency of entry.dependencies) visit(dependency);
+      const installed = status.plugins.find((p) => p.id === id);
+      if (
+        !installed?.installed ||
+        !installed.enabled ||
+        installed.version !== entry.version ||
+        installed.error
+      )
+        plan.push(entry);
+      visiting.delete(id);
+      seen.add(id);
+    };
+    for (const requirement of executionRequirements(slot, record).plugins) {
+      if (requirement.version)
+        invariant(
+          this.availablePlugins.find((p) => p.id === requirement.id)
+            ?.version === requirement.version,
+          "PLUGIN_VERSION_UNAVAILABLE",
+          `The inventory does not offer required ${requirement.id}@${requirement.version}`,
+        );
+      visit(requirement.id);
+    }
+    return plan;
+  }
+  async installExecutionPlugins(deviceId: string, plan: InventoryEntry[]) {
+    for (const entry of plan)
+      await this.node.call(
+        "core.plugins.install",
+        {
+          id: entry.id,
+          version: entry.version,
+          sha256: entry.sha256,
+          grants: entry.grants,
+        },
+        deviceId,
+      );
+    await this.node.synchronize();
+    this.notifySurfaces();
+  }
   async configureAutomation(value: { enabled: boolean; trustedCode: boolean }) {
     this.automationOptions = value;
     await this.db.setMetadata("device.automation", value);
@@ -479,10 +741,19 @@ export class AppRuntime {
       "CAPABILITY_UNSUPPORTED",
       "Automation execution is disabled on this device",
     );
-    if (command === "automation.run")
+    if (command === "automation.run") {
+      const record = this.node.records.get(input.id);
+      invariant(record, "NOT_FOUND", "Automation not found");
+      const slot = slotFor(record)!;
+      invariant(
+        executionReady(record, slot, this.pluginDeviceStatus()),
+        "PLUGIN_NOT_READY",
+        "Enable the required plugins and capabilities on the execution computer",
+      );
       return this.automation.start(
         input as Parameters<PortableWorkflows["start"]>[0],
       );
+    }
     if (command === "automation.cancel")
       return this.automation.cancel(input.id).then(() => ({ ok: true }));
     if (command === "automation.signal")
@@ -604,7 +875,25 @@ export class AppRuntime {
       result = { ok: true };
     } else if (route === "rpc") {
       const request = input.request;
-      const target = input.context?.targetDeviceId,
+      const routed = executionRecord(this.node, request.method, request.params);
+      const binding =
+        routed && bindingFor(this.node, routed.slot, routed.record.id);
+      if (routed)
+        invariant(
+          binding?.enabled,
+          "EXECUTION_PAUSED",
+          "Choose a computer and enable execution for this item",
+        );
+      const requested = input.context?.targetDeviceId;
+      if (binding && requested)
+        invariant(
+          [binding.deviceId, deviceRecordId(binding.deviceId)].includes(
+            requested,
+          ),
+          "WRONG_EXECUTION_TARGET",
+          "Use the computer assigned to this item",
+        );
+      const target = binding?.deviceId ?? requested,
         localTarget =
           !target ||
           target === this.principal.deviceId ||
@@ -626,21 +915,70 @@ export class AppRuntime {
           },
           signal: AbortSignal.timeout(30000),
         });
-      else
+      else {
+        invariant(
+          target,
+          "EXECUTION_UNASSIGNED",
+          "Select a target for remote commands or declare an item execution slot",
+        );
         result = {
           result: await this.node.call(
             request.method,
             request.params,
-            input.context?.targetDeviceId,
+            target,
             request.id,
           ),
         };
+      }
     } else if (route === "access/members")
       result = Object.values(
         currentPolicy(this.node.replica.access).members,
       ).map((m) => ({ user_id: m.userId, role: m.role }));
-    else if (route === "automation/webhook") {
-      const target = this.node.records.get(input.id)?.data.target_device_id;
+    else if (route === "github/create-task") {
+      invariant(
+        this.registry.enabled("connector-github") &&
+          this.registry.enabled("tasks") &&
+          this.registry.states
+            .get("connector-github")
+            ?.features.includes("taskLinks"),
+        "FEATURE_DISABLED",
+        "Enable GitHub task links and the Tasks plugin",
+      );
+      const issue = this.node.records.get(input.id);
+      invariant(
+        issue?.collection === "github_issues" && !issue.deletedAt,
+        "NOT_FOUND",
+        "Issue not found",
+      );
+      const id =
+        typeof issue.data.task_id === "string"
+          ? issue.data.task_id
+          : await operationId(issue.id + ":task");
+      result =
+        this.node.records.get(id) ??
+        (await this.collection("tasks").put(
+          {
+            title: String(issue.data.title),
+            description: `${issue.data.body ?? ""}\n\n${issue.data.url ?? ""}`,
+            status: issue.data.state === "closed" ? "done" : "open",
+          },
+          id,
+        ));
+      if (issue.data.task_id !== id)
+        await this.collection("github_issues").put(
+          { ...issue.data, task_id: id },
+          issue.id,
+        );
+    } else if (route === "automation/webhook") {
+      const record = this.node.records.get(input.id),
+        slot = record && slotFor(record);
+      const binding = record && slot && bindingFor(this.node, slot, record.id);
+      invariant(
+        binding?.enabled,
+        "EXECUTION_PAUSED",
+        "Choose a computer and enable this automation first",
+      );
+      const target = deviceRecordId(binding.deviceId);
       invariant(
         typeof target === "string",
         "WRONG_EXECUTION_TARGET",
@@ -657,9 +995,26 @@ export class AppRuntime {
         route,
       )
     ) {
-      const target =
-        input.targetDeviceId ??
-        this.node.records.get(input.id)?.data.target_device_id;
+      const item = this.node.records.get(input.id);
+      const slot = item && slotFor(item);
+      const assignment =
+        item && slot ? bindingFor(this.node, slot, item.id) : undefined;
+      if (route === "automation/run")
+        invariant(
+          assignment?.enabled,
+          "EXECUTION_PAUSED",
+          "Choose a computer and enable this automation before running it",
+        );
+      const target = assignment
+        ? deviceRecordId(assignment.deviceId)
+        : item?.data.target_device_id;
+      if (input.targetDeviceId)
+        invariant(
+          input.targetDeviceId === target,
+          "WRONG_EXECUTION_TARGET",
+          "Use the computer assigned to this item",
+        );
+      if (route === "automation/run") input.targetDeviceId = target;
       invariant(
         typeof target === "string",
         "WRONG_EXECUTION_TARGET",
@@ -723,15 +1078,30 @@ export class AppRuntime {
             : r.path === route,
         ),
       );
+      const routed = executionRecord(
+        this.node,
+        route === "jobs" ? input.command : route,
+        route === "jobs" ? input.input : input,
+      );
       const assignment =
-        provider &&
-        this.node.replica.read<{ deviceId: string }>(
-          "setting/service." + provider.id,
+        routed && bindingFor(this.node, routed.slot, routed.record.id);
+      if (routed)
+        invariant(
+          assignment?.enabled,
+          "EXECUTION_PAUSED",
+          "Choose a computer and enable execution for this item",
         );
+      const target =
+        assignment?.deviceId ?? input.targetDeviceId ?? input.deviceId;
+      invariant(
+        target,
+        "EXECUTION_UNASSIGNED",
+        "This operation needs an item-specific execution computer",
+      );
       result = await this.node.call(
         "core.http",
         { path, body: body ?? null, method },
-        input.targetDeviceId ?? input.deviceId ?? assignment?.deviceId,
+        target,
       );
       await this.node.synchronize();
       await this.project();

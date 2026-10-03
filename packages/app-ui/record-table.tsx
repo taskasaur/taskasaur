@@ -1,6 +1,8 @@
+import { executionSlots } from "../core/execution";
+import { ExecutionTarget } from "./execution-target";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Plus, Trash2, Pencil } from "lucide-react";
+import { Plus, Trash2, Pencil, Monitor } from "lucide-react";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import {
   queryRecords,
@@ -72,6 +74,20 @@ export function RecordTable({
   columnOptions,
 }: RecordTableProps) {
   const schema = schemaOverride ?? getSchema(collection);
+  const slots = executionSlots().filter(
+    (slot) => slot.collection === collection,
+  );
+  const [execution, setExecution] = useState<ResourceRecord | null>(null);
+  const editSchema = {
+    ...schema,
+    fields: schema.fields.filter(
+      (field) =>
+        !slots.some(
+          (slot) =>
+            slot.targetField === field.id || slot.enabledField === field.id,
+        ),
+    ),
+  };
   const store = useMemo(
     () => storeOverride ?? runtime.collection(collection),
     [runtime, collection, storeOverride],
@@ -163,6 +179,16 @@ export function RecordTable({
         writable: writable(row),
         update: (patch) => update(row, patch),
       })}
+      {slots.length > 0 && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Execution settings"
+          onClick={() => setExecution(row)}
+        >
+          <Monitor />
+        </Button>
+      )}
       {writable(row) && (
         <>
           <Button
@@ -252,16 +278,44 @@ export function RecordTable({
           {editor && (
             <RecordForm
               key={editor === "new" ? "new" : editor.id}
-              schema={schema}
+              schema={editSchema}
               initial={editor === "new" ? undefined : editor.data}
               onCancel={() => setEditor(null)}
               onSave={async (data: Record<string, Value>) => {
-                await store.put(data, editor === "new" ? undefined : editor.id);
+                const saved = await store.put(
+                  editor === "new"
+                    ? data
+                    : { ...runtime.node.records.get(editor.id)?.data, ...data },
+                  editor === "new" ? undefined : editor.id,
+                );
+                if (editor === "new" && slots.length) setExecution(saved);
                 setEditor(null);
                 void runtime.synchronize().catch((e) => setError(e.message));
               }}
             />
           )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(execution)}
+        onOpenChange={(open) => {
+          if (!open) setExecution(null);
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Execution settings</DialogTitle>
+          </DialogHeader>
+          {execution &&
+            slots.map((slot) => (
+              <ExecutionTarget
+                key={slot.id}
+                runtime={runtime}
+                resourceId={execution.id}
+                slotId={slot.id}
+                readOnly={!writable(execution)}
+              />
+            ))}
         </DialogContent>
       </Dialog>
       <Dialog

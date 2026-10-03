@@ -1,3 +1,5 @@
+import { ExecutionTarget } from "./execution-target";
+import * as Execution from "@taskasaur/platform/plugin-sdk/execution";
 import * as AlertDialog from "../ui/primitives/alert-dialog";
 import * as CalendarUI from "../ui/primitives/calendar";
 import * as Card from "../ui/primitives/card";
@@ -305,6 +307,31 @@ export function pluginModules(
     "@taskasaur/ui/collection-view": CollectionView,
     "@taskasaur/ui/collection-view-model": CollectionModel,
     "@taskasaur/ui/download": Download,
+    "@taskasaur/platform/plugin-sdk/execution": Execution,
+    "@taskasaur/ui/execution-target": {
+      ExecutionTarget: (
+        props: React.ComponentProps<typeof ExecutionTarget>,
+      ) => {
+        const record = runtime.node.records.get(props.resourceId);
+        invariant(record, "NOT_FOUND", "Execution item is unavailable");
+        allowed(record.collection);
+        return (
+          <ExecutionTarget
+            {...props}
+            runtime={runtime}
+            readOnly={
+              props.readOnly ||
+              (record.pluginId !== manifest.id &&
+                !(
+                  manifest.consumes.commands.includes(
+                    record.collection + ".put",
+                  ) && grants.includes(record.collection + ".put")
+                ))
+            }
+          />
+        );
+      },
+    },
     "@taskasaur/ui/record-table": {
       RecordTable: (props: React.ComponentProps<typeof RecordTable>) => {
         allowed(props.collection);

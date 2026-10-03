@@ -11,6 +11,7 @@ const files = [
   "packages/ui/collection-view.tsx",
   "packages/ui/collection-view-model.ts",
   "packages/app-ui/record-table.tsx",
+  "packages/app-ui/execution-target.tsx",
   "packages/app-ui/download.ts",
   ...primitives.map((f) => "packages/ui/primitives/" + f),
 ];
@@ -52,10 +53,7 @@ program.emit(undefined, (file, text, bom, error, sources) => {
             specifier.replace("@/ui/", "@taskasaur/ui/"),
           );
         if (!specifier.startsWith(".")) return match;
-        if (
-          module === "@taskasaur/ui/record-table" &&
-          specifier === "./runtime"
-        )
+        if (module.startsWith("@taskasaur/ui/") && specifier === "./runtime")
           return match.replace(specifier, "@taskasaur/plugin-host");
         const absolute = path.resolve(path.dirname(source.fileName), specifier);
         const target =

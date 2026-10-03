@@ -3,7 +3,6 @@ import { LegacySelect } from "../ui/choice-select";
 import { useState, useEffect, useSyncExternalStore } from "react";
 import type { NativeInfo, NativeSettings } from "./network";
 import { exportBackup } from "../core/backup";
-import { assignService } from "../core/services";
 import { download } from "./download";
 import type { AppRuntime } from "./runtime";
 import { currentPolicy, type Role } from "../core/identity";
@@ -38,8 +37,6 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
     status = runtime.node.replica.status();
   const [native, setNative] = useState<NativeInfo>(),
     [nativeInvitation, setNativeInvitation] = useState(""),
-    [plugin, setPlugin] = useState(""),
-    [target, setTarget] = useState(""),
     [passphrase, setPassphrase] = useState(""),
     [missing, setMissing] = useState(0);
   useEffect(() => {
@@ -263,89 +260,22 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
         </section>
       )}
       <section className="settings-card space-y-3">
-        <h2>Native plugin services</h2>
+        <h2>Plugin installation in this app</h2>
         <p className="text-sm">
-          Choose the computer that handles external accounts and background
-          work. It must explicitly allow native plugins. This installs the
-          reviewed package and its dependencies there.
+          Choose execution computers on individual automations and connected
+          accounts. Installation permission belongs to each device.
         </p>
-        <label className="field-row">
-          Plugin
-          <LegacySelect
-            className="core-select"
-            value={plugin}
-            onChange={(e) => setPlugin(e.target.value)}
-          >
-            <option value="">Choose an installed plugin</option>
-            {runtime.availablePlugins
-              .filter(
-                (p) =>
-                  runtime.registry.enabled(p.id) &&
-                  p.grants.includes("core.server"),
-              )
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </LegacySelect>
+        <label className="flex items-center gap-2">
+          <SharedInput
+            type="checkbox"
+            checked={runtime.allowRemotePlugins}
+            disabled={busy}
+            onChange={(e) =>
+              void act(() => runtime.configureRemotePlugins(e.target.checked))
+            }
+          />
+          Allow remote plugin installation by workspace owners
         </label>
-        <label className="field-row">
-          Computer
-          <LegacySelect
-            className="core-select"
-            value={target}
-            onChange={(e) => setTarget(e.target.value)}
-          >
-            <option value="">Choose a computer</option>
-            {[...runtime.node.peerDevices.values()]
-              .filter((p) => p.capabilities.includes("core.plugins.install"))
-              .map((p) => (
-                <option key={p.deviceId} value={p.deviceId}>
-                  {p.name}
-                </option>
-              ))}
-          </LegacySelect>
-        </label>
-        {plugin && (
-          <p className="text-xs break-words">
-            Permissions:{" "}
-            {runtime.availablePlugins
-              .find((p) => p.id === plugin)
-              ?.grants.join(", ")}
-          </p>
-        )}
-        <Button
-          disabled={busy || !target || !plugin}
-          onClick={() =>
-            void act(async () => {
-              const seen = new Set<string>();
-              const install = async (id: string) => {
-                if (seen.has(id)) return;
-                seen.add(id);
-                const entry = runtime.availablePlugins.find((p) => p.id === id);
-                if (!entry) return;
-                for (const dependency of entry.dependencies)
-                  await install(dependency);
-                await runtime.node.call(
-                  "core.plugins.install",
-                  {
-                    id,
-                    version: entry.version,
-                    sha256: entry.sha256,
-                    grants: entry.grants,
-                  },
-                  target,
-                );
-              };
-              await install(plugin);
-              await assignService(runtime.node, plugin, target);
-              await runtime.synchronize();
-            })
-          }
-        >
-          Install and assign to this computer
-        </Button>
       </section>
       <section className="settings-card space-y-3">
         <h2>Peer connections</h2>
