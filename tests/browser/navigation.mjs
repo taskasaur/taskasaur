@@ -33,13 +33,21 @@ const choose = async (label, value) => {
     .getByRole("option", { name: value, exact: true })
     .click();
 };
+const pageButtons = (plugin) =>
+  page.getByRole("navigation", {
+    name: `${plugin} page shortcuts`,
+    exact: true,
+  });
 const columns = async () => {
-  await menu();
-  await click("Tasks pages");
-  await page
-    .getByRole("navigation", { name: "Workspace", exact: true })
+  await pageButtons("Tasks")
     .getByRole("button", { name: "Columns", exact: true })
     .click();
+  await expect(
+    pageButtons("Tasks").getByRole("button", { name: "Columns", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    pageButtons("Tasks").getByRole("button", { name: "Tasks", exact: true }),
+  ).toBeVisible();
 };
 const newTask = async (title, extra) => {
   await click("New entry");
@@ -74,6 +82,18 @@ try {
     left.getByRole("button", { name: "Files", exact: true }),
   ).toHaveCount(0);
   await left.getByRole("button", { name: "Tasks", exact: true }).click();
+  await expect(
+    pageButtons("Tasks").getByRole("button", { name: "Tasks", exact: true }),
+  ).toHaveCount(0);
+  const crumbs = await page
+    .getByRole("navigation", { name: "Current page" })
+    .boundingBox();
+  const links = await pageButtons("Tasks").boundingBox();
+  expect(links.x).toBeGreaterThanOrEqual(crumbs.x + crumbs.width);
+  await columns();
+  await pageButtons("Tasks")
+    .getByRole("button", { name: "Tasks", exact: true })
+    .click();
   await columns();
   await expect(
     page.getByRole("button", { name: "Remove Title column", exact: true }),
@@ -173,7 +193,16 @@ try {
   ).toHaveCount(0);
   await navigate("Mail");
   await expect(
-    page.getByRole("button", { name: "Accounts", exact: true }),
+    pageButtons("Mail").getByRole("button", { name: "Accounts", exact: true }),
+  ).toBeVisible();
+  await expect(
+    pageButtons("Mail").getByRole("button", {
+      name: "Operations",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    pageButtons("Mail").getByRole("button", { name: "Mail", exact: true }),
   ).toHaveCount(0);
   await menu();
   await click("Mail pages");
@@ -187,7 +216,34 @@ try {
   await expect(
     page.getByRole("navigation", { name: "Current page" }),
   ).toContainText("Accounts");
+  await expect(
+    pageButtons("Mail").getByRole("button", { name: "Accounts", exact: true }),
+  ).toHaveCount(0);
+  await pageButtons("Mail")
+    .getByRole("button", { name: "Operations", exact: true })
+    .click();
+  await expect(
+    page.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Operations");
+  await expect(
+    pageButtons("Mail").getByRole("button", {
+      name: "Operations",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await pageButtons("Mail")
+    .getByRole("button", { name: "Mail", exact: true })
+    .click();
   await navigate("Settings", "settings");
+  await pageButtons("Settings")
+    .getByRole("button", { name: "Storage copies", exact: true })
+    .click();
+  await expect(
+    page.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Storage copies");
+  await pageButtons("Settings")
+    .getByRole("button", { name: "Settings", exact: true })
+    .click();
   await choose("Color theme", "Dark");
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(
@@ -208,6 +264,13 @@ try {
     .getByRole("button", { name: "Open saved Tasks", exact: true })
     .click();
   await expect(page.locator("[data-record-collection=tasks]")).toBeVisible();
+  await columns();
+  await expect(
+    page.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Columns");
+  await pageButtons("Tasks")
+    .getByRole("button", { name: "Tasks", exact: true })
+    .click();
   await menu();
   await click("Search");
   await page
@@ -227,7 +290,7 @@ try {
   ).toBe(true);
   expect(errors).toEqual([]);
   console.log(
-    "Two menus, breadcrumbs, shortcuts, theme, unified search, Mail pages, table isolation, custom columns and managed storage passed.",
+    "Two menus, breadcrumbs, plugin page buttons on desktop and mobile, shortcuts, theme, unified search, Mail pages, table isolation, custom columns and managed storage passed.",
   );
 } catch (error) {
   console.error(await page.locator("body").innerText());

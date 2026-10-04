@@ -14,7 +14,12 @@ const context = await browser.newContext({
 page.setDefaultTimeout(20000);
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
-const click = (name) => page.getByRole("button", { name, exact: true }).click();
+const control = (name) =>
+  (name === "Columns" ? page.locator(".workspace-content") : page).getByRole(
+    "button",
+    { name, exact: true },
+  );
+const click = (name) => control(name).click();
 const expectToggleAfterArrows = async (kind) => {
   const arrows = await page
     .getByLabel(`Move ${kind} 1 down`, { exact: true })
@@ -169,9 +174,7 @@ try {
   await page
     .getByRole("switch", { name: "Show column Description", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Columns", exact: true }),
-  ).toHaveText("Columns");
+  await expect(control("Columns")).toHaveText("Columns");
   await expect(page.locator('[data-column-row="title"]')).toBeVisible();
   await expect(page.locator('td[data-field="description"]')).toHaveCount(0);
   // Hidden columns retain their positions while reordered and across reloads.
@@ -353,9 +356,7 @@ try {
     page.getByRole("switch", { name: "Show column Title", exact: true }),
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: "Columns", exact: true }),
-  ).toBeFocused();
+  await expect(control("Columns")).toBeFocused();
   expect(errors).toEqual([]);
   console.log(
     "Filtering, ordering, exclusive popovers, ordered columns and visibility switches, recursive grouping, six views, breadcrumbs, persisted state and mobile controls passed",

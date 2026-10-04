@@ -27,7 +27,7 @@ Declare a main page and any additional pages in `plugin.json`:
 }
 ```
 
-Register a render function for each custom surface through `core.ui.registerSurface({ id, label, render, main?, icon? })`. Core renders collection-only pages using its shared RecordTable. The plugin's main button always opens its main page; the adjacent chevron expands its subpages. Active subpages appear in both the button and the breadcrumb. Core automatically supplies a Columns page for each collection with tables enabled.
+Register a render function for each custom surface through `core.ui.registerSurface({ id, label, render, main?, icon? })`. Core renders collection-only pages using its shared RecordTable. The plugin's main button always opens its main page; the adjacent chevron expands its subpages. Active subpages appear in both the button and the breadcrumb. Core automatically supplies a Columns page for each collection with tables enabled. The top bar shows buttons immediately after the breadcrumb for every other page of the current plugin, including its main page when viewing a subpage. The current page is omitted from these buttons. This uses the same page declarations as the menus, with no extra plugin registration. On narrow screens the breadcrumb and page buttons scroll horizontally together.
 
 Icons are local Lucide icons. Built-in plugin IDs each map to a distinct icon; use one of those names through `ui.icon` for a supported icon, or omit it to get a deterministic identicon unique to the plugin ID. Core never fetches executable or remote image markup for navigation. A single legacy surface is inferred as the main page. The published Mail v1 adapter moves Accounts and Operations into subpages without losing its compose/receive functionality.
 

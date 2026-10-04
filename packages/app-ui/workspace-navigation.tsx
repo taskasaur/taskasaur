@@ -175,6 +175,9 @@ export function WorkspaceNavigation({
       [runtime],
     ) ?? [];
   const { plugin, page } = resolveNavigation(entries, view);
+  const otherPages = plugin
+    ? [plugin.main, ...plugin.pages].filter((item) => item.id !== page?.id)
+    : [];
   const go = (route: string) => {
     navigate(route);
     setMenu(null);
@@ -225,42 +228,61 @@ export function WorkspaceNavigation({
         >
           <PanelLeft />
         </Button>
-        <Breadcrumb className="min-w-0 flex-1" aria-label="Current page">
-          <BreadcrumbList className="flex-nowrap">
-            <BreadcrumbItem className="min-w-0">
-              <BreadcrumbLink
-                render={
-                  <button
-                    className="max-w-40 truncate"
-                    onClick={() => go("plugins")}
-                  />
-                }
-              >
-                {runtime.profile.name}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem className="min-w-0">
-              {page && plugin && page !== plugin.main ? (
+        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-x-auto whitespace-nowrap py-2">
+          <Breadcrumb className="shrink-0" aria-label="Current page">
+            <BreadcrumbList className="flex-nowrap">
+              <BreadcrumbItem className="min-w-0">
                 <BreadcrumbLink
-                  render={<button onClick={() => go(plugin.id)} />}
+                  render={
+                    <button
+                      className="max-w-40 truncate"
+                      onClick={() => go("plugins")}
+                    />
+                  }
                 >
-                  {plugin.label}
+                  {runtime.profile.name}
                 </BreadcrumbLink>
-              ) : (
-                <BreadcrumbPage>{plugin?.label ?? "Plugins"}</BreadcrumbPage>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem className="min-w-0">
+                {page && plugin && page !== plugin.main ? (
+                  <BreadcrumbLink
+                    render={<button onClick={() => go(plugin.id)} />}
+                  >
+                    {plugin.label}
+                  </BreadcrumbLink>
+                ) : (
+                  <BreadcrumbPage>{plugin?.label ?? "Plugins"}</BreadcrumbPage>
+                )}
+              </BreadcrumbItem>
+              {page && plugin && page !== plugin.main && (
+                <>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{page.label}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </>
               )}
-            </BreadcrumbItem>
-            {page && plugin && page !== plugin.main && (
-              <>
-                <BreadcrumbSeparator />
-                <BreadcrumbItem>
-                  <BreadcrumbPage>{page.label}</BreadcrumbPage>
-                </BreadcrumbItem>
-              </>
-            )}
-          </BreadcrumbList>
-        </Breadcrumb>
+            </BreadcrumbList>
+          </Breadcrumb>
+          {plugin && otherPages.length > 0 && (
+            <nav
+              className="flex shrink-0 items-center gap-2"
+              aria-label={`${plugin.label} page shortcuts`}
+            >
+              {otherPages.map((item) => (
+                <Button
+                  key={item.id}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => go(pageRoute(plugin, item))}
+                >
+                  {item === plugin.main ? plugin.label : item.label}
+                </Button>
+              ))}
+            </nav>
+          )}
+        </div>
         <div
           className="hidden items-center gap-1 md:flex"
           aria-label="Saved tabs"
