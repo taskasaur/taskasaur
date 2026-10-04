@@ -24,7 +24,7 @@ To run native plugins on this peer, set storage-only to `0`, then opt into the n
 
 UI and health endpoints use port 8080. Peer WebSockets use port 8787. `TASKASAUR_SERVE_UI=0` disables the GUI files while retaining health and peer services. Terminal, automation, trusted TypeScript, background plugin work and remote native-plugin installation are separate opt-ins, disabled by default. A terminal inside Docker controls the container, not the host computer.
 
-Set `TASKASAUR_ANNOUNCE` to a comma-separated list of reachable libp2p multiaddresses, without the final peer ID. Example: `/dns4/peer.example.com/tcp/443/wss`. Put the peer WebSocket port behind a TLS reverse proxy that forwards WebSocket upgrades; put the UI behind HTTPS as well. The UI needs COOP `same-origin` and COEP `require-corp` for its optional office engine. Loopback HTTP is supported for local development. A browser on another machine cannot use the container’s internal IP address.
+Set `TASKASAUR_ANNOUNCE` to a comma-separated list of reachable libp2p multiaddresses, without the final peer ID. Example: `/dns4/peer.example.com/tcp/443/wss`. Put the peer WebSocket port behind a TLS reverse proxy that forwards WebSocket upgrades; put the UI behind HTTPS as well. The UI needs COOP `same-origin` and COEP `require-corp` for its office engine. Loopback HTTP is supported for local development. A browser on another machine cannot use the container’s internal IP address.
 
 ## Pair a headless peer
 
@@ -50,7 +50,7 @@ docker compose --env-file .env.peer up -d
 
 The default `edge` image follows verified builds from `main`. Pin a published `sha-<commit>`, release version or digest in `TASKASAUR_IMAGE` for a stable deployment. Source deployments use `--build`; an image must finish publishing before `pull` can obtain it. Do not delete the data volume on update. Back up the entire volume with the peer stopped before major upgrades or code rollback. The health endpoint is `/api/health` and does not return workspace contents or identities.
 
-Documents, spreadsheets and presentations work offline with the editors bundled into the image. `OFFICE_ASSET_PATH` optionally mounts a compatible LibreOffice engine for additional format fidelity; that engine has a separate large upstream distribution. See [office provisioning](office-engine.md).
+The image includes the pinned full ZetaOffice / LibreOffice WASM engine. Installing Office Editor enables upstream Writer, Calc and Impress; browser first use verifies and caches the engine for offline editing. There is no custom editor fallback. `OFFICE_ASSET_PATH` can override the engine directory. See [office provisioning and platform requirements](office-engine.md).
 
 ## Recovery and webhooks
 
@@ -82,3 +82,5 @@ docker compose --env-file .env.peer up -d
 On Elestio, run the same commands in the deployed checkout using its configured environment (omit `--env-file .env.peer` if the dashboard injects those values). Copying the invitation into the container is a one-time management operation. Once paired, add the peer's announced multiaddress, including its `/p2p/…` suffix from startup logs, to the other device. The endpoint is a peer WebSocket service, so opening its cloud URL in a browser is not expected to show the app. Health remains on loopback port 8080 and is not the publicly routed service.
 
 Manage copies in **Settings → Storage copies**, or the storage action on a record/file. Offline requests wait for reconnection. Disabling retention is not deletion; the last copy remains until handoff or explicit version deletion. See [placement, histories and recovery limits](plugins/storage-placement.md).
+
+To keep shared workspace data in a portable directory, bind-mount it and set `TASKASAUR_WORKSPACE_FOLDER` to its container path. Keep `/data` separate and persistent for this peer's identity, caches, plugin installations and execution state. See [workspace files](workspace-files.md) for approval, export/import and the single-writer folder rule.

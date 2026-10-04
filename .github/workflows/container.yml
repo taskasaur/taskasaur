@@ -52,6 +52,8 @@ jobs:
       - run: npm test
       - run: npm run sdk:verify
       - run: npm run typecheck
+      - name: Check portable workspace CLI and folder storage
+        run: npm run build:peer && npx tsx tests/workspace-cli.ts
       - name: Read image version
         id: version
         run: |
@@ -96,6 +98,11 @@ jobs:
           node tests/browser/mail.mjs
           node tests/browser/plugin-inventory.mjs
           node tests/browser/storage-placement.mjs
+          node tests/browser/workspace-files.mjs
+          node tests/browser/dashboard.mjs
+          node tests/browser/navigation.mjs
+          node tests/browser/collection-views.mjs
+          node tests/browser/column-customization.mjs
       - name: Check persistent identity after container replacement
         run: node tests/container.mjs
       - name: Stop the peer

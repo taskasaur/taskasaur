@@ -1,3 +1,6 @@
+import { WorkspaceActivity } from "./activity";
+import { WorkspaceSearchDialog } from "./workspace-search";
+import { pluginNavigation } from "./navigation";
 import { storageService } from "../core/storage-service";
 import { navigationService } from "./navigation-service";
 import { ExecutionTarget, type ExecutionTargetProps } from "./execution-target";
@@ -282,6 +285,19 @@ export async function createBrowserPluginHost(
               },
               Button,
               Input,
+              WorkspaceSearch: () => (
+                <WorkspaceSearchDialog
+                  runtime={runtime}
+                  entries={pluginNavigation(runtime)}
+                  open
+                  embedded
+                  onOpenChange={() => {}}
+                  navigate={(route) => {
+                    location.hash = route;
+                  }}
+                />
+              ),
+              WorkspaceActivity: () => <WorkspaceActivity runtime={runtime} />,
               RecordForm,
               FieldInput,
               CollectionView,

@@ -1,5 +1,6 @@
 import {
   Folder,
+  LayoutDashboard,
   Table2,
   Braces,
   KeyRound,
@@ -78,6 +79,7 @@ const icons = {
   settings: Settings,
   plugins: Blocks,
   tasks: CheckSquare,
+  dashboard: LayoutDashboard,
   time: Clock3,
   track: Activity,
   calendar: CalendarDays,

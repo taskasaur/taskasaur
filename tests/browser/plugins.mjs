@@ -1,10 +1,12 @@
 import { navigate } from "./navigation-helpers.mjs";
+import { reviewInventory } from "./inventory-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const context = await browser.newContext(),
     page = await context.newPage();
+  await reviewInventory(context);
   page.setDefaultTimeout(45000);
   const failures = [];
   page.on("pageerror", (error) => failures.push(error.message));
@@ -26,6 +28,7 @@ try {
     "Office Editor",
     "Sharing",
     "Connector Github",
+    "Dashboard",
   ]) {
     const row = page
       .getByRole("row")
@@ -59,7 +62,7 @@ try {
     await expect(page.locator("select:visible")).toHaveCount(0);
   }
   console.log(
-    "All twelve published plugins installed; their shared navigation surfaces opened without page errors.",
+    "All thirteen published plugins installed; their shared navigation surfaces opened without page errors.",
   );
 } finally {
   await browser.close();

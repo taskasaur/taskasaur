@@ -229,7 +229,14 @@ export function RecordTable({
       canceled = true;
     };
     // User-defined columns can change without a plugin schema version change.
-  }, [runtime, key, schema.id, schema.version, schemaFields, activeTable?.revision]);
+  }, [
+    runtime,
+    key,
+    schema.id,
+    schema.version,
+    schemaFields,
+    activeTable?.revision,
+  ]);
   const change = (patch: Partial<CollectionViewState>) => {
     edits.current++;
     const next = normalizeView({ ...current.current, ...patch }, schema);

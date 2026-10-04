@@ -80,7 +80,7 @@ Installation downloads with a size limit, validates paths, verifies the trusted 
 
 Approval is per device. Synchronizing records or a package recommendation never executes downloaded native code. Each execution item uses the shared computer picker and reviewed dependency installation. Plugins declare the item types needing execution, while ordinary replicated content stays target-free. See [per-item execution](execution.md) for the manifest, core service, UI, readiness checks, pause and signed handoff.
 
-Test clean install, restart, disable/uninstall/re-enable, offline CRUD, a second peer with the plugin absent, independent/conflicting edits, schema upgrades, revoked/read-only devices, duplicate command IDs, file download interruption, credential denial and disposal. Data must remain recoverable when code is disabled or unavailable. Existing v1 terminal, sharing and office UI packages are adapted by the host to peer terminals, workspace-level sharing and portable offline editors. Their old central gateway/account interfaces are not used. The office surface is available only after installing the signed Office Editor plugin.
+Test clean install, restart, disable/uninstall/re-enable, offline CRUD, a second peer with the plugin absent, independent/conflicting edits, schema upgrades, revoked/read-only devices, duplicate command IDs, file download interruption, credential denial and disposal. Data must remain recoverable when code is disabled or unavailable. Existing v1 terminal and sharing UI packages are adapted by the host to peer terminals and workspace-level sharing. Their old central gateway/account interfaces are not used. The signed Office Editor plugin wraps the upstream full LibreOffice suite; core no longer substitutes a custom editor.
 
 ## Portable service method contracts
 
@@ -99,3 +99,23 @@ Store secrets through the Credentials UI, never through record fields, plugin se
 ## Device storage placement
 
 See [storage placement](storage-placement.md) for the optional `core.storage.placement` service, shared per-item controls, signed version handoffs and explicit last-copy deletion.
+
+## Column templates and workspace files
+
+Use [shared column customization](columns.md) for required-only tables, independent optional templates, scalar types, input cardinality, defaults and visibility. Core handles the same rules in portable records and the Dexie projection. [Workspace files](../workspace-files.md) export and restore the shared data behind these APIs; plugins must keep temporary state in local storage and must not serialize device identity or caches into shared records.
+
+## Dashboard and shared discovery
+
+The optional [Dashboard plugin](https://github.com/taskasaur/taskasaur-plugin-dashboard) declares only `core.ui`. `core.ui.WorkspaceSearch` embeds the same content-and-command interface used by navigation, and `core.ui.WorkspaceActivity` displays current jobs, running timers, active tasks/events and unread notifications. Core owns the query, permission checks and local cache. The dashboard adds no collections, service process, search index or independent cache.
+
+```tsx
+const ui = context.services.require("core.ui");
+const Search = ui.WorkspaceSearch;
+const Activity = ui.WorkspaceActivity;
+return (
+  <div>
+    <Search />
+    <Activity />
+  </div>
+);
+```

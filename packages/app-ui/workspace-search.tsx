@@ -29,12 +29,14 @@ export function WorkspaceSearchDialog({
   open,
   onOpenChange,
   navigate,
+  embedded = false,
 }: {
   runtime: AppRuntime;
   entries: NavPlugin[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   navigate: (route: string) => void;
+  embedded?: boolean;
 }) {
   const [query, setQuery] = useState(""),
     [results, setResults] = useState<SearchDocument[]>([]),
@@ -107,74 +109,78 @@ export function WorkspaceSearchDialog({
       setBusy(false);
     }
   };
-  return (
+  const content = (
+    <Command
+      shouldFilter={false}
+      className={embedded ? "rounded-lg border" : undefined}
+    >
+      <CommandInput
+        aria-label="Search content and commands"
+        placeholder="Search content and commands…"
+        value={query}
+        onValueChange={setQuery}
+      />
+      <CommandList aria-busy={busy}>
+        <CommandEmpty>{busy ? "Searching…" : "No results found."}</CommandEmpty>
+        {results.length > 0 && (
+          <CommandGroup heading="Content">
+            {results.map((result) => (
+              <CommandItem
+                key={result.id}
+                value={"record:" + result.id}
+                onSelect={() =>
+                  void execute(() =>
+                    runtime.navigate(
+                      result.pluginId,
+                      runtime.searchOptions.get(result.collection)?.page,
+                      result.id,
+                    ),
+                  )
+                }
+              >
+                <PluginIcon id={result.pluginId} />
+                <span className="min-w-0 flex-1 truncate">{result.title}</span>
+                <span className="text-xs text-muted-foreground">
+                  {result.collection}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+        {commands.length > 0 && (
+          <CommandGroup heading="Commands">
+            {commands.slice(0, 30).map((command) => (
+              <CommandItem
+                key={command.id}
+                value={command.id}
+                disabled={busy}
+                onSelect={() => void execute(command.run)}
+              >
+                <PluginIcon id={command.pluginId} />
+                <span>{command.title}</span>
+                <ArrowRight className="ml-auto" />
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+      </CommandList>
+      {error && (
+        <p role="alert" className="p-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </Command>
+  );
+  return embedded ? (
+    content
+  ) : (
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
       title="Search workspace"
       description="Search content and commands on this device"
     >
-      <Command shouldFilter={false}>
-        <CommandInput
-          aria-label="Search content and commands"
-          placeholder="Search content and commands…"
-          value={query}
-          onValueChange={setQuery}
-        />
-        <CommandList aria-busy={busy}>
-          <CommandEmpty>
-            {busy ? "Searching…" : "No results found."}
-          </CommandEmpty>
-          {results.length > 0 && (
-            <CommandGroup heading="Content">
-              {results.map((result) => (
-                <CommandItem
-                  key={result.id}
-                  value={"record:" + result.id}
-                  onSelect={() =>
-                    void execute(() =>
-                      runtime.navigate(
-                        result.pluginId,
-                        runtime.searchOptions.get(result.collection)?.page,
-                        result.id,
-                      ),
-                    )
-                  }
-                >
-                  <PluginIcon id={result.pluginId} />
-                  <span className="min-w-0 flex-1 truncate">
-                    {result.title}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {result.collection}
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-          {commands.length > 0 && (
-            <CommandGroup heading="Commands">
-              {commands.slice(0, 30).map((command) => (
-                <CommandItem
-                  key={command.id}
-                  value={command.id}
-                  disabled={busy}
-                  onSelect={() => void execute(command.run)}
-                >
-                  <PluginIcon id={command.pluginId} />
-                  <span>{command.title}</span>
-                  <ArrowRight className="ml-auto" />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-        </CommandList>
-        {error && (
-          <p role="alert" className="p-3 text-sm text-destructive">
-            {error}
-          </p>
-        )}
-      </Command>
+      {content}
     </CommandDialog>
   );
 }
