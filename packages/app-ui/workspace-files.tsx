@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
 import { SharedTextarea } from "../ui/html-controls";
 import { browserDevice, workspaceRouter } from "../platform-browser/device";
 import {
   workspaceFolderAvailable,
+  workspaceFileAvailable,
   selectWorkspaceLocation,
   type WorkspaceLocation,
 } from "../platform-browser/workspace-location";
@@ -33,7 +34,27 @@ export function OpenWorkspaceFile({
     [invitation, setInvitation] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const pending = useRef<WorkspaceStorage | undefined>(undefined);
+  useEffect(
+    () => () => {
+      const value = pending.current;
+      if (
+        value &&
+        workspaceRouter.mounts.get(value.manifest.workspace.id) !== value
+      )
+        void value.close();
+    },
+    [],
+  );
   const load = async (value: WorkspaceStorage, handle?: WorkspaceLocation) => {
+    const previous = pending.current;
+    if (
+      previous &&
+      previous !== value &&
+      workspaceRouter.mounts.get(previous.manifest.workspace.id) !== previous
+    )
+      await previous.close();
+    pending.current = value;
     setSource(value);
     setFolder(handle);
     setError("");
@@ -69,22 +90,34 @@ export function OpenWorkspaceFile({
           }}
         />
       </label>
-      {workspaceFolderAvailable() && (
-        <Button
-          variant="outline"
-          disabled={busy}
-          onClick={async () => {
-            try {
-              const handle = await selectWorkspaceLocation();
-              await load(await WorkspaceStorage.open(handle.files), handle);
-            } catch (e) {
-              setError(String(e));
-            }
-          }}
-        >
-          Open workspace folder
-        </Button>
-      )}
+      {(["file", "folder"] as const)
+        .filter((kind) =>
+          kind === "file"
+            ? workspaceFileAvailable()
+            : workspaceFolderAvailable(),
+        )
+        .map((kind) => (
+          <Button
+            key={kind}
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              let handle: WorkspaceLocation | undefined;
+              setBusy(true);
+              try {
+                handle = await selectWorkspaceLocation(kind);
+                await load(await WorkspaceStorage.open(handle.files), handle);
+              } catch (e) {
+                await handle?.files.close?.();
+                setError(String(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Open workspace {kind}
+          </Button>
+        ))}
       {source && (
         <div className="space-y-3">
           <p>{source.manifest.workspace.name}</p>
@@ -150,7 +183,9 @@ export function OpenWorkspaceFile({
               }
             }}
           >
-            {folder ? "Open and write to folder" : "Import and open workspace"}
+            {folder
+              ? `Open and write to ${folder.kind}`
+              : "Import and open workspace"}
           </Button>
         </div>
       )}
@@ -229,16 +264,26 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
         >
           Download all workspace content
         </Button>
-        {workspaceFolderAvailable() && (
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={async () => {
-              try {
-                const handle = await selectWorkspaceLocation();
-                await run(async () => {
+        {(["file", "folder"] as const)
+          .filter((kind) =>
+            kind === "file"
+              ? workspaceFileAvailable()
+              : workspaceFolderAvailable(),
+          )
+          .map((kind) => (
+            <Button
+              key={kind}
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                let handle: WorkspaceLocation | undefined;
+                let source: WorkspaceStorage | undefined;
+                setBusy(true);
+                setError("");
+                try {
+                  handle = await selectWorkspaceLocation(kind, true);
                   const snapshot = await workspaceSnapshot(runtime.node);
-                  const source = await WorkspaceStorage.create(
+                  source = await WorkspaceStorage.create(
                     handle.files,
                     snapshot.workspace,
                     snapshot.entries,
@@ -250,22 +295,29 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
                   );
                   await handle.remember(runtime.profile.workspaceId);
                   setNotice(
-                    "Workspace writes now go directly to the selected folder. Keep it available while the workspace is open.",
+                    `Workspace writes now go directly to ${handle.label}. Keep the ${kind} available while the workspace is open.`,
                   );
-                });
-              } catch (e) {
-                setError(String(e));
-              }
-            }}
-          >
-            Save and work from folder
-          </Button>
-        )}
+                } catch (e) {
+                  if (
+                    !source ||
+                    workspaceRouter.mounts.get(runtime.profile.workspaceId) !==
+                      source
+                  )
+                    await handle?.files.close?.();
+                  setError(String(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Save and work from {kind}
+            </Button>
+          ))}
       </div>
-      {!workspaceFolderAvailable() && (
+      {!workspaceFolderAvailable() && !workspaceFileAvailable() && (
         <p className="text-xs text-muted-foreground">
           This platform stores the workspace locally in the app. Use archives to
-          move it; direct folder access is available where the platform provides
+          move it; direct file access is available where the platform provides
           it.
         </p>
       )}

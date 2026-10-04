@@ -1,6 +1,7 @@
 import { _electron as electron, expect } from "@playwright/test";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { navigate } from "./navigation-helpers.mjs";
+import JSZip from "jszip";
 import os from "node:os";
 import path from "node:path";
 
@@ -43,13 +44,11 @@ try {
     "Workspace writes now go directly",
   );
   await navigate(window, "Files");
-  await window
-    .locator('input[type="file"]')
-    .setInputFiles({
-      name: "desktop-folder.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("Native folder bytes"),
-    });
+  await window.locator('input[type="file"]').setInputFiles({
+    name: "desktop-folder.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Native folder bytes"),
+  });
   await expect(
     window.getByRole("button", { name: "desktop-folder.txt", exact: true }),
   ).toBeVisible();
@@ -63,6 +62,44 @@ try {
     .toBe(true);
   await window.reload();
   await navigate(window, "Files");
+  await expect(
+    window.getByRole("button", { name: "desktop-folder.txt", exact: true }),
+  ).toBeVisible();
+  const liveFile = path.join(directory, "live.taskasaur");
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, liveFile);
+  await navigate(window, "Settings");
+  await window
+    .getByRole("button", { name: "Save and work from file", exact: true })
+    .click();
+  await expect(window.getByRole("status")).toContainText("live.taskasaur");
+  const fileManifest = async () => {
+    const zip = await JSZip.loadAsync(await readFile(liveFile));
+    return JSON.parse(await zip.file("workspace.json").async("string"));
+  };
+  const before = await fileManifest();
+  await navigate(window, "Files");
+  await window.locator('input[type="file"]').setInputFiles({
+    name: "single-file.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Native single-file bytes"),
+  });
+  await expect
+    .poll(
+      async () =>
+        Object.keys((await fileManifest()).entries).filter((k) =>
+          k.includes("/blobs/"),
+        ).length,
+    )
+    .toBeGreaterThan(
+      Object.keys(before.entries).filter((k) => k.includes("/blobs/")).length,
+    );
+  await window.reload();
+  await navigate(window, "Files");
+  await expect(
+    window.getByRole("button", { name: "single-file.txt", exact: true }),
+  ).toBeVisible();
   await expect(
     window.getByRole("button", { name: "desktop-folder.txt", exact: true }),
   ).toBeVisible();
@@ -100,7 +137,7 @@ try {
     });
   });
   console.log(
-    "Electron workspace, native folder writes/reopen, native peer and PTY addon passed.",
+    "Electron workspace, native folder and single-file writes/reopen, native peer and PTY addon passed.",
   );
 } finally {
   await app?.close();

@@ -66,7 +66,7 @@ class WorkspaceHandles extends Dexie {
 }
 export async function rememberFolder(
   workspaceId: string,
-  handle: FileSystemDirectoryHandle,
+  handle: FileSystemDirectoryHandle | FileSystemFileHandle,
 ) {
   const db = new WorkspaceHandles();
   try {
@@ -79,9 +79,10 @@ export async function savedFolders() {
   const db = new WorkspaceHandles();
   try {
     return await db
-      .table<{ workspaceId: string; handle: FileSystemDirectoryHandle }>(
-        "folders",
-      )
+      .table<{
+        workspaceId: string;
+        handle: FileSystemDirectoryHandle | FileSystemFileHandle;
+      }>("folders")
       .toArray();
   } finally {
     db.close();

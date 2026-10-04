@@ -65,7 +65,7 @@ docker compose --env-file .env.peer up -d             # Upgrade the image while 
 
 The `edge` image follows verified `main` builds; pin a published `sha-…` tag or digest for repeatable deployments. Release builds also publish version tags.
 
-See [self-hosting](docs/self-hosting.md), [replication and recovery](docs/distributed.md), and the [plugin specification](docs/plugins/README.md). Save everything shared as a [portable workspace file or live folder](docs/workspace-files.md), preserving Automerge history without cloning a device identity. Optional column templates use the [shared type and input model](docs/plugins/columns.md). The Office plugin embeds the [full upstream LibreOffice suite](docs/office-engine.md), and Dashboard provides active work plus the shared search/command interface.
+See [self-hosting](docs/self-hosting.md), [replication and recovery](docs/distributed.md), and the [plugin specification](docs/plugins/README.md). Save everything shared as a [portable, live workspace file](docs/workspace-files.md), preserving Automerge history without cloning a device identity. Optional column templates use the [shared type and input model](docs/plugins/columns.md). The Office plugin embeds the [full upstream LibreOffice suite](docs/office-engine.md), and Dashboard provides active work plus the shared search/command interface.
 
 ## Build and verify
 

@@ -19,11 +19,15 @@ declare global {
     taskasaurNative?: {
       storage: DurableStorage;
       workspace?: {
-        choose(): Promise<{ id: string; label: string }>;
+        choose(
+          kind: "file" | "folder",
+          create: boolean,
+        ): Promise<{ id: string; label: string; kind: "file" | "folder" }>;
         list(): Promise<
           Array<{
             id: string;
             label: string;
+            kind: "file" | "folder";
             workspaceId: string;
             error?: string;
           }>
@@ -32,6 +36,13 @@ declare global {
         write(id: string, path: string, bytes: Uint8Array): Promise<void>;
         remove(id: string, path: string): Promise<void>;
         bind(id: string, workspaceId: string): Promise<void>;
+        commit(
+          id: string,
+          manifest: Uint8Array,
+          additions: Record<string, Uint8Array>,
+        ): Promise<void>;
+        refresh(id: string): Promise<void>;
+        close(id: string): Promise<void>;
       };
       peer: {
         request(address: string, packet: PeerPacket): Promise<PeerPacket>;

@@ -99,6 +99,7 @@ jobs:
           node tests/browser/plugin-inventory.mjs
           node tests/browser/storage-placement.mjs
           node tests/browser/workspace-files.mjs
+          TEST_WORKSPACE_KIND=file node tests/browser/workspace-files.mjs
           node tests/browser/dashboard.mjs
           node tests/browser/navigation.mjs
           node tests/browser/collection-views.mjs
