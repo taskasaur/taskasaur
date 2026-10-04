@@ -25,16 +25,15 @@ import {
   type WorkspaceProfile,
 } from "./runtime";
 import { download } from "./download";
+import { DeviceRequestInput } from "./device-request-input";
 
 export interface WorkspaceFileOptions {
   encrypted: boolean;
   password: string;
-  includeCredentials: boolean;
 }
 export const defaultWorkspaceFileOptions: WorkspaceFileOptions = {
   encrypted: false,
   password: "",
-  includeCredentials: false,
 };
 export function WorkspaceFileOptionsFields({
   value,
@@ -64,22 +63,6 @@ export function WorkspaceFileOptionsFields({
             onChange({ ...value, password: event.target.value })
           }
         />
-      )}
-      <div className="flex items-center gap-2">
-        <Switch
-          aria-label="Include credentials"
-          checked={value.includeCredentials}
-          onCheckedChange={(includeCredentials) =>
-            onChange({ ...value, includeCredentials })
-          }
-        />
-        <span>Include credentials</span>
-      </div>
-      {value.includeCredentials && (
-        <p className="text-xs text-muted-foreground">
-          Includes plugin credentials and access to reconnect. Anyone who can
-          open this file can use that access.
-        </p>
       )}
     </div>
   );
@@ -226,15 +209,10 @@ export function OpenWorkspaceFile({
             can approve it and return an encrypted invitation for this device.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="field-row">
-              Device request
-              <Input
-                aria-label="Workspace file device request"
-                readOnly
-                value={request}
-                onFocus={(event) => event.target.select()}
-              />
-            </label>
+            <DeviceRequestInput
+              value={request}
+              label="Workspace file device request"
+            />
             <label className="field-row">
               Workspace invitation
               <Input
@@ -294,7 +272,7 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
             void run(async () => {
               await runtime.node.synchronize();
               const bytes = await exportWorkspace(runtime.node, {
-                includeCredentials: options.includeCredentials,
+                includeCredentials: true,
                 password: options.encrypted ? options.password : undefined,
               });
               download(
@@ -356,7 +334,7 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
                     password: options.encrypted ? options.password : undefined,
                   });
                   const snapshot = await workspaceSnapshot(runtime.node, {
-                    includeCredentials: options.includeCredentials,
+                    includeCredentials: true,
                   });
                   source = await WorkspaceStorage.create(
                     handle.files,

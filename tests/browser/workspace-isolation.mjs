@@ -12,7 +12,9 @@ const browser = await chromium.launch({ channel: "chrome", headless: true });
 const directory = await mkdtemp(path.join(tmpdir(), "taskasaur-isolation-ui-"));
 const url = process.env.TEST_APP_URL ?? "http://127.0.0.1:4177";
 try {
-  const context = await browser.newContext(),
+  const context = await browser.newContext({
+      permissions: ["clipboard-read", "clipboard-write"],
+    }),
     page = await context.newPage(),
     errors = [];
   page.setDefaultTimeout(30000);
@@ -51,6 +53,11 @@ try {
   await expect(
     page.getByLabel("Workspace invitation", { exact: true }),
   ).toBeVisible();
+  await click("Copy device request");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    await page.getByLabel("Device request", { exact: true }).inputValue(),
+  );
+  await expect(page.getByRole("status")).toHaveText("Device request copied");
   await page.screenshot({ path: "/tmp/taskasaur-join-mobile.png" });
   await click("Back");
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -68,9 +75,9 @@ try {
     page.getByRole("button", { name: "only-in-a.odt", exact: true }),
   ).toBeVisible();
   await navigate(page, "Settings");
-  await page
-    .getByRole("switch", { name: "Include credentials", exact: true })
-    .click();
+  await expect(
+    page.getByRole("switch", { name: "Include credentials", exact: true }),
+  ).toHaveCount(0);
   const downloaded = page.waitForEvent("download");
   await click("Export complete workspace");
   const archive = path.join(directory, "portable.taskasaur");
@@ -135,15 +142,26 @@ try {
   await other.close();
 
   await click("Create");
+  await expect(
+    page.getByText(
+      "Create an internal workspace or file based .taskasaur file.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("separator")).toHaveCount(1);
+  await expect(
+    page.getByRole("group", { name: "File workspace", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: "/tmp/taskasaur-create-desktop.png" });
   await page
     .getByRole("switch", { name: "Encrypt workspace file", exact: true })
     .click();
   await page
     .getByLabel("New workspace password", { exact: true })
     .fill("browser workspace password");
-  await page
-    .getByRole("switch", { name: "Include credentials", exact: true })
-    .click();
+  await expect(
+    page.getByRole("switch", { name: "Include credentials", exact: true }),
+  ).toHaveCount(0);
   await click("Create file workspace");
   await navigate(page, "Files");
   await page.locator('input[type="file"]').setInputFiles({
@@ -170,6 +188,11 @@ try {
   expect(encrypted).toBe("TASKASAUR-ENCRYPTED-1\n");
   await leaveWorkspace(page);
   await click("Open");
+  await expect(page.getByRole("separator")).toHaveCount(1);
+  await expect(
+    page.getByRole("group", { name: "File workspace", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({ path: "/tmp/taskasaur-open-desktop.png" });
   await page.getByLabel("Open internal workspace", { exact: true }).click();
   await expect(
     page.getByRole("option", { name: "live", exact: true }),
@@ -202,9 +225,72 @@ try {
   await expect(
     page.getByRole("button", { name: "encrypted.txt", exact: true }),
   ).toBeVisible();
+  // Browsers without direct file access still create a real portable file.
+  const fallbackContext = await browser.newContext();
+  await fallbackContext.addInitScript(() => {
+    delete window.showSaveFilePicker;
+    delete window.showOpenFilePicker;
+    // Exercise the clipboard fallback used by embedded browsers.
+    Object.defineProperty(navigator, "clipboard", { value: undefined });
+  });
+  const fallback = await fallbackContext.newPage();
+  fallback.on("pageerror", (error) => errors.push(error.message));
+  await fallback.goto(url);
+  await fallback.getByRole("button", { name: "Join", exact: true }).click();
+  await fallback
+    .getByRole("button", { name: "Copy device request", exact: true })
+    .click();
+  await expect(fallback.getByRole("status")).toHaveText(
+    "Device request copied",
+  );
+  await fallback.getByRole("button", { name: "Back", exact: true }).click();
+  await fallback.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    fallback.getByRole("button", {
+      name: "Create file workspace",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await fallback.setViewportSize({ width: 390, height: 844 });
+  await fallback.screenshot({
+    path: "/tmp/taskasaur-create-fallback-mobile.png",
+  });
+  const fallbackDownload = fallback.waitForEvent("download");
+  await fallback
+    .getByRole("button", { name: "Create file workspace", exact: true })
+    .click();
+  const fallbackArchive = path.join(directory, "fallback.taskasaur");
+  await (await fallbackDownload).saveAs(fallbackArchive);
+  await expect(
+    fallback.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Workspace");
+  const fallbackZip = await JSZip.loadAsync(await readFile(fallbackArchive));
+  const fallbackManifest = JSON.parse(
+    await fallbackZip.file("workspace.json").async("string"),
+  );
+  expect(fallbackManifest.connectionCredential).toBeDefined();
+  await fallback.reload();
+  await expect(
+    fallback.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Workspace");
+  await fallbackContext.close();
+  const reopenedContext = await browser.newContext();
+  const reopened = await reopenedContext.newPage();
+  await reopened.goto(url);
+  await reopened.getByRole("button", { name: "Open", exact: true }).click();
+  await reopened
+    .getByLabel("Workspace archive", { exact: true })
+    .setInputFiles(fallbackArchive);
+  await expect(
+    reopened.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Workspace");
+  await expect(
+    reopened.getByLabel("Workspace file device request", { exact: true }),
+  ).toHaveCount(0);
+  await reopenedContext.close();
   expect(errors).toEqual([]);
   console.log(
-    "Welcome layouts, separate workspace databases, selected-workspace reload, credential export without a password, fresh-device import and encrypted live-file reopen passed.",
+    "Welcome layouts, request copying, separate databases, automatic credentials, fresh-device import, encrypted live-file reopen and file creation without picker support passed.",
   );
 } finally {
   await browser.close();

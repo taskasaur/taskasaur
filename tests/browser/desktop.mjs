@@ -45,9 +45,9 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, liveFile);
   await navigate(window, "Settings");
-  await window
-    .getByRole("switch", { name: "Include credentials", exact: true })
-    .click();
+  await expect(
+    window.getByRole("switch", { name: "Include credentials", exact: true }),
+  ).toHaveCount(0);
   await window
     .getByRole("button", { name: "Save and work from file", exact: true })
     .click();
@@ -177,9 +177,9 @@ try {
   await restored
     .getByLabel("New workspace password", { exact: true })
     .fill("desktop workspace password");
-  await restored
-    .getByRole("switch", { name: "Include credentials", exact: true })
-    .click();
+  await expect(
+    restored.getByRole("switch", { name: "Include credentials", exact: true }),
+  ).toHaveCount(0);
   await restored
     .getByRole("button", { name: "Save and work from file", exact: true })
     .click();

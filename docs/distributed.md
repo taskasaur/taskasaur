@@ -32,11 +32,11 @@ Scheduled workflow triggers execute only on their declared target. Automations, 
 
 ## Workspace files
 
-A [portable workspace archive or live folder](workspace-files.md) preserves shared records, files, connections and signed Automerge history while keeping the importing computer's identity and private settings separate. New devices require owner approval; archive possession alone grants no access. Device-scoped settings use encrypted local state, and exports omit the older replicated device-setting records.
+A [portable workspace archive or live folder](workspace-files.md) preserves shared records, files, connections and signed Automerge history while keeping the importing computer's identity and private settings separate. App-created files include a scoped connection credential for approving the importing device; older archives without this credential require an invitation from the owner. Device-scoped settings use encrypted local state, and exports omit the older replicated device-setting records.
 
 ## Backup and rollback
 
-Settings offers complete `.taskasaur` workspace files with optional password encryption and an independent **Include credentials** option. A file with credentials can open on another installation without a new invitation; that installation keeps its own identity and Automerge actor. Plain credential-bearing files are supported explicitly. Without credentials, a new device needs owner approval. See [Workspace files](workspace-files.md) for live file editing, encryption and revocation.
+Settings exports complete `.taskasaur` workspace files with credentials included automatically and optional password encryption. These files can open on another installation without a new invitation; that installation keeps its own identity and Automerge actor. Older files without credentials still need owner approval on a new device. See [Workspace files](workspace-files.md) for live file editing, encryption and revocation.
 
 Device-state recovery is separate from moving a workspace. Preserve a stopped native data directory if you need installed packages and workflow checkpoints. The app does not clone identities through a backup/restore screen. Query caches and plugin package caches remain local.
 

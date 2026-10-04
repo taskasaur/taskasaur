@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
+import { Separator } from "../ui/primitives/separator";
 import { ChoiceSelect } from "../ui/choice-select";
 import {
   createLocalWorkspace,
@@ -23,7 +24,9 @@ import {
 } from "../platform-browser/workspace-location";
 import { workspaceRouter } from "../platform-browser/device";
 import { WorkspaceStorage } from "../storage/workspace";
-import { workspaceSnapshot } from "../core/workspace-package";
+import { exportWorkspace, workspaceSnapshot } from "../core/workspace-package";
+import { DeviceRequestInput } from "./device-request-input";
+import { download } from "./download";
 export const activeWorkspaceKey = "taskasaur.active-workspace";
 export function Welcome({
   onOpen,
@@ -55,7 +58,7 @@ export function Welcome({
     }
   };
   const descriptions = {
-    create: "Create a workspace on this device or in a .taskasaur file.",
+    create: "Create an internal workspace or file based .taskasaur file.",
     join: "Send this device request to the workspace owner. In Devices, they can approve it and return an encrypted invitation for this device.",
     open: "Open an internal workspace or choose a .taskasaur file.",
   };
@@ -77,6 +80,20 @@ export function Welcome({
     if (value === "join") setRequest((await browserDevice()).pairingRequest());
   }
   async function createFile() {
+    if (!workspaceFileAvailable()) {
+      const profile = await createLocalWorkspace(name.trim() || "Workspace");
+      const node = await (await browserDevice()).workspace(profile.workspaceId);
+      const bytes = await exportWorkspace(node, {
+        includeCredentials: true,
+        password: options.encrypted ? options.password : undefined,
+      });
+      download(
+        "workspace.taskasaur",
+        new Blob([new Uint8Array(bytes)], { type: "application/zip" }),
+      );
+      await onOpen(profile);
+      return;
+    }
     const selected = await selectWorkspaceLocation("file", true, {
       password: options.encrypted ? options.password : undefined,
     });
@@ -87,7 +104,7 @@ export function Welcome({
       );
       const node = await (await browserDevice()).workspace(profile.workspaceId);
       const snapshot = await workspaceSnapshot(node, {
-        includeCredentials: options.includeCredentials,
+        includeCredentials: true,
       });
       const source = await WorkspaceStorage.create(
         selected.files,
@@ -179,13 +196,19 @@ export function Welcome({
                     </div>
                   </label>
                 </form>
-                <div className="space-y-4">
+                <Separator />
+                <div
+                  className="space-y-4"
+                  role="group"
+                  aria-labelledby="create-file-label"
+                >
+                  <p id="create-file-label" className="text-sm font-medium">
+                    File workspace
+                  </p>
                   <Button
                     variant="outline"
                     disabled={
-                      busy ||
-                      !workspaceFileAvailable() ||
-                      (options.encrypted && options.password.length < 8)
+                      busy || (options.encrypted && options.password.length < 8)
                     }
                     onClick={() => void run(createFile)}
                   >
@@ -197,8 +220,9 @@ export function Welcome({
                   />
                   {!workspaceFileAvailable() && (
                     <p className="text-xs text-muted-foreground">
-                      Create an internal workspace here, then export a workspace
-                      file from Settings.
+                      Downloads a .taskasaur file and opens an internal working
+                      copy. This browser cannot save changes directly to the
+                      file; export an updated copy from Settings.
                     </p>
                   )}
                 </div>
@@ -213,14 +237,7 @@ export function Welcome({
                 }}
               >
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="field-row">
-                    Device request
-                    <Input
-                      readOnly
-                      value={request}
-                      onFocus={(event) => event.target.select()}
-                    />
-                  </label>
+                  <DeviceRequestInput value={request} />
                   <label className="field-row">
                     Workspace invitation
                     <Input
@@ -258,7 +275,17 @@ export function Welcome({
                     }}
                   />
                 </label>
-                <OpenWorkspaceFile onOpen={onOpen} />
+                <Separator />
+                <div
+                  className="space-y-4"
+                  role="group"
+                  aria-labelledby="open-file-label"
+                >
+                  <p id="open-file-label" className="text-sm font-medium">
+                    File workspace
+                  </p>
+                  <OpenWorkspaceFile onOpen={onOpen} />
+                </div>
               </div>
             )}
           </>

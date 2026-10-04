@@ -1,5 +1,5 @@
 import { chromium, expect } from "@playwright/test";
-import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
@@ -107,6 +107,13 @@ try {
       /identity|\/local\/|network\//.test(k),
     ),
   ).toBe(false);
+  expect(manifest.connectionCredential).toBeDefined();
+  if (!liveFile) {
+    // Older archives without a connection credential still support approval.
+    delete manifest.connectionCredential;
+    zip.file("workspace.json", JSON.stringify(manifest));
+    await writeFile(archive, await zip.generateAsync({ type: "nodebuffer" }));
+  }
   await second.goto(url);
   await click(second, "Open");
   if (liveFile) {
@@ -126,27 +133,37 @@ try {
     await second
       .getByLabel("Workspace archive", { exact: true })
       .setInputFiles(archive);
-  await expect(
-    second.getByLabel("Workspace file device request", { exact: true }),
-  ).not.toHaveValue("");
-  const request = await second
-    .getByLabel("Workspace file device request", { exact: true })
-    .inputValue();
-  await navigate(first, "Devices");
-  await first.getByLabel("Device request", { exact: true }).fill(request);
-  await click(first, "Approve device");
-  await expect(
-    first.getByRole("textbox", { name: "Encrypted invitation", exact: true }),
-  ).not.toHaveValue("");
-  await second
-    .getByLabel("Workspace file approval", { exact: true })
-    .fill(
-      await first
-        .getByRole("textbox", { name: "Encrypted invitation", exact: true })
-        .inputValue(),
-    );
-  await a.close(); // The original writer is closed before the new identity restores.
-  await click(second, "Open workspace");
+  if (!liveFile) {
+    await expect(
+      second.getByLabel("Workspace file device request", { exact: true }),
+    ).not.toHaveValue("");
+    const request = await second
+      .getByLabel("Workspace file device request", { exact: true })
+      .inputValue();
+    await navigate(first, "Devices");
+    await first.getByLabel("Device request", { exact: true }).fill(request);
+    await click(first, "Approve device");
+    await expect(
+      first.getByRole("textbox", { name: "Encrypted invitation", exact: true }),
+    ).not.toHaveValue("");
+    await second
+      .getByLabel("Workspace file approval", { exact: true })
+      .fill(
+        await first
+          .getByRole("textbox", { name: "Encrypted invitation", exact: true })
+          .inputValue(),
+      );
+    await a.close(); // The original writer is closed before the new identity restores.
+    await click(second, "Open workspace");
+  } else {
+    await expect(
+      second.getByRole("button", { name: "Open settings menu", exact: true }),
+    ).toBeVisible();
+    await expect(
+      second.getByLabel("Workspace file device request", { exact: true }),
+    ).toHaveCount(0);
+    await a.close();
+  }
   await expect(
     second.getByRole("button", { name: "Open settings menu", exact: true }),
   ).toBeVisible();
@@ -165,8 +182,8 @@ try {
   if (liveFile) {
     const after = await fileManifest(second);
     expect(after.packageId).toBe(manifest.packageId);
-    expect(after.workspace.policies.length).toBeGreaterThan(
-      manifest.workspace.policies.length,
+    expect(after.workspace.delegations.length).toBeGreaterThan(
+      manifest.workspace.delegations.length,
     );
     expect(after.revision).toBeGreaterThan(manifest.revision);
   }
@@ -183,7 +200,7 @@ try {
   ).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
-    `${liveFile ? "Live single-file" : "Internal archive"} writes, identity exclusion, approval, original-device shutdown, byte-exact restore and offline restart passed.`,
+    `${liveFile ? "Live single-file automatic access" : "Legacy archive approval"}, identity exclusion, original-device shutdown, byte-exact restore and offline restart passed.`,
   );
 } catch (e) {
   console.error(e);
