@@ -13,8 +13,14 @@ import {
 } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ThemeProvider, useTheme } from "next-themes";
-import { ArrowLeft } from "lucide-react";
-import { AppRuntime, profiles, type WorkspaceProfile } from "./runtime";
+import { ArrowLeft, Trash2 } from "lucide-react";
+import {
+  AppRuntime,
+  profiles,
+  deleteSavedWorkspace,
+  type WorkspaceProfile,
+} from "./runtime";
+import { DeleteWorkspaceDialog } from "./delete-workspace-dialog";
 import { RecordTable } from "./record-table";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import { WorkspaceNavigation } from "./workspace-navigation";
@@ -817,6 +823,7 @@ function SettingsView({
   onSwitch: () => void;
 }) {
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const { theme, setTheme } = useTheme();
   return (
     <div className="space-y-6">
@@ -858,8 +865,22 @@ function SettingsView({
             <ArrowLeft size={14} />
             Switch workspace
           </Button>
+          <Button variant="destructive" onClick={() => setDeleting(true)}>
+            <Trash2 /> Delete workspace
+          </Button>
         </div>
       </section>
+      {deleting && (
+        <DeleteWorkspaceDialog
+          profile={runtime.profile}
+          onClose={() => setDeleting(false)}
+          onDelete={async () => {
+            await runtime.close();
+            await deleteSavedWorkspace(runtime.profile);
+            onSwitch();
+          }}
+        />
+      )}
       {error && <p role="alert">{error}</p>}
       <SyncConflicts runtime={runtime} />
       <RecordTable runtime={runtime} collection="settings" />

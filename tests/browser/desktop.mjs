@@ -211,8 +211,53 @@ try {
   await expect(
     restored.getByRole("button", { name: "single-file.txt", exact: true }),
   ).toBeVisible();
+  await navigate(restored, "Settings");
+  await restored
+    .getByRole("button", { name: "Delete workspace", exact: true })
+    .click();
+  const deletion = restored.getByRole("alertdialog", {
+    name: "Delete workspace?",
+    exact: true,
+  });
+  await deletion
+    .getByLabel("Workspace name to confirm deletion")
+    .fill("My workspace");
+  await deletion
+    .getByRole("button", { name: "Delete workspace", exact: true })
+    .click();
+  await expect(
+    restored.getByRole("button", { name: "Create", exact: true }),
+  ).toBeVisible();
+  expect(
+    await restored.evaluate(
+      async (id) => ({
+        native: (await window.taskasaurNative.peer.info()).workspaces.includes(
+          id,
+        ),
+        renderer: await window.taskasaurNative.storage.keys(`workspace/${id}/`),
+        linked: (await window.taskasaurNative.workspace.list()).some(
+          (value) => value.workspaceId === id,
+        ),
+      }),
+      originalId,
+    ),
+  ).toEqual({ native: false, renderer: [], linked: false });
+  // Local deletion preserves the external file, which can be opened again.
+  expect((await readFile(encrypted)).length).toBeGreaterThan(0);
+  await restored.getByRole("button", { name: "Open", exact: true }).click();
+  await restored
+    .getByRole("button", { name: "Open file workspace", exact: true })
+    .click();
+  await restored
+    .getByLabel("Workspace password", { exact: true })
+    .fill("desktop workspace password");
+  await restored.getByRole("button", { name: "Unlock", exact: true }).click();
+  await navigate(restored, "Files");
+  await expect(
+    restored.getByRole("button", { name: "single-file.txt", exact: true }),
+  ).toBeVisible();
   console.log(
-    "Electron workspace, internal storage and single-file writes/reopen, separate workspaces, new-installation credentials, encrypted reopen, native peer and PTY addon passed.",
+    "Electron file writes/reopen, separate workspaces, portable credentials, encryption, complete local deletion with preserved external files, native peer and PTY addon passed.",
   );
 } finally {
   await app?.close();

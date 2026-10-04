@@ -42,6 +42,7 @@ import type {
   PluginEvent,
 } from "@taskasaur/platform/plugin-sdk";
 import { browserDevice, activateWorkspace } from "../platform-browser/device";
+import { forgetWorkspaceLocation } from "../platform-browser/workspace-location";
 import type { DeviceCore, WorkspaceNode } from "../core/device";
 import { deviceRecordId } from "../core/records";
 import { ensureCollectionTables, scopedTableStore } from "./collection-tables";
@@ -1299,6 +1300,32 @@ export async function saveProfile(profile: WorkspaceProfile) {
   } finally {
     db.close();
   }
+}
+export async function deleteSavedWorkspace(profile: WorkspaceProfile) {
+  const device = await browserDevice();
+  await window.taskasaurNative?.peer.deleteWorkspace(profile.workspaceId);
+  await device.deleteWorkspace(profile.workspaceId);
+  await forgetWorkspaceLocation(profile.workspaceId);
+  // Clear every user's disposable view of this workspace, including files and search.
+  for (const name of await Dexie.getDatabaseNames())
+    if (
+      name.startsWith("taskasaur-v2-") &&
+      name.endsWith("-" + profile.workspaceId)
+    )
+      await Dexie.delete(name);
+  const db = new Bootstrap();
+  try {
+    await db.profiles
+      .filter((value) => value.workspaceId === profile.workspaceId)
+      .delete();
+  } finally {
+    db.close();
+  }
+  for (const key of Object.keys(localStorage))
+    if (key.startsWith(`taskasaur.view.${profile.id}.`))
+      localStorage.removeItem(key);
+  if (localStorage.getItem("taskasaur.active-workspace") === profile.id)
+    localStorage.removeItem("taskasaur.active-workspace");
 }
 export async function createLocalWorkspace(name: string) {
   const device = await browserDevice(),

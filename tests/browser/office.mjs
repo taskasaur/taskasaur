@@ -238,7 +238,7 @@ try {
   await leaveWorkspace(page);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await page.getByLabel("Open internal workspace", { exact: true }).click();
-  await page.getByRole("option", { name: "My workspace", exact: true }).click();
+  await page.getByRole("button", { name: "My workspace", exact: true }).click();
   await navigate(page, "Office");
   await expect(
     page.getByRole("button", {

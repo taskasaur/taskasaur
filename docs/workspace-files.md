@@ -10,11 +10,17 @@ Device signing/encryption keys, the current device identity, network private key
 
 The welcome screen has three choices:
 
-- **Create**: name an internal workspace and use the connected arrow button, or choose **Create file workspace** and select a new `.taskasaur` file. Browsers without direct file access download the file and open an internal working copy; export subsequent changes from Settings.
+- **Create**: name an internal workspace and use the connected arrow button, or choose **Create file workspace** and select a new `.taskasaur` file. On platforms without direct file access, the button is disabled and explains that an internal workspace can be created instead.
 - **Join**: use the attached copy button to send the single-line **Device request** to the owner and paste the returned **Workspace invitation**.
 - **Open**: choose an internal workspace from the dropdown, or use **Open file workspace**. Where direct file access is unavailable, the file picker imports an internal copy.
 
 Each browser workspace has a separate top-level IndexedDB database (`taskasaur-peer-v1.workspace.<workspace-id>`), plus its own query/UI projection. Existing prefixed storage is migrated only when that workspace is opened. Startup reopens only the selected workspace. **Switch workspace** closes its plugin runtime, storage handles and peer handler, then returns to the welcome screen. Desktop services also deactivate that workspace; headless peers continue to serve their configured workspaces. Opening a different workspace does not read another workspace's file contents.
+
+## Delete a local workspace
+
+**Open internal workspace** shows a trash button at the right of each row. It opens the same confirmation used by **Settings → Workspace → Delete workspace**: copy or type the displayed workspace name exactly, then confirm. Canceling changes nothing. The picker stays open after deletion so more workspaces can be removed.
+
+Deletion stops the workspace and its local background services, removes its replica (including file contents, history, and credential grants), cached tables/search/files, saved profile, and local view preferences. Desktop also removes the service replica, SQL projections, and workflow database. The device identity and other workspaces remain. For a file workspace, deletion removes its local data and saved file binding; the external `.taskasaur` file stays intact. Copies on other devices and separately exported archives are unaffected. Deletion cannot be undone within this device.
 
 ## Encryption and credentials
 

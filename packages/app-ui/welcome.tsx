@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
 import { Separator } from "../ui/primitives/separator";
-import { ChoiceSelect } from "../ui/choice-select";
+import { WorkspacePicker } from "./workspace-picker";
 import {
   createLocalWorkspace,
   joinWorkspace,
@@ -24,9 +24,8 @@ import {
 } from "../platform-browser/workspace-location";
 import { workspaceRouter } from "../platform-browser/device";
 import { WorkspaceStorage } from "../storage/workspace";
-import { exportWorkspace, workspaceSnapshot } from "../core/workspace-package";
+import { workspaceSnapshot } from "../core/workspace-package";
 import { DeviceRequestInput } from "./device-request-input";
-import { download } from "./download";
 export const activeWorkspaceKey = "taskasaur.active-workspace";
 export function Welcome({
   onOpen,
@@ -80,20 +79,6 @@ export function Welcome({
     if (value === "join") setRequest((await browserDevice()).pairingRequest());
   }
   async function createFile() {
-    if (!workspaceFileAvailable()) {
-      const profile = await createLocalWorkspace(name.trim() || "Workspace");
-      const node = await (await browserDevice()).workspace(profile.workspaceId);
-      const bytes = await exportWorkspace(node, {
-        includeCredentials: true,
-        password: options.encrypted ? options.password : undefined,
-      });
-      download(
-        "workspace.taskasaur",
-        new Blob([new Uint8Array(bytes)], { type: "application/zip" }),
-      );
-      await onOpen(profile);
-      return;
-    }
     const selected = await selectWorkspaceLocation("file", true, {
       password: options.encrypted ? options.password : undefined,
     });
@@ -208,7 +193,9 @@ export function Welcome({
                   <Button
                     variant="outline"
                     disabled={
-                      busy || (options.encrypted && options.password.length < 8)
+                      busy ||
+                      !workspaceFileAvailable() ||
+                      (options.encrypted && options.password.length < 8)
                     }
                     onClick={() => void run(createFile)}
                   >
@@ -220,9 +207,9 @@ export function Welcome({
                   />
                   {!workspaceFileAvailable() && (
                     <p className="text-xs text-muted-foreground">
-                      Downloads a .taskasaur file and opens an internal working
-                      copy. This browser cannot save changes directly to the
-                      file; export an updated copy from Settings.
+                      This platform does not support creating or saving directly
+                      to a .taskasaur file. You can create an internal workspace
+                      instead.
                     </p>
                   )}
                 </div>
@@ -254,27 +241,16 @@ export function Welcome({
             )}
             {page === "open" && (
               <div className="space-y-6">
-                <label className="field-row">
-                  Open internal workspace
-                  <ChoiceSelect
-                    value=""
-                    aria-label="Open internal workspace"
-                    placeholder={
-                      saved.length
-                        ? "Choose a workspace"
-                        : "No internal workspaces"
-                    }
-                    disabled={busy || !saved.length}
-                    options={saved.map((profile) => ({
-                      value: profile.id,
-                      label: profile.name,
-                    }))}
-                    onValueChange={(id) => {
-                      const profile = saved.find((item) => item.id === id);
-                      if (profile) void run(() => onOpen(profile));
-                    }}
-                  />
-                </label>
+                <WorkspacePicker
+                  profiles={saved}
+                  disabled={busy}
+                  onOpen={(profile) => void run(() => onOpen(profile))}
+                  onDeleted={(profile) =>
+                    setSaved((values) =>
+                      values.filter((value) => value.id !== profile.id),
+                    )
+                  }
+                />
                 <Separator />
                 <div
                   className="space-y-4"

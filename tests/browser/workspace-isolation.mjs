@@ -112,7 +112,7 @@ try {
   await page.reload();
   await click("Open");
   await page.getByLabel("Open internal workspace", { exact: true }).click();
-  await page.getByRole("option", { name: "Workspace A", exact: true }).click();
+  await page.getByRole("button", { name: "Workspace A", exact: true }).click();
   await navigate(page, "Files");
   await expect(
     page.getByRole("button", { name: "only-in-a.odt", exact: true }),
@@ -195,12 +195,14 @@ try {
   await page.screenshot({ path: "/tmp/taskasaur-open-desktop.png" });
   await page.getByLabel("Open internal workspace", { exact: true }).click();
   await expect(
-    page.getByRole("option", { name: "live", exact: true }),
+    page.getByRole("button", { name: "live", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("option", { name: "Workspace A", exact: true })
+    .getByRole("button", { name: "Workspace A", exact: true })
     .press("Escape");
-  await expect(page.getByRole("option")).toHaveCount(0);
+  await expect(
+    page.getByLabel("Internal workspaces", { exact: true }),
+  ).toHaveCount(0);
   await click("Open file workspace");
   await expect(
     page.getByRole("dialog", { name: "Unlock workspace" }),
@@ -225,7 +227,7 @@ try {
   await expect(
     page.getByRole("button", { name: "encrypted.txt", exact: true }),
   ).toBeVisible();
-  // Browsers without direct file access still create a real portable file.
+  // Unsupported platforms explain the limitation and keep file creation disabled.
   const fallbackContext = await browser.newContext();
   await fallbackContext.addInitScript(() => {
     delete window.showSaveFilePicker;
@@ -250,47 +252,30 @@ try {
       name: "Create file workspace",
       exact: true,
     }),
-  ).toBeEnabled();
+  ).toBeDisabled();
   await fallback.setViewportSize({ width: 390, height: 844 });
   await fallback.screenshot({
     path: "/tmp/taskasaur-create-fallback-mobile.png",
   });
-  const fallbackDownload = fallback.waitForEvent("download");
+  await expect(
+    fallback.getByText(
+      "This platform does not support creating or saving directly to a .taskasaur file. You can create an internal workspace instead.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await fallback
-    .getByRole("button", { name: "Create file workspace", exact: true })
+    .getByLabel("Internal workspace name", { exact: true })
+    .fill("Still available");
+  await fallback
+    .getByRole("button", { name: "Create internal workspace", exact: true })
     .click();
-  const fallbackArchive = path.join(directory, "fallback.taskasaur");
-  await (await fallbackDownload).saveAs(fallbackArchive);
   await expect(
     fallback.getByRole("navigation", { name: "Current page" }),
-  ).toContainText("Workspace");
-  const fallbackZip = await JSZip.loadAsync(await readFile(fallbackArchive));
-  const fallbackManifest = JSON.parse(
-    await fallbackZip.file("workspace.json").async("string"),
-  );
-  expect(fallbackManifest.connectionCredential).toBeDefined();
-  await fallback.reload();
-  await expect(
-    fallback.getByRole("navigation", { name: "Current page" }),
-  ).toContainText("Workspace");
+  ).toContainText("Still available");
   await fallbackContext.close();
-  const reopenedContext = await browser.newContext();
-  const reopened = await reopenedContext.newPage();
-  await reopened.goto(url);
-  await reopened.getByRole("button", { name: "Open", exact: true }).click();
-  await reopened
-    .getByLabel("Workspace archive", { exact: true })
-    .setInputFiles(fallbackArchive);
-  await expect(
-    reopened.getByRole("navigation", { name: "Current page" }),
-  ).toContainText("Workspace");
-  await expect(
-    reopened.getByLabel("Workspace file device request", { exact: true }),
-  ).toHaveCount(0);
-  await reopenedContext.close();
   expect(errors).toEqual([]);
   console.log(
-    "Welcome layouts, request copying, separate databases, automatic credentials, fresh-device import, encrypted live-file reopen and file creation without picker support passed.",
+    "Welcome layouts, request copying, separate databases, automatic credentials, fresh-device import, encrypted live-file reopen and disabled file creation without picker support passed.",
   );
 } finally {
   await browser.close();
