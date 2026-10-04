@@ -45,14 +45,7 @@ export async function createCollectionTable(
     .collection("tables");
   const presets = collectionColumns(schema),
     required = presets.filter((f) => f.required);
-  const columns = isDefault
-    ? presets
-    : required.length
-      ? required
-      : [
-          presets.find((f) => ["title", "subject", "name"].includes(f.id)) ??
-            presets[0],
-        ];
+  const columns = required;
   return store.put(
     {
       name: name.trim() || schema.name,

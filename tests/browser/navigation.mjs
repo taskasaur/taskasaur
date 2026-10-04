@@ -40,7 +40,6 @@ const columns = async () => {
 };
 const newTask = async (title, extra) => {
   await click("New entry");
-  await click("Add optional fields");
   await page.getByLabel("Title", { exact: true }).fill(title);
   if (extra) await page.getByLabel("Budget", { exact: true }).fill(extra);
   await click("Save");
@@ -72,6 +71,12 @@ try {
     left.getByRole("button", { name: "Files", exact: true }),
   ).toHaveCount(0);
   await left.getByRole("button", { name: "Tasks", exact: true }).click();
+  await columns();
+  await expect(
+    page.getByRole("button", { name: "Remove Title column", exact: true }),
+  ).toHaveCount(0);
+  await click("Title");
+  await navigate("Tasks");
   await newTask("Personal searchable task");
   await expect(page.locator("[data-record-id]")).toHaveCount(1);
   await click("New table");
@@ -86,12 +91,13 @@ try {
     page.getByRole("button", { name: "Remove UID column", exact: true }),
   ).toBeDisabled();
   for (const preset of ["Title", "Status", "Description"]) {
-    await choose("Standard column preset", preset);
-    await click("Add preset");
+    await click(preset);
+    await page
+      .getByRole("button", { name: `Edit ${preset} column`, exact: true })
+      .waitFor();
   }
   await click("Remove Description column");
-  await choose("Standard column preset", "Description");
-  await click("Add preset");
+  await click("Description");
   await click("Custom column");
   await page.getByLabel("Column ID", { exact: true }).fill("budget");
   await page.getByLabel("Label", { exact: true }).fill("Budget");
@@ -144,11 +150,9 @@ try {
     page.getByRole("button", { name: "Open saved Tasks", exact: true }),
   ).toBeVisible();
   await navigate("Tables", "settings");
-  const managed = page
-    .getByRole("row")
-    .filter({
-      has: page.getByRole("button", { name: "Work tasks", exact: true }),
-    });
+  const managed = page.getByRole("row").filter({
+    has: page.getByRole("button", { name: "Work tasks", exact: true }),
+  });
   await expect(managed).toContainText("Managed by tasks");
   await expect(
     managed.getByRole("button", { name: "Edit entry", exact: true }),

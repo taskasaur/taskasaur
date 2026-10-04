@@ -34,6 +34,7 @@ import * as Checkbox from "../ui/primitives/checkbox";
 import * as Textarea from "../ui/primitives/textarea";
 import * as DexieReact from "dexie-react-hooks";
 import * as Fields from "../ui/fields";
+import * as ColumnEditor from "../ui/column-editor";
 import * as Button from "../ui/primitives/button";
 import * as Input from "../ui/primitives/input";
 import * as Dialog from "../ui/primitives/dialog";
@@ -281,6 +282,7 @@ export function pluginModules(
     "react-dom": ReactDOM,
     "dexie-react-hooks": DexieReact,
     "@taskasaur/ui/fields": Fields,
+    "@taskasaur/ui/column-editor": ColumnEditor,
     "@taskasaur/ui/primitives/command": Command,
     "@taskasaur/ui/primitives/sheet": Sheet,
     "@taskasaur/ui/primitives/button": Button,

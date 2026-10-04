@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -85,10 +85,8 @@ try {
     first.getByRole("row").filter({ hasText: "Integration peer" }),
   ).toContainText("Online", { timeout: 30000 });
   await navigate(first, "Tasks");
+  await addColumnTemplates(first, "Tasks", ["Title"]);
   await first.getByRole("button", { name: "New entry", exact: true }).click();
-  await first
-    .getByRole("button", { name: "Add optional fields", exact: true })
-    .click();
   await first
     .getByLabel("Title", { exact: true })
     .fill("Replicated browser task");
@@ -142,9 +140,6 @@ try {
     .getByRole("button", { name: "Replicated browser task", exact: true })
     .waitFor({ timeout: 30000 });
   await second.getByRole("button", { name: "New entry", exact: true }).click();
-  await second
-    .getByRole("button", { name: "Add optional fields", exact: true })
-    .click();
   await second.getByLabel("Title", { exact: true }).fill("Written offline");
   await second.getByRole("button", { name: "Save", exact: true }).click();
   await second

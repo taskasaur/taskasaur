@@ -1,7 +1,8 @@
 "use client";
 
 import { SharedTextarea } from "./html-controls";
-import { LegacySelect } from "./choice-select";
+import { LegacySelect, ChoiceSelect } from "./choice-select";
+import { Checkbox } from "./primitives/checkbox";
 import { useState, createContext, useContext } from "react";
 import {
   field,
@@ -10,6 +11,7 @@ import {
   type Value,
   type RecordSchema,
 } from "@taskasaur/platform/field-types";
+import { getSchema } from "@taskasaur/platform/core/catalog";
 import { Input } from "./primitives/input";
 import { Button } from "./primitives/button";
 import { Label } from "./primitives/label";
@@ -29,6 +31,7 @@ export function FieldInput({
   disabled?: boolean;
 }) {
   const references = useContext(ReferenceOptionsContext);
+  disabled = disabled || f.visibility === "viewable";
   const common = { id: f.id, disabled, "aria-label": f.label };
   const text =
     value == null
@@ -36,6 +39,59 @@ export function FieldInput({
       : typeof value === "object"
         ? JSON.stringify(value, null, 2)
         : String(value);
+  const options = f.options ?? f.choices;
+  if (options && (f.inputMode === "select" || f.inputMode === "multiselect")) {
+    if (f.inputMode === "select")
+      return (
+        <ChoiceSelect
+          aria-label={f.label}
+          disabled={disabled}
+          value={String(
+            options.findIndex(
+              (option) => JSON.stringify(option) === JSON.stringify(value),
+            ),
+          )}
+          options={options.map((option, index) => ({
+            value: String(index),
+            label: String(option),
+          }))}
+          onValueChange={(index) => onChange(options[Number(index)])}
+        />
+      );
+    const values = Array.isArray(value) ? value : [];
+    return (
+      <fieldset aria-label={f.label} className="space-y-2">
+        {options.map((option, index) => {
+          const checked = values.some(
+            (v) => JSON.stringify(v) === JSON.stringify(option),
+          );
+          return (
+            <label key={index} className="flex items-center gap-2">
+              <Checkbox
+                checked={checked}
+                disabled={
+                  disabled ||
+                  (!checked &&
+                    f.maxItems !== undefined &&
+                    values.length >= f.maxItems)
+                }
+                onCheckedChange={(next) =>
+                  onChange(
+                    next
+                      ? [...values, option]
+                      : values.filter(
+                          (v) => JSON.stringify(v) !== JSON.stringify(option),
+                        ),
+                  )
+                }
+              />
+              {String(option)}
+            </label>
+          );
+        })}
+      </fieldset>
+    );
+  }
   if (f.array) {
     const values = Array.isArray(value) ? value : [];
     return (
@@ -47,6 +103,7 @@ export function FieldInput({
                 definition={{
                   ...f,
                   array: false,
+                  inputMode: "single",
                   id: `${f.id}_${index}`,
                   label: `${f.label} ${index + 1}`,
                   nullable: false,
@@ -61,7 +118,10 @@ export function FieldInput({
             <Button
               type="button"
               variant="ghost"
-              disabled={disabled}
+              disabled={
+                disabled ||
+                (f.minItems !== undefined && values.length <= f.minItems)
+              }
               aria-label={`Remove ${f.label} ${index + 1}`}
               onClick={() => onChange(values.filter((_, i) => i !== index))}
             >
@@ -72,7 +132,10 @@ export function FieldInput({
         <Button
           type="button"
           variant="outline"
-          disabled={disabled}
+          disabled={
+            disabled ||
+            (f.maxItems !== undefined && values.length >= f.maxItems)
+          }
           onClick={() =>
             onChange([
               ...values,
@@ -329,12 +392,38 @@ export function RecordForm({
       (f.id === "parent_id" && /^-?P/.test(String(values.trigger))) ||
       (f.id === "duration" && values.repeat != null) ||
       (f.id === "repeat" && values.duration != null));
-  const generated = schema.fields.filter((f) => f.generated).map((f) => f.id);
-  const requiredFields = schema.fields.filter(
-    (f) => (f.required || conditional(f)) && !generated.includes(f.id),
+  const allFields =
+    schema.id === "reminders"
+      ? [
+          ...schema.fields,
+          ...getSchema("reminders").fields.filter(
+            (f) =>
+              conditional(f) &&
+              !schema.fields.some((existing) => existing.id === f.id),
+          ),
+        ]
+      : schema.fields;
+  const generated = allFields.filter((f) => f.generated).map((f) => f.id);
+  const requiredFields = allFields.filter(
+    (f) =>
+      (f.required || conditional(f)) &&
+      f.visibility !== "hidden" &&
+      !generated.includes(f.id),
   );
-  const optionalFields = schema.fields.filter(
-    (f) => !f.required && !conditional(f) && !generated.includes(f.id),
+  const optionalFields = allFields.filter(
+    (f) =>
+      !f.required &&
+      !conditional(f) &&
+      f.visibility !== "hidden" &&
+      !generated.includes(f.id),
+  );
+  const inlineFields = schema.tables
+    ? optionalFields.filter(
+        (f) => f.visibility !== "addable" || values[f.id] != null,
+      )
+    : [];
+  const additionalFields = optionalFields.filter(
+    (f) => !inlineFields.includes(f),
   );
   const render = (f: Field) => (
     <div key={f.id} className="field-row">
@@ -373,7 +462,8 @@ export function RecordForm({
       className="space-y-4"
     >
       {requiredFields.map(render)}
-      {optionalFields.length > 0 && (
+      {inlineFields.map(render)}
+      {additionalFields.length > 0 && (
         <Button
           type="button"
           variant="ghost"
@@ -382,7 +472,7 @@ export function RecordForm({
           {optional ? "Hide optional fields" : "Add optional fields"}
         </Button>
       )}
-      {optional && optionalFields.map(render)}
+      {optional && additionalFields.map(render)}
       {error && (
         <p role="alert" className="text-destructive">
           {error}

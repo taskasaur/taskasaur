@@ -6,6 +6,7 @@ const primitives = (await readdir("packages/ui/primitives")).filter(
 );
 const files = [
   "packages/ui/fields.tsx",
+  "packages/ui/column-editor.tsx",
   "packages/ui/choice-select.tsx",
   "packages/ui/query-controls.tsx",
   "packages/ui/collection-view.tsx",

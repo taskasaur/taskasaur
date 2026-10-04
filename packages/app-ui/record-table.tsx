@@ -110,6 +110,10 @@ export function RecordTable({
         ),
     ),
   };
+  const displaySchema = {
+    ...schema,
+    fields: schema.fields.filter((field) => field.visibility !== "hidden"),
+  };
   const source = useMemo(
     () => storeOverride ?? runtime.collection(collection),
     [runtime, collection, storeOverride],
@@ -137,7 +141,12 @@ export function RecordTable({
                   ...((old?.data.custom_fields as Record<string, Value>) ?? {}),
                 };
               for (const [key, value] of Object.entries(data)) {
-                if (baseSchema.fields.some((f) => f.id === key))
+                if (
+                  baseSchema.fields.some((f) => f.id === key) &&
+                  !schema.fields.some(
+                    (f) => f.id === key && f.storage === "custom",
+                  )
+                )
                   values[key] = value;
                 else custom[key] = value;
               }
@@ -155,7 +164,7 @@ export function RecordTable({
             },
             delete: source.delete,
           },
-    [runtime, source, activeTable, schemaOverride, baseSchema],
+    [runtime, source, activeTable, schemaOverride, baseSchema, schema.fields],
   );
   const rows = useLiveQuery(() => store.list(), [store]) ?? [];
   const managedRecords =
@@ -187,6 +196,7 @@ export function RecordTable({
     "view." +
     (viewKey ?? (activeTable ? collection + "." + activeTable.id : collection));
   const [state, setState] = useState(() => normalizeView(defaultView, schema));
+  const schemaFields = JSON.stringify(schema.fields);
   const current = useRef(state),
     writeQueue = useRef(Promise.resolve()),
     edits = useRef(0);
@@ -218,8 +228,8 @@ export function RecordTable({
     return () => {
       canceled = true;
     };
-    // Schema changes are keyed by version; object identities from plugin renders need not be stable.
-  }, [runtime, key, schema.id, schema.version, activeTable?.revision]);
+    // User-defined columns can change without a plugin schema version change.
+  }, [runtime, key, schema.id, schema.version, schemaFields, activeTable?.revision]);
   const change = (patch: Partial<CollectionViewState>) => {
     edits.current++;
     const next = normalizeView({ ...current.current, ...patch }, schema);
@@ -316,7 +326,7 @@ export function RecordTable({
     <div className="min-w-0 space-y-4" data-record-collection={collection}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <QueryControls
-          fields={schema.fields}
+          fields={displaySchema.fields}
           query={state.query}
           onChange={(query) => change({ query })}
           columns={state.columns}
@@ -343,7 +353,7 @@ export function RecordTable({
         </div>
       )}
       <CollectionView
-        schema={schema}
+        schema={displaySchema}
         rows={filtered}
         state={state}
         onChange={change}

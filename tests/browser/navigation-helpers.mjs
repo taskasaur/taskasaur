@@ -24,3 +24,22 @@ export async function navigate(page, name) {
   await menu.getByRole("button", { name, exact: true }).click();
   await menu.waitFor({ state: "hidden" });
 }
+/** Add optional templates explicitly: new plugin tables contain only required contracts. */
+export async function addColumnTemplates(page, plugin, labels) {
+  await navigate(page, plugin);
+  await page
+    .getByRole("button", { name: "Open plugins menu", exact: true })
+    .click();
+  const menu = page.getByRole("navigation", { name: "Workspace", exact: true });
+  await menu
+    .getByRole("button", { name: `${plugin} pages`, exact: true })
+    .click();
+  await menu.getByRole("button", { name: "Columns", exact: true }).click();
+  for (const label of labels) {
+    await page.getByRole("button", { name: label, exact: true }).click();
+    await page
+      .getByRole("button", { name: `Edit ${label} column`, exact: true })
+      .waitFor();
+  }
+  await navigate(page, plugin);
+}

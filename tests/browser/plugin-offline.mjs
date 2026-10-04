@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -25,10 +25,8 @@ try {
     timeout: 30000,
   });
   await navigate(page, "Tasks");
+  await addColumnTemplates(page, "Tasks", ["Title"]);
   await page.getByRole("button", { name: "New entry", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Add optional fields", exact: true })
-    .click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Offline downloaded plugin");

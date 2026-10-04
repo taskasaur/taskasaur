@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -152,8 +152,8 @@ try {
   });
   await install("Tasks");
   await nav("Tasks").click();
+  await addColumnTemplates(page, "Tasks", ["Title"]);
   await button("New entry").click();
-  await button("Add optional fields").click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Content has no execution target");

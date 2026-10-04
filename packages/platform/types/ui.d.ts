@@ -101,6 +101,15 @@ export function RecordForm({ schema, initial, onSave, onCancel, }: {
 }): import("react/jsx-runtime").JSX.Element;
 
 }
+declare module "@taskasaur/ui/column-editor" {
+import { type Field } from "@taskasaur/platform/field-types";
+export function ColumnEditor({ initial, standard, onSave, }: {
+    initial?: Field;
+    standard: boolean;
+    onSave: (field: Field) => Promise<void>;
+}): import("react/jsx-runtime").JSX.Element;
+
+}
 declare module "@taskasaur/ui/primitives/popover" {
 import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
@@ -312,6 +321,49 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger, };
 
 }
+declare module "@taskasaur/ui/primitives/input-group" {
+import * as React from "react";
+import { type VariantProps } from "class-variance-authority";
+import { Button } from "@taskasaur/ui/primitives/button";
+function InputGroup({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
+const inputGroupAddonVariants: (props?: ({
+    align?: "inline-end" | "inline-start" | "block-start" | "block-end" | null | undefined;
+} & import("class-variance-authority/types").ClassProp) | undefined) => string;
+function InputGroupAddon({ className, align, ...props }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>): import("react/jsx-runtime").JSX.Element;
+const inputGroupButtonVariants: (props?: ({
+    size?: "sm" | "xs" | "icon-xs" | "icon-sm" | null | undefined;
+} & import("class-variance-authority/types").ClassProp) | undefined) => string;
+function InputGroupButton({ className, type, variant, size, ...props }: Omit<React.ComponentProps<typeof Button>, "size" | "type"> & VariantProps<typeof inputGroupButtonVariants> & {
+    type?: "button" | "submit" | "reset";
+}): import("react/jsx-runtime").JSX.Element;
+function InputGroupText({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
+function InputGroupInput({ className, ...props }: React.ComponentProps<"input">): import("react/jsx-runtime").JSX.Element;
+function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">): import("react/jsx-runtime").JSX.Element;
+export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput, InputGroupTextarea, };
+
+}
+declare module "@taskasaur/ui/primitives/command" {
+import * as React from "react";
+import { Command as CommandPrimitive } from "cmdk";
+import { Dialog } from "@taskasaur/ui/primitives/dialog";
+function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>): import("react/jsx-runtime").JSX.Element;
+function CommandDialog({ title, description, children, className, showCloseButton, ...props }: Omit<React.ComponentProps<typeof Dialog>, "children"> & {
+    title?: string;
+    description?: string;
+    className?: string;
+    showCloseButton?: boolean;
+    children: React.ReactNode;
+}): import("react/jsx-runtime").JSX.Element;
+function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>): import("react/jsx-runtime").JSX.Element;
+function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>): import("react/jsx-runtime").JSX.Element;
+function CommandEmpty({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Empty>): import("react/jsx-runtime").JSX.Element;
+function CommandGroup({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Group>): import("react/jsx-runtime").JSX.Element;
+function CommandSeparator({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Separator>): import("react/jsx-runtime").JSX.Element;
+function CommandItem({ className, children, ...props }: React.ComponentProps<typeof CommandPrimitive.Item>): import("react/jsx-runtime").JSX.Element;
+function CommandShortcut({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
+export { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut, CommandSeparator, };
+
+}
 declare module "@taskasaur/ui/execution-target" {
 import type { AppRuntime } from "@taskasaur/plugin-host";
 export interface ExecutionTargetProps {
@@ -356,49 +408,6 @@ function CalendarDayButton({ className, day, modifiers, locale, ...props }: Reac
     locale?: Partial<Locale>;
 }): import("react/jsx-runtime").JSX.Element;
 export { Calendar, CalendarDayButton };
-
-}
-declare module "@taskasaur/ui/primitives/input-group" {
-import * as React from "react";
-import { type VariantProps } from "class-variance-authority";
-import { Button } from "@taskasaur/ui/primitives/button";
-function InputGroup({ className, ...props }: React.ComponentProps<"div">): import("react/jsx-runtime").JSX.Element;
-const inputGroupAddonVariants: (props?: ({
-    align?: "inline-end" | "inline-start" | "block-start" | "block-end" | null | undefined;
-} & import("class-variance-authority/types").ClassProp) | undefined) => string;
-function InputGroupAddon({ className, align, ...props }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>): import("react/jsx-runtime").JSX.Element;
-const inputGroupButtonVariants: (props?: ({
-    size?: "sm" | "xs" | "icon-xs" | "icon-sm" | null | undefined;
-} & import("class-variance-authority/types").ClassProp) | undefined) => string;
-function InputGroupButton({ className, type, variant, size, ...props }: Omit<React.ComponentProps<typeof Button>, "size" | "type"> & VariantProps<typeof inputGroupButtonVariants> & {
-    type?: "button" | "submit" | "reset";
-}): import("react/jsx-runtime").JSX.Element;
-function InputGroupText({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
-function InputGroupInput({ className, ...props }: React.ComponentProps<"input">): import("react/jsx-runtime").JSX.Element;
-function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">): import("react/jsx-runtime").JSX.Element;
-export { InputGroup, InputGroupAddon, InputGroupButton, InputGroupText, InputGroupInput, InputGroupTextarea, };
-
-}
-declare module "@taskasaur/ui/primitives/command" {
-import * as React from "react";
-import { Command as CommandPrimitive } from "cmdk";
-import { Dialog } from "@taskasaur/ui/primitives/dialog";
-function Command({ className, ...props }: React.ComponentProps<typeof CommandPrimitive>): import("react/jsx-runtime").JSX.Element;
-function CommandDialog({ title, description, children, className, showCloseButton, ...props }: Omit<React.ComponentProps<typeof Dialog>, "children"> & {
-    title?: string;
-    description?: string;
-    className?: string;
-    showCloseButton?: boolean;
-    children: React.ReactNode;
-}): import("react/jsx-runtime").JSX.Element;
-function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>): import("react/jsx-runtime").JSX.Element;
-function CommandList({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.List>): import("react/jsx-runtime").JSX.Element;
-function CommandEmpty({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Empty>): import("react/jsx-runtime").JSX.Element;
-function CommandGroup({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Group>): import("react/jsx-runtime").JSX.Element;
-function CommandSeparator({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Separator>): import("react/jsx-runtime").JSX.Element;
-function CommandItem({ className, children, ...props }: React.ComponentProps<typeof CommandPrimitive.Item>): import("react/jsx-runtime").JSX.Element;
-function CommandShortcut({ className, ...props }: React.ComponentProps<"span">): import("react/jsx-runtime").JSX.Element;
-export { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut, CommandSeparator, };
 
 }
 declare module "@taskasaur/ui/primitives/sheet" {

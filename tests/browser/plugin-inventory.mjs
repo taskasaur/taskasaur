@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -29,10 +29,8 @@ try {
       .click();
     await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
     await navigate(page, "Tasks");
+    await addColumnTemplates(page, "Tasks", ["Title"]);
     await page.getByRole("button", { name: "New entry", exact: true }).click();
-    await page
-      .getByRole("button", { name: "Add optional fields", exact: true })
-      .click();
     await page
       .getByLabel("Title", { exact: true })
       .fill("Downloaded task plugin");

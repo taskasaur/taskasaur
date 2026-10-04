@@ -1,18 +1,12 @@
 "use client";
 
+import { ColumnEditor } from "../ui/column-editor";
+import { ArrowUp, ArrowDown, Pencil, Trash2 } from "lucide-react";
+
 import { SharedInput } from "../ui/html-controls";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
-import {
-  Upload,
-  Download,
-  KeyRound,
-  Plus,
-  ArrowLeft,
-  File,
-  Wifi,
-  WifiOff,
-} from "lucide-react";
+import { Upload, Download, Plus, ArrowLeft } from "lucide-react";
 import type { AppRuntime } from "./runtime";
 import { RecordTable } from "./record-table";
 import { download } from "./download";
@@ -25,26 +19,16 @@ import {
   DialogHeader,
 } from "../ui/primitives/dialog";
 import {
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-  TableRow,
-  TableCell,
-} from "../ui/primitives/table";
-import {
   fieldDescriptor,
-  field,
-  validateRecord,
   type Field,
   type RecordSchema,
   type Value,
 } from "@taskasaur/platform/field-types";
-import { RecordForm, displayValue } from "../ui/fields";
+import { RecordForm } from "../ui/fields";
+import { validateTableValues } from "@taskasaur/platform/core/dynamic-fields";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import { schemaById } from "@taskasaur/platform/core/catalog";
 import { belongsToTable } from "./collection-tables";
-import { pgTypes } from "@taskasaur/platform/field-types";
 
 export function FilesView({ runtime }: { runtime: AppRuntime }) {
   const [error, setError] = useState(""),
@@ -174,12 +158,7 @@ export function TablesView({ runtime }: { runtime: AppRuntime }) {
               try {
                 const table = await runtime.collection("tables").put({
                   name,
-                  columns: [
-                    field("name", "Name", "text", {
-                      required: true,
-                      nullable: false,
-                    }),
-                  ],
+                  columns: [],
                 });
                 setSelected(table);
                 setNewTable(false);
@@ -198,7 +177,9 @@ export function TablesView({ runtime }: { runtime: AppRuntime }) {
               />
             </label>
             {error && <p role="alert">{error}</p>}
-            <Button className="mt-4">Create table</Button>
+            <Button type="submit" className="mt-4">
+              Create table
+            </Button>
           </form>
         </DialogContent>
       </Dialog>
@@ -224,7 +205,8 @@ function UserTable({
     [];
   const rows = allRows.filter((r) => r.data.table_id === table.id),
     [editing, setEditing] = useState<ResourceRecord | "new" | null>(null),
-    [column, setColumn] = useState(false),
+    [column, setColumn] = useState<Field | "new" | null>(null),
+    [showColumns, setShowColumns] = useState(false),
     [error, setError] = useState("");
   const columns = useMemo(() => {
     try {
@@ -240,6 +222,7 @@ function UserTable({
       name: String(table.data.name),
       version: 1,
       fields: columns,
+      tables: true,
     }),
     [table.id, table.data.name, columns],
   );
@@ -253,7 +236,7 @@ function UserTable({
         const row = await runtime
           .collection("table_rows")
           .put(
-            { table_id: table.id, values: validateRecord(schema, data) },
+            { table_id: table.id, values: validateTableValues(columns, data) },
             id,
           );
         return { ...row, data: row.data.values as Record<string, Value> };
@@ -274,9 +257,15 @@ function UserTable({
           <Button
             variant="outline"
             disabled={Boolean(table.managedBy)}
-            onClick={() => setColumn(true)}
+            onClick={() => setColumn("new")}
           >
             Add column
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setShowColumns(!showColumns)}
+          >
+            Edit columns
           </Button>
           <Button
             disabled={Boolean(table.managedBy)}
@@ -287,6 +276,85 @@ function UserTable({
           </Button>
         </div>
       </div>
+      {showColumns && (
+        <div className="space-y-2 rounded-lg border p-3">
+          {!columns.length && (
+            <p className="text-sm text-muted-foreground">
+              No columns yet. Add a column with a base type and input mode.
+            </p>
+          )}
+          {columns.map((f, index) => (
+            <div key={f.id} className="flex items-center gap-2">
+              {[-1, 1].map((offset) => (
+                <Button
+                  key={offset}
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={
+                    Boolean(table.managedBy) ||
+                    index + offset < 0 ||
+                    index + offset >= columns.length
+                  }
+                  aria-label={`Move ${f.label} ${offset < 0 ? "up" : "down"}`}
+                  onClick={() => {
+                    const next = [...columns];
+                    [next[index], next[index + offset]] = [
+                      next[index + offset],
+                      next[index],
+                    ];
+                    void runtime
+                      .collection("tables")
+                      .put(
+                        { ...table.data, columns: next as unknown as Value },
+                        table.id,
+                      )
+                      .catch((e) => setError(String(e)));
+                  }}
+                >
+                  {offset < 0 ? <ArrowUp /> : <ArrowDown />}
+                </Button>
+              ))}
+              <span className="min-w-0 flex-1">
+                {f.label}{" "}
+                <small className="text-muted-foreground">
+                  {f.pgType} · {f.inputMode ?? (f.array ? "list" : "single")}
+                </small>
+              </span>
+              <Button
+                aria-label={`Edit ${f.label} column`}
+                variant="ghost"
+                size="icon-sm"
+                disabled={Boolean(table.managedBy)}
+                onClick={() => setColumn(f)}
+              >
+                <Pencil />
+              </Button>
+              <Button
+                aria-label={`Remove ${f.label} column`}
+                variant="ghost"
+                size="icon-sm"
+                disabled={Boolean(table.managedBy)}
+                onClick={() =>
+                  void runtime
+                    .collection("tables")
+                    .put(
+                      {
+                        ...table.data,
+                        columns: columns.filter(
+                          (c) => c.id !== f.id,
+                        ) as unknown as Value,
+                      },
+                      table.id,
+                    )
+                    .catch((e) => setError(String(e)))
+                }
+              >
+                <Trash2 />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -324,7 +392,7 @@ function UserTable({
                 await runtime.collection("table_rows").put(
                   {
                     table_id: table.id,
-                    values: validateRecord(schema, values),
+                    values: validateTableValues(columns, values),
                   },
                   editing === "new" ? undefined : editing.id,
                 );
@@ -334,52 +402,41 @@ function UserTable({
           )}
         </DialogContent>
       </Dialog>
-      <Dialog open={column} onOpenChange={setColumn}>
+      <Dialog
+        open={column !== null}
+        onOpenChange={(open) => {
+          if (!open) setColumn(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add column</DialogTitle>
+            <DialogTitle>
+              {column === "new" ? "Add column" : "Edit column"}
+            </DialogTitle>
           </DialogHeader>
-          <RecordForm
-            schema={{
-              id: "column",
-              pluginId: "tables",
-              name: "Column",
-              version: 1,
-              fields: [
-                field("id", "Stable column ID", "text", {
-                  required: true,
-                  nullable: false,
-                }),
-                field("label", "Label", "text", {
-                  required: true,
-                  nullable: false,
-                }),
-                field("pg_type", "PostgreSQL type", "text", {
-                  required: true,
-                  nullable: false,
-                  choices: [...pgTypes],
-                  default: "text",
-                }),
-              ],
-            }}
-            onCancel={() => setColumn(false)}
-            onSave={async (values) => {
-              const next = fieldDescriptor.parse({
-                ...values,
-                pgType: values.pg_type,
-              });
-              if (columns.some((c) => c.id === next.id))
-                throw new Error("This column ID already exists");
-              await runtime.collection("tables").put(
-                {
-                  ...table.data,
-                  columns: [...columns, next] as unknown as Value,
-                },
-                table.id,
-              );
-              setColumn(false);
-            }}
-          />
+          {column && (
+            <ColumnEditor
+              key={column === "new" ? "new" : column.id}
+              initial={column === "new" ? undefined : column}
+              standard={false}
+              onSave={async (next) => {
+                if (column === "new" && columns.some((c) => c.id === next.id))
+                  throw Error("This column ID already exists");
+                await runtime.collection("tables").put(
+                  {
+                    ...table.data,
+                    columns: (column === "new"
+                      ? [...columns, next]
+                      : columns.map((c) =>
+                          c.id === column.id ? next : c,
+                        )) as unknown as Value,
+                  },
+                  table.id,
+                );
+                setColumn(null);
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -26,6 +26,7 @@ try {
     .getByRole("button", { name: "Disable", exact: true })
     .waitFor({ timeout: 30000 });
   await navigate(page, "Mail");
+  await addColumnTemplates(page, "Mail", ["Subject"]);
   await page.getByRole("button", { name: "Compose", exact: true }).waitFor();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Compose", exact: true }).click();

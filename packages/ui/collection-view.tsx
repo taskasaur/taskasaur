@@ -192,6 +192,13 @@ export function CollectionView({
       data-record-id={row.id}
       onDoubleClick={() => onOpen?.(row)}
     >
+      {!fields.length && (
+        <TableCell>
+          <Button variant="link" onClick={() => onOpen?.(row)}>
+            Entry {row.id.slice(0, 8)}
+          </Button>
+        </TableCell>
+      )}
       {fields.map((field) => (
         <TableCell
           key={field.id}
@@ -216,7 +223,9 @@ export function CollectionView({
     nodes.map((node) => (
       <Fragment key={node.id}>
         <TableRow data-group-heading={node.field.id} className="bg-muted/50">
-          <TableCell colSpan={fields.length + 1}>{heading(node)}</TableCell>
+          <TableCell colSpan={Math.max(1, fields.length) + 1}>
+            {heading(node)}
+          </TableCell>
         </TableRow>
         {!collapsed.has(node.id) &&
           (node.children.length
@@ -232,6 +241,7 @@ export function CollectionView({
       <Table className={short ? "w-full table-fixed" : "w-max min-w-full"}>
         <TableHeader>
           <TableRow>
+            {!fields.length && <TableHead>Entry</TableHead>}
             {fields.map((field) => {
               const sort = state.query.sorts?.find(
                 (s) => s.enabled && s.field === field.id,
@@ -288,7 +298,7 @@ export function CollectionView({
         <TableBody>
           {ancestors.map((node) => (
             <TableRow key={node.id} data-pinned-group className="bg-muted/50">
-              <TableCell colSpan={fields.length + 1}>
+              <TableCell colSpan={Math.max(1, fields.length) + 1}>
                 {heading(node, true)}
               </TableCell>
             </TableRow>
@@ -305,6 +315,11 @@ export function CollectionView({
         const content = (
           <>
             <CardContent className="space-y-2">
+              {!fields.length && (
+                <Button variant="link" onClick={() => onOpen?.(row)}>
+                  Entry {row.id.slice(0, 8)}
+                </Button>
+              )}
               {fields.map((field) => (
                 <div
                   key={field.id}

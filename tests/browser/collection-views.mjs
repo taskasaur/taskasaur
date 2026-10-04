@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({
@@ -56,6 +56,7 @@ try {
   await click("Confirm install");
   await install.getByRole("button", { name: "Disable", exact: true }).waitFor();
   await navigate(page, "Tasks");
+  await addColumnTemplates(page, "Tasks", ["Title", "Status", "Description"]);
   const longTitle =
     "Alpha " +
     "A long task title with words and averylongunbrokenword".repeat(10);
@@ -66,7 +67,6 @@ try {
     ["Delta", "done", "B"],
   ]) {
     await click("New entry");
-    await click("Add optional fields");
     await page.getByLabel("Title", { exact: true }).fill(title);
     await choose("Status", status);
     await page.getByLabel("Description", { exact: true }).fill(description);
@@ -109,6 +109,8 @@ try {
   }
   await click("Filter");
   await click("Add filter");
+  await choose("Filter field 1", "Title");
+  await choose("Filter operator 1", "Contains");
   await page.getByLabel("Filter value 1", { exact: true }).fill("Alpha");
   await expect(records()).toHaveCount(1);
   await click("Add filter");

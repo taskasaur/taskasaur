@@ -1,4 +1,6 @@
+import { ColumnEditor } from "../ui/column-editor";
 import { useState } from "react";
+import { ArrowUp, ArrowDown } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Plus, Trash2, Pencil, LockKeyhole } from "lucide-react";
 import { getSchema } from "@taskasaur/platform/core/catalog";
@@ -6,15 +8,9 @@ import {
   collectionColumns,
   tableStandard,
 } from "@taskasaur/platform/core/collection-tables";
-import {
-  field,
-  pgTypes,
-  type Field,
-  type Value,
-} from "@taskasaur/platform/field-types";
+import { field, type Field, type Value } from "@taskasaur/platform/field-types";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
-import { Switch } from "../ui/primitives/switch";
 import { ChoiceSelect } from "../ui/choice-select";
 import {
   Dialog,
@@ -144,7 +140,6 @@ export function CollectionTableSettings({
     [runtime, collection],
   );
   const [editing, setEditing] = useState<Field | "new" | null>(null),
-    [preset, setPreset] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   if (!table)
@@ -187,8 +182,9 @@ export function CollectionTableSettings({
         ) : (
           standard.name
         )}
-        . Required columns are locked. Other standard fields are optional
-        presets. UID and DTSTAMP are generated automatically.
+        . Required standard contracts are locked. Optional templates become your
+        own columns with independent types, input modes, defaults, and
+        visibility. UID and DTSTAMP are generated automatically.
       </p>
       {collection === "reminders" && (
         <p className="text-sm text-muted-foreground">
@@ -257,6 +253,9 @@ export function CollectionTableSettings({
                 <TableCell>
                   {column.pgType}
                   {column.array ? "[]" : ""}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {column.inputMode ?? (column.array ? "list" : "single")}
+                  </span>
                 </TableCell>
                 <TableCell>
                   {column.generated
@@ -267,6 +266,38 @@ export function CollectionTableSettings({
                 </TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
+                    {[
+                      [-1, ArrowUp, "up"],
+                      [1, ArrowDown, "down"],
+                    ].map(([offset, Icon, direction]) => {
+                      const index = columns.indexOf(column),
+                        next = index + Number(offset),
+                        Arrow = Icon as typeof ArrowUp;
+                      return (
+                        <Button
+                          key={String(direction)}
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Move ${column.label} ${direction}`}
+                          disabled={
+                            !writable ||
+                            busy ||
+                            next < 0 ||
+                            next >= columns.length
+                          }
+                          onClick={() => {
+                            const reordered = [...columns];
+                            [reordered[index], reordered[next]] = [
+                              reordered[next],
+                              reordered[index],
+                            ];
+                            void save(reordered).catch(() => {});
+                          }}
+                        >
+                          <Arrow />
+                        </Button>
+                      );
+                    })}
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -304,27 +335,43 @@ export function CollectionTableSettings({
           </TableBody>
         </Table>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <ChoiceSelect
-          aria-label="Standard column preset"
-          disabled={!writable || busy}
-          value={preset}
-          options={presets
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Field templates</p>
+        <div className="flex flex-wrap gap-2">
+          {presets
             .filter((p) => !columns.some((c) => c.id === p.id))
-            .map((p) => ({ value: p.id, label: p.label }))}
-          onValueChange={setPreset}
-        />
-        <Button
-          variant="outline"
-          disabled={!preset || !writable || busy}
-          onClick={() => {
-            const next = presets.find((p) => p.id === preset)!;
-            setPreset("");
-            void save([...columns, next]).catch(() => {});
-          }}
-        >
-          Add preset
-        </Button>
+            .map((template) => (
+              <Button
+                key={template.id}
+                variant="outline"
+                disabled={!writable || busy}
+                onClick={() =>
+                  void save([
+                    ...columns,
+                    field(template.id, template.label, template.pgType, {
+                      ...template,
+                      required: false,
+                      nullable: true,
+                      generated: undefined,
+                      storage: "custom",
+                      inputMode: template.array
+                        ? template.choices
+                          ? "multiselect"
+                          : "list"
+                        : template.choices
+                          ? "select"
+                          : "single",
+                      options: template.choices,
+                      choices: undefined,
+                    }),
+                  ]).catch(() => {})
+                }
+              >
+                <Plus />
+                {template.label}
+              </Button>
+            ))}
+        </div>
         <Button disabled={!writable || busy} onClick={() => setEditing("new")}>
           <Plus />
           Custom column
@@ -347,7 +394,7 @@ export function CollectionTableSettings({
               key={editing === "new" ? "new" : editing.id}
               initial={editing === "new" ? undefined : editing}
               standard={
-                editing !== "new" && presets.some((p) => p.id === editing.id)
+                editing !== "new" && standard.required.includes(editing.id)
               }
               onSave={async (next) => {
                 if (
@@ -370,78 +417,5 @@ export function CollectionTableSettings({
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-function ColumnEditor({
-  initial,
-  standard,
-  onSave,
-}: {
-  initial?: Field;
-  standard: boolean;
-  onSave: (field: Field) => Promise<void>;
-}) {
-  const [id, setId] = useState(initial?.id ?? ""),
-    [label, setLabel] = useState(initial?.label ?? ""),
-    [type, setType] = useState(initial?.pgType ?? "text"),
-    [array, setArray] = useState(initial?.array ?? false),
-    [error, setError] = useState("");
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        try {
-          await onSave(
-            field(id, label, type, { ...initial, label, pgType: type, array }),
-          );
-        } catch (e) {
-          setError(String(e));
-        }
-      }}
-    >
-      <label className="field-row">
-        Column ID
-        <Input
-          value={id}
-          disabled={Boolean(initial)}
-          required
-          pattern="[a-z][a-z0-9_]*"
-          onChange={(e) => setId(e.target.value)}
-        />
-      </label>
-      <label className="field-row">
-        Label
-        <Input
-          value={label}
-          required
-          onChange={(e) => setLabel(e.target.value)}
-        />
-      </label>
-      <label className="field-row">
-        Base type
-        <ChoiceSelect
-          aria-label="Base type"
-          disabled={standard}
-          value={type}
-          options={pgTypes.map((value) => ({ value, label: value }))}
-          onValueChange={(value) => setType(value as typeof type)}
-        />
-      </label>
-      <label className="flex gap-3">
-        <Switch
-          checked={array}
-          disabled={standard}
-          onCheckedChange={setArray}
-        />
-        List of values
-      </label>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit">Save column</Button>
-    </form>
   );
 }
