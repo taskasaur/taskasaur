@@ -1262,7 +1262,7 @@ export async function joinWorkspace(invitation: string) {
   const node = await (await browserDevice()).join(invitation);
   return profileForNode(node);
 }
-async function profileForNode(node: WorkspaceNode) {
+export async function profileForNode(node: WorkspaceNode) {
   const profile: WorkspaceProfile = {
     id: node.replica.workspaceId,
     workspaceId: node.replica.workspaceId,

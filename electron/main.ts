@@ -1,3 +1,4 @@
+import { registerWorkspaceFolders } from "./workspace-folders";
 import {
   app,
   BrowserWindow,
@@ -85,6 +86,7 @@ app
       )
         throw Error("Untrusted native caller");
     };
+    await registerWorkspaceFolders(() => window!, trusted);
     const info = () => ({
       id: runtime!.core.identity.id,
       request: runtime!.core.pairingRequest(),

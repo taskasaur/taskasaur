@@ -5,18 +5,26 @@ import { DeviceCore } from "../core/device";
 import { createPeerTransport } from "../sync/libp2p";
 import { acquireWriter } from "./writer-lock";
 import { snapshotStorage } from "../storage";
+import { WorkspaceRouter } from "../storage/workspace";
+import { restoreWorkspaceLocations } from "./workspace-location";
 let running: Promise<DeviceCore> | undefined;
+export let workspaceRouter: WorkspaceRouter;
 export function browserDevice() {
   return (running ??= (async () => {
     const native = window.taskasaurNative;
     const release = await acquireWriter();
     try {
-      const storage = snapshotStorage(
+      workspaceRouter = new WorkspaceRouter(
         native?.storage ??
           (Capacitor.isNativePlatform()
             ? new NativeStorage()
             : new BrowserStorage()),
       );
+      await restoreWorkspaceLocations(async (id, source) => {
+        if (source) await workspaceRouter.mount(source, false);
+        else workspaceRouter.blocked.add(id);
+      });
+      const storage = snapshotStorage(workspaceRouter);
       const device = await DeviceCore.open(
         storage,
         Capacitor.isNativePlatform() ? Capacitor.getPlatform() : "Web browser",

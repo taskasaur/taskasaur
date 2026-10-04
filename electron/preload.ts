@@ -7,6 +7,18 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
     delete: (key: string) => ipcRenderer.invoke("replica:delete", key),
     keys: (prefix: string) => ipcRenderer.invoke("replica:keys", prefix),
   },
+  workspace: {
+    choose: () => ipcRenderer.invoke("workspace:choose"),
+    list: () => ipcRenderer.invoke("workspace:list"),
+    read: (id: string, path: string) =>
+      ipcRenderer.invoke("workspace:read", id, path),
+    write: (id: string, path: string, bytes: Uint8Array) =>
+      ipcRenderer.invoke("workspace:write", id, path, bytes),
+    remove: (id: string, path: string) =>
+      ipcRenderer.invoke("workspace:remove", id, path),
+    bind: (id: string, workspaceId: string) =>
+      ipcRenderer.invoke("workspace:bind", id, workspaceId),
+  },
   peer: {
     request: (address: string, packet: unknown) =>
       ipcRenderer.invoke("peer:request", address, packet),

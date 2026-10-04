@@ -1,3 +1,9 @@
+import {
+  exportWorkspace,
+  openWorkspaceArchive,
+  importWorkspace,
+  workspaceSnapshot,
+} from "../../packages/core/workspace-package";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import os from "node:os";
@@ -5,6 +11,11 @@ import { readFile, writeFile, stat, realpath } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 import { FileStorage } from "../../packages/platform-node/storage";
+import { NodeWorkspaceFiles } from "../../packages/platform-node/workspace-files";
+import {
+  WorkspaceStorage,
+  WorkspaceRouter,
+} from "../../packages/storage/workspace";
 import { lockDirectory } from "../../packages/platform-node/lock";
 import { DeviceCore } from "../../packages/core/device";
 import { startNativeRuntime } from "../../packages/platform-node/runtime";
@@ -16,6 +27,9 @@ const { values } = parseArgs({
     data: { type: "string" },
     name: { type: "string" },
     workspace: { type: "string" },
+    "workspace-folder": { type: "string" },
+    "export-workspace": { type: "string" },
+    "import-workspace": { type: "string" },
     port: { type: "string" },
     "peer-port": { type: "string" },
     host: { type: "string" },
@@ -41,7 +55,7 @@ const { values } = parseArgs({
 });
 if (values.help) {
   console.log(
-    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --plugin <id> --workspace-id <id>",
+    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --workspace-folder <folder> (live shared workspace; --data keeps device identity)\n  --import-workspace <file.taskasaur> [--join invitation.json]\n  --export-workspace <file.taskasaur> --workspace-id <id>\n  --plugin <id> --workspace-id <id>",
   );
   process.exit(0);
 }
@@ -74,6 +88,64 @@ if (values.backup || values.restore) {
         flag: "wx",
       });
   } finally {
+    await unlock();
+  }
+  process.exit(0);
+}
+if (values["export-workspace"] || values["import-workspace"]) {
+  if (values["export-workspace"] && values["import-workspace"])
+    throw Error("Choose import or export");
+  const unlock = await lockDirectory(directory),
+    router = new WorkspaceRouter(
+      new FileStorage(path.join(directory, "replicas")),
+    ),
+    storage = snapshotStorage(router);
+  const core = await DeviceCore.open(storage, values.name ?? os.hostname());
+  try {
+    const folder =
+      values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER;
+    if (folder) {
+      const files = await NodeWorkspaceFiles.open(folder);
+      try {
+        const source = await WorkspaceStorage.open(files);
+        const node = await importWorkspace(
+          core,
+          source,
+          values.join ? await readFile(values.join, "utf8") : undefined,
+        );
+        await router.mount(
+          source,
+          true,
+          (await workspaceSnapshot(node)).excludedKeys,
+        );
+      } catch (e) {
+        await files.close();
+        throw e;
+      }
+    }
+    if (values["import-workspace"]) {
+      const source = await openWorkspaceArchive(
+        new Uint8Array(await readFile(values["import-workspace"])),
+      );
+      const node = await importWorkspace(
+        core,
+        source,
+        values.join ? await readFile(values.join, "utf8") : undefined,
+      );
+      console.log("Imported workspace", node.replica.workspaceId);
+    } else {
+      const node = await core.workspace(
+        values["workspace-id"] ?? core.profiles()[0]?.id,
+      );
+      await writeFile(
+        values["export-workspace"]!,
+        await exportWorkspace(node),
+        { mode: 0o600, flag: "wx" },
+      );
+      console.log("Workspace archive saved");
+    }
+  } finally {
+    await core.close();
     await unlock();
   }
   process.exit(0);
@@ -118,6 +190,8 @@ const host = values.host ?? process.env.TASKASAUR_HOST ?? "127.0.0.1",
   );
 const runtime = await startNativeRuntime({
   directory,
+  workspaceFolder:
+    values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER,
   name: values.name ?? process.env.TASKASAUR_NAME,
   createWorkspace:
     values.workspace ??

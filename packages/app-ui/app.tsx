@@ -38,6 +38,7 @@ import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
 import { field } from "@taskasaur/platform/field-types";
 import { SyncConflicts } from "./sync-conflicts";
 import { RestoreBackup } from "./restore-backup";
+import { OpenWorkspaceFile, WorkspaceFileSettings } from "./workspace-files";
 import { download } from "./download";
 import { catalog, isRequiredCore } from "@taskasaur/platform/core/catalog";
 import {
@@ -243,6 +244,7 @@ function Welcome({
             {error}
           </p>
         )}
+        <OpenWorkspaceFile onOpen={onOpen} />
       </div>
       <div className="welcome-art">
         <div className="orbit one" />
@@ -963,43 +965,13 @@ function SettingsView({
           Choose which approved devices keep each item. Changes synchronize
           between the devices keeping a copy.
         </p>
-        <div className="flex gap-2 mt-4">
-          <Button
-            variant="outline"
-            onClick={async () => {
-              try {
-                const records = (await runtime.db.records.toArray()).filter(
-                  (r) => r.collection !== "credentials",
-                );
-                download(
-                  "taskasaur-workspace.json",
-                  new Blob(
-                    [
-                      JSON.stringify(
-                        { format: "taskasaur-export-v1", records },
-                        null,
-                        2,
-                      ),
-                    ],
-                    { type: "application/json" },
-                  ),
-                );
-              } catch (e) {
-                setError(String(e));
-              }
-            }}
-          >
-            Export workspace data
-          </Button>
+        <div className="flex flex-col items-start gap-3 mt-4">
+          <WorkspaceFileSettings runtime={runtime} />
           <Button variant="ghost" onClick={onSwitch}>
             <ArrowLeft size={14} />
             Switch workspace
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-3">
-          Credentials and file bytes are excluded from this record export.
-          Download files separately.
-        </p>
       </section>
       {error && <p role="alert">{error}</p>}
       <SyncConflicts runtime={runtime} />

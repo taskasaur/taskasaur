@@ -6,7 +6,7 @@
 
 Browser replicas use a dedicated Dexie database. Mobile replicas use Capacitor app-private files; the WebView’s Dexie database is a query/UI projection. Desktop replicas use atomic files, with identity keys protected by Electron safeStorage and an unlocked OS keyring. Headless replicas use restricted filesystem permissions and encrypted workspace journals. Protect the headless data directory and its backups as you would a device identity.
 
-Every approved device receives the entire workspace journal and all referenced file chunks, even for plugins it has not installed. Installing code is a separate, per-device decision. Files use immutable versions and SHA-256 addressed 256 KiB chunks. Missing chunks resume after reconnection. A save is acknowledged only after its local journal/chunks are committed; “saved locally” does not mean another device has a backup. Files currently have a 512 MiB limit.
+Core shares workspace control metadata and lets devices select which records and file versions to retain, including data for plugins they have not installed. Installing code is a separate, per-device decision. Files use immutable versions and SHA-256 addressed 256 KiB chunks. Missing chunks resume after reconnection. A save is acknowledged only after its local journal/chunks are committed; “saved locally” does not mean another device has a backup. Files currently have a 512 MiB limit.
 
 The native PGlite database is an embedded compatibility projection for existing SQL-based plugins. It is not the replication authority and needs no PostgreSQL service. Workflow native checkpoints use OpenWorkflow’s local SQLite backend. Keep the complete native data directory together, including these checkpoints, when backing up an execution host.
 
@@ -29,6 +29,10 @@ Workflows pin their graph at publication. Browser/mobile and native use the same
 A queued offline request is held on the requesting device until its selected peer is reachable, with an explicit deadline. Keep that app active for dispatch, or send while the target is online. Execution intents/checkpoints are device-local and cannot be created simply by replicating a `job/` document. External side effects cannot be made globally exactly-once by a CRDT; handlers must use operation IDs and report ambiguous provider outcomes.
 
 Scheduled workflow triggers execute only on their declared target. Automations, individual accounts and other declared execution items each select a computer through [core execution](plugins/execution.md). Assignments are independent within a plugin and never fail over automatically. Browser/mobile availability is foreground availability; do not represent iOS suspension as a continuously running server.
+
+## Workspace files
+
+A [portable workspace archive or live folder](workspace-files.md) preserves shared records, files, connections and signed Automerge history while keeping the importing computer's identity and private settings separate. New devices require owner approval; archive possession alone grants no access. Device-scoped settings use encrypted local state, and exports omit the older replicated device-setting records.
 
 ## Backup and rollback
 

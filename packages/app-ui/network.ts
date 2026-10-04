@@ -18,6 +18,21 @@ declare global {
   interface Window {
     taskasaurNative?: {
       storage: DurableStorage;
+      workspace?: {
+        choose(): Promise<{ id: string; label: string }>;
+        list(): Promise<
+          Array<{
+            id: string;
+            label: string;
+            workspaceId: string;
+            error?: string;
+          }>
+        >;
+        read(id: string, path: string): Promise<Uint8Array | undefined>;
+        write(id: string, path: string, bytes: Uint8Array): Promise<void>;
+        remove(id: string, path: string): Promise<void>;
+        bind(id: string, workspaceId: string): Promise<void>;
+      };
       peer: {
         request(address: string, packet: PeerPacket): Promise<PeerPacket>;
         join(invitation: string): Promise<void>;

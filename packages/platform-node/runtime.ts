@@ -1,3 +1,6 @@
+import { WorkspaceRouter, WorkspaceStorage } from "../storage/workspace";
+import { NodeWorkspaceFiles } from "./workspace-files";
+import { importWorkspace, workspaceSnapshot } from "../core/workspace-package";
 import path from "node:path";
 import os from "node:os";
 import { FileStorage } from "./storage";
@@ -13,6 +16,7 @@ export async function startNativeRuntime(
     name?: string;
     network?: NetworkOptions;
     createWorkspace?: string;
+    workspaceFolder?: string;
     storage?: DurableStorage;
     syncIntervalMs?: number;
     documentCache?: number;
@@ -33,16 +37,36 @@ export async function startNativeRuntime(
   let services: NativeServices | undefined;
   let core: DeviceCore | undefined;
   try {
-    const storage = snapshotStorage(
+    const router = new WorkspaceRouter(
       options.storage ??
         new FileStorage(path.join(options.directory, "replicas")),
     );
+    const storage = snapshotStorage(router);
     core = await DeviceCore.open(
       storage,
       options.name ?? os.hostname(),
       () => services?.capabilities() ?? [],
     );
-    if (!core.profiles().length && options.createWorkspace)
+    if (options.workspaceFolder) {
+      const files = await NodeWorkspaceFiles.open(options.workspaceFolder);
+      try {
+        const workspace = await WorkspaceStorage.open(files);
+        const node = await importWorkspace(core, workspace);
+        await router.mount(
+          workspace,
+          true,
+          (await workspaceSnapshot(node)).excludedKeys,
+        );
+      } catch (error) {
+        await files.close();
+        throw error;
+      }
+    }
+    if (
+      !options.workspaceFolder &&
+      !core.profiles().length &&
+      options.createWorkspace
+    )
       await core.createWorkspace(options.createWorkspace);
     services = new NativeServices(core, {
       directory: options.directory,

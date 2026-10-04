@@ -1,5 +1,6 @@
-import { _electron as electron } from "@playwright/test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { _electron as electron, expect } from "@playwright/test";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { navigate } from "./navigation-helpers.mjs";
 import os from "node:os";
 import path from "node:path";
 
@@ -27,6 +28,44 @@ try {
   await window
     .getByRole("navigation", { name: "Current page" })
     .waitFor({ timeout: 45000 });
+  const folder = path.join(directory, "portable-workspace");
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [folder],
+    });
+  }, folder);
+  await navigate(window, "Settings");
+  await window
+    .getByRole("button", { name: "Save and work from folder", exact: true })
+    .click();
+  await expect(window.getByRole("status")).toContainText(
+    "Workspace writes now go directly",
+  );
+  await navigate(window, "Files");
+  await window
+    .locator('input[type="file"]')
+    .setInputFiles({
+      name: "desktop-folder.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Native folder bytes"),
+    });
+  await expect(
+    window.getByRole("button", { name: "desktop-folder.txt", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      Object.keys(
+        JSON.parse(await readFile(path.join(folder, "workspace.json"), "utf8"))
+          .entries,
+      ).some((k) => k.includes("/blobs/")),
+    )
+    .toBe(true);
+  await window.reload();
+  await navigate(window, "Files");
+  await expect(
+    window.getByRole("button", { name: "desktop-folder.txt", exact: true }),
+  ).toBeVisible();
   await app.evaluate(async ({ app }) => {
     const require = process
       .getBuiltinModule("node:module")
@@ -60,7 +99,9 @@ try {
       );
     });
   });
-  console.log("Electron workspace, native peer and PTY addon passed.");
+  console.log(
+    "Electron workspace, native folder writes/reopen, native peer and PTY addon passed.",
+  );
 } finally {
   await app?.close();
   await rm(directory, { recursive: true, force: true });
