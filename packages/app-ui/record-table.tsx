@@ -274,7 +274,7 @@ export function RecordTable({
     queryError = e instanceof Error ? e.message : String(e);
   }
   const open = (row: ResourceRecord) => {
-    if (onOpen) onOpen(row);
+    if (onOpen) onOpen(actionRow(row));
     else if (writable(row)) setEditor(row);
     else setInspecting(row);
   };
