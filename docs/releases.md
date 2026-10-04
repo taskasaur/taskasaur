@@ -14,7 +14,7 @@ The script runs tests and the full shared build, updates npm/native versions, in
 
 ## Downloads
 
-- macOS arm64 and x64: DMG and ZIP. These development builds are not notarized or publisher-signed.
+- macOS arm64 and x64: DMG and ZIP. App bundles have verified ad-hoc signatures; these development builds are not notarized or publisher-signed.
 - Windows x64: NSIS installer, without a publisher signing certificate.
 - Linux x64 and arm64: AppImage and DEB.
 - Android dev: an installable APK signed with the persistent development key. Stable/other prereleases currently produce an explicitly named unsigned APK that needs signing.
@@ -27,6 +27,14 @@ Every release includes `SHA256SUMS.txt`. Development builds use the same applica
 For public Docker downloads, a package administrator must set the `taskasaur` container package's visibility to **Public** in GitHub Package settings. A public source repository does not guarantee anonymous access to its container package. Verify a pull without registry credentials before announcing the Compose download as publicly usable; private packages require a login with package-read access.
 
 If only publication failed, dispatch the Release workflow on `main` with its original `tag` and `artifact_run_id`. This reuses the successful build artifacts after checking the source run's commit against the tag and requiring every build, verification, and container publication job to have passed. It does not move the tag or rebuild binaries. Distribution artifacts are selected explicitly; Docker build records remain attached to CI rather than shipped as downloads.
+
+## macOS development signing
+
+Keep `build.mac.identity` set to `"-"` for ad-hoc development signing. Setting it to `null` skips signing and leaves Electron's original executable signature without a valid Taskasaur resource seal, which macOS can report as a damaged app. Electron Builder signs the nested binaries and bundle in order with its default Electron entitlements and hardened runtime. Do not modify the bundle after signing.
+
+The macOS release jobs run `node scripts/verify-macos-release.mjs` before uploading. This extracts the ZIP and mounts the DMG read-only, checks both app bundles with `codesign --verify --deep --strict`, checks the app ID, version and architecture, then runs the desktop integration suite against the extracted app with a disposable profile. The command accepts an architecture and artifact directory, for example `node scripts/verify-macos-release.mjs arm64 release`.
+
+An intact ad-hoc signature is not Apple notarization. For a development build you trust, launch it once, then use **System Settings → Privacy & Security → Open Anyway** if macOS blocks an unidentified developer, following [Apple's instructions](https://support.apple.com/en-us/102445). Do not disable Gatekeeper globally. A `damaged` message still warrants verifying the download and signature; deleting workspace data will not repair packaging. Seamless public distribution requires a Developer ID certificate and Apple notarization credentials; neither is configured for these builds.
 
 ## Android development signing
 

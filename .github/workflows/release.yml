@@ -83,6 +83,9 @@ jobs:
       - run: npx electron-builder ${{ matrix.args }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Verify macOS downloads and launch the packaged app
+        if: runner.os == 'macOS'
+        run: node scripts/verify-macos-release.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: taskasaur-${{ matrix.name }}

@@ -144,7 +144,8 @@
     },
     "mac": {
       "category": "public.app-category.productivity",
-      "identity": null,
+      "identity": "-",
+      "strictVerify": true,
       "target": [
         "dmg",
         "zip"
