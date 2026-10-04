@@ -45,7 +45,7 @@ export interface WorkspaceAccess {
   policies: Policy[];
   keys: Record<string, string>;
   delegations?: DeviceDelegation[];
-  /** Local access credential, exported only through the explicit credentials option. */
+  /** Workspace-scoped portable access; distinct from this device's identity. */
   credential?: Identity;
 }
 export function currentPolicy(access: WorkspaceAccess) {

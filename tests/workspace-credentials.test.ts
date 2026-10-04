@@ -6,10 +6,59 @@ import {
   openWorkspaceArchive,
   importWorkspace,
 } from "../packages/core/workspace-package";
-import { currentPolicy } from "../packages/core/identity";
+import { approveMember, currentPolicy } from "../packages/core/identity";
+import { createIdentity, publicIdentity } from "../packages/core/crypto";
 import { PeerSync, type PeerPacket } from "../packages/sync/protocol";
 const device = (name: string) =>
   DeviceCore.open(snapshotStorage(new MemoryStorage()), name);
+it("preserves other users' credential ciphertext without exporting access to their secrets", async () => {
+  const owner = await device("Owner"),
+    other = await device("Other user"),
+    restored = await device("Restored");
+  try {
+    const a = await owner.createWorkspace("Multiple users");
+    const b = await other.join(
+      await owner.approve(
+        a.replica.workspaceId,
+        other.pairingRequest(),
+        "editor",
+        crypto.randomUUID(),
+      ),
+    );
+    const secret = await b.records.put("credentials", {
+      name: "Other user's credential",
+      provider: "generic",
+      allowed_plugins: ["mail"],
+      allowed_destinations: ["https://example.test"],
+    });
+    await b.vault.set(secret.id, { password: "other-user-secret" });
+    await new PeerSync(a.protocol, {
+      addresses: () => [],
+      close: async () => {},
+      request: async (_address, packet) => b.protocol.receive(packet),
+    }).synchronize("other");
+    const original = a.replica.read("vault/" + secret.id);
+    const c = await importWorkspace(
+      restored,
+      await openWorkspaceArchive(
+        await exportWorkspace(a, { includeCredentials: true }),
+      ),
+    );
+    expect(c.replica.read("vault/" + secret.id)).toEqual(original);
+    await expect(
+      c.vault.use(
+        secret.id,
+        "mail",
+        "https://example.test",
+        async (value) => value.password,
+      ),
+    ).rejects.toThrow("Approve this device");
+  } finally {
+    await owner.close();
+    await other.close();
+    await restored.close();
+  }
+});
 it("opens an optionally encrypted file with scoped connection and plugin credentials on independent devices", async () => {
   const owner = await device("Owner"),
     a = await owner.createWorkspace("Portable access");
@@ -78,9 +127,55 @@ it("opens an optionally encrypted file with scoped connection and plugin credent
   expect(a.replica.heads("record/" + row.id)).toEqual(
     b.replica.heads("record/" + row.id),
   );
+  // Credentials added or rotated after file creation remain usable without
+  // another export or a separate credential opt-in.
+  const otherUser = await createIdentity("Another user's file access");
+  await a.replica.setPolicies(
+    (
+      await approveMember(
+        a.replica.access,
+        owner.identity,
+        publicIdentity(otherUser),
+        "editor",
+        crypto.randomUUID(),
+        true,
+      )
+    ).policies,
+  );
+  const later = await a.records.put("credentials", {
+    name: "Added after export",
+    provider: "generic",
+    allowed_plugins: ["mail"],
+    allowed_destinations: ["https://example.test"],
+  });
+  await a.vault.set(later.id, { password: "later-secret" });
+  expect(
+    a.replica.read<{ recipients: Record<string, string> }>("vault/" + later.id)
+      ?.recipients,
+  ).not.toHaveProperty(otherUser.id);
+  await a.vault.set(secret.id, { password: "rotated-secret" });
+  await new PeerSync(b.protocol, transport).synchronize("owner");
+  for (const [id, password] of [
+    [later.id, "later-secret"],
+    [secret.id, "rotated-secret"],
+  ]) {
+    await expect(
+      b.vault.use(
+        id,
+        "mail",
+        "https://example.test",
+        async (value) => value.password,
+      ),
+    ).resolves.toBe(password);
+  }
   const credentialId = currentPolicy(b.replica.access).members[left.identity.id]
     .delegatedBy!;
   await owner.revoke(a.replica.workspaceId, credentialId);
+  await a.vault.set(secret.id, { password: "after-revocation" });
+  expect(
+    a.replica.read<{ recipients: Record<string, string> }>("vault/" + secret.id)
+      ?.recipients,
+  ).not.toHaveProperty(credentialId);
   await expect(
     a.protocol.receive(await b.protocol.pack({ kind: "capabilities" })),
   ).rejects.toThrow();

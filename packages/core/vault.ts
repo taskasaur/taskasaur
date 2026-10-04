@@ -57,6 +57,7 @@ export class CredentialVault {
         (row) =>
           !row.deletedAt &&
           row.collection === "credentials" &&
+          row.ownerId === this.replica.member.userId &&
           row.data.status === "ready",
       )) {
       const value = this.replica.read<VaultValue>("vault/" + record.id);
@@ -105,8 +106,20 @@ export class CredentialVault {
     );
     const version = crypto.randomUUID(),
       recipients: Record<string, string> = {};
-    for (const deviceId of new Set([...deviceIds, this.replica.identity.id])) {
-      const member = currentPolicy(this.replica.access).members[deviceId];
+    const members = currentPolicy(this.replica.access).members;
+    // A workspace file must retain access when secrets are added or rotated
+    // after it was created. Only active portable grants for this owner qualify.
+    const portableIds = Object.entries(members)
+      .filter(
+        ([, member]) => member.portable && member.userId === record.ownerId,
+      )
+      .map(([id]) => id);
+    for (const deviceId of new Set([
+      ...deviceIds,
+      this.replica.identity.id,
+      ...portableIds,
+    ])) {
+      const member = members[deviceId];
       invariant(
         member,
         "NOT_FOUND",
