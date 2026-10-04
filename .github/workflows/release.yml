@@ -241,6 +241,15 @@ jobs:
           github-token: ${{ github.token }}
           path: artifacts
           merge-multiple: true
+      - name: Normalize Linux architecture names for download links
+        run: |
+          node --input-type=module <<'NODE'
+          import {readdirSync,renameSync} from 'node:fs';
+          for (const name of readdirSync('artifacts')) {
+            const normalized=name.replace(/-linux-x86_64\.AppImage$/, '-linux-x64.AppImage').replace(/-linux-amd64\.deb$/, '-linux-x64.deb');
+            if (normalized!==name) renameSync(`artifacts/${name}`,`artifacts/${normalized}`);
+          }
+          NODE
       - name: Publish complete release with checksums
         env:
           GH_TOKEN: ${{ github.token }}

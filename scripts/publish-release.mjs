@@ -19,9 +19,13 @@ const names = (await readdir(directory))
 for (const suffix of [
   "-mac-arm64.dmg",
   "-mac-x64.dmg",
+  "-mac-arm64.zip",
+  "-mac-x64.zip",
   "-win-x64.exe",
   "-linux-x64.AppImage",
   "-linux-arm64.AppImage",
+  "-linux-x64.deb",
+  "-linux-arm64.deb",
   "-ios-unsigned.zip",
   "-ios-simulator-arm64.zip",
   "-web.zip",
