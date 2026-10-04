@@ -1,23 +1,34 @@
-import { navigate } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 import JSZip from "jszip";
-async function checkExport(download, entry, content) {
-  const zip = await JSZip.loadAsync(await readFile(await download.path()));
-  expect(await zip.file(entry)?.async("string")).toContain(content);
-  console.log("Verified", download.suggestedFilename());
-}
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { navigate } from "./navigation-helpers.mjs";
+import { reviewInventory } from "./inventory-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
+const directory = await mkdtemp(path.join(tmpdir(), "taskasaur-office-"));
 try {
-  const context = await browser.newContext({ acceptDownloads: true }),
-    page = await context.newPage();
-  page.setDefaultTimeout(30000);
-  page.on("pageerror", (error) => console.log("Page error:", error.message));
-  await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:58597");
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+  });
+  await reviewInventory(context);
+  const page = await context.newPage(),
+    errors = [];
+  page.setDefaultTimeout(90000);
+  page.on("pageerror", (e) => {
+    errors.push(e.message);
+    console.log("Page error:", e.message);
+  });
+  page.on("console", (m) => {
+    if (m.type() === "error") console.log("Engine:", m.text().slice(0, 600));
+  });
+  page.on("requestfailed", (r) =>
+    console.log("Request failed", r.url(), r.failure()?.errorText),
+  );
+  await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:4177");
   await page
     .getByRole("button", { name: "Create workspace", exact: true })
     .click();
-  await navigate(page, "Plugins");
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText("Office Editor", { exact: true }) });
@@ -25,92 +36,182 @@ try {
   await page
     .getByRole("button", { name: "Confirm install", exact: true })
     .click();
-  await row.getByRole("button", { name: "Disable", exact: true }).waitFor();
+  await row
+    .getByRole("button", { name: "Disable", exact: true })
+    .waitFor({ timeout: 30000 })
+    .catch(async (e) => {
+      console.log(await page.locator("body").innerText());
+      throw e;
+    });
   await navigate(page, "Office");
-  await page.getByRole("button", { name: "Document", exact: true }).click();
-  await page.locator(".ql-editor").fill("Offline document content");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved on this device");
-  let downloading = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await checkExport(
-    await downloading,
-    "word/document.xml",
-    "Offline document content",
-  );
-  await page
-    .getByRole("button", { name: "Office", exact: true })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Spreadsheet", exact: true }).click();
-  await page.getByRole("button", { name: "Cell A1", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Cell value or formula" })
-    .fill("=6*7");
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Cell A1", exact: true }),
-  ).toHaveText("42");
-  await expect(page.getByRole("status")).toContainText("Saved on this device");
-  downloading = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await checkExport(await downloading, "xl/worksheets/sheet1.xml", "6*7");
-  await page
-    .getByRole("button", { name: "Office", exact: true })
-    .last()
-    .click();
-  await page.getByRole("button", { name: "Presentation", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Slide title", exact: true })
-    .fill("Offline slides");
-  await page
-    .getByRole("textbox", { name: "Slide body", exact: true })
-    .fill("Local files synchronize with peers");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Saved on this device");
-  downloading = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await checkExport(
-    await downloading,
-    "ppt/slides/slide1.xml",
-    "Offline slides",
-  );
-  await page
-    .getByRole("button", { name: "Office", exact: true })
-    .last()
-    .click();
-  await page.evaluate(() => navigator.serviceWorker.ready.then(() => null));
+  async function engine() {
+    for (const worker of page.workers())
+      try {
+        if (await worker.evaluate(() => Boolean(globalThis.Module?.zetajs)))
+          return worker;
+      } catch {}
+    throw Error("Upstream LibreOffice UNO worker is unavailable");
+  }
+  async function inspect(kind, edit) {
+    return (await engine()).evaluate(
+      async ({ kind, edit }) => {
+        const z = await Module.zetajs,
+          css = z.uno.com.sun.star;
+        const model = css.frame.Desktop.create(
+          z.getUnoComponentContext(),
+        ).getCurrentComponent();
+        if (kind === "document") {
+          if (edit) {
+            const text = model.getText();
+            text.setString("Portable ODT from LibreOffice");
+            text.createTextCursor().setPropertyValue("CharWeight", 150);
+          }
+          return model.getText().getString();
+        }
+        if (kind === "spreadsheet") {
+          const sheet = model.getSheets().getByIndex(0);
+          if (edit) {
+            sheet.getCellByPosition(0, 0).setValue(21);
+            sheet.getCellByPosition(1, 0).setFormula("=A1*2");
+          }
+          return sheet.getCellByPosition(1, 0).getValue();
+        }
+        const slide = model.getDrawPages().getByIndex(0);
+        if (edit) {
+          const shape = model.createInstance("com.sun.star.drawing.TextShape");
+          slide.add(shape);
+          shape.setPosition(new css.awt.Point({ X: 2000, Y: 2000 }));
+          shape.setSize(new css.awt.Size({ Width: 16000, Height: 4000 }));
+          shape.setString("Portable ODP from LibreOffice");
+        }
+        return Array.from({ length: slide.getCount() }, (_, i) => {
+          try {
+            return slide.getByIndex(i).getString();
+          } catch {
+            return "";
+          }
+        }).join(" ");
+      },
+      { kind, edit },
+    );
+  }
+  const cases = [
+    ["Document", "document", "odt", "Portable ODT from LibreOffice"],
+    ["Spreadsheet", "spreadsheet", "ods", 42],
+    ["Presentation", "presentation", "odp", "Portable ODP from LibreOffice"],
+  ];
+  for (const [label, kind, extension, expected] of cases) {
+    await page.getByRole("button", { name: label, exact: true }).click();
+    await expect(page.getByText("Ready", { exact: true }))
+      .toBeVisible({
+        timeout: 60000,
+      })
+      .catch(async (e) => {
+        console.log(
+          "Frames:",
+          await Promise.all(
+            page.frames().map(async (f) => ({
+              url: f.url(),
+              body: await f
+                .locator("body")
+                .innerText()
+                .catch(() => "unavailable"),
+            })),
+          ),
+        );
+        console.log(
+          "Caches:",
+          await page.evaluate(async () =>
+            Promise.all(
+              (await caches.keys()).map(async (name) => ({
+                name,
+                keys: (await (await caches.open(name)).keys()).map(
+                  (r) => r.url,
+                ),
+              })),
+            ),
+          ),
+        );
+        throw e;
+      });
+    const result = await inspect(kind, true);
+    expect(String(result)).toContain(String(expected));
+    await expect(
+      page.getByText("Unsaved changes", { exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      page.getByText("Saved on this device", { exact: true }),
+    ).toBeVisible();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const file = await download,
+      target = path.join(directory, "test." + extension);
+    await file.saveAs(target);
+    const zip = await JSZip.loadAsync(await readFile(target));
+    const xml = await zip.file("content.xml").async("string");
+    if (extension === "ods") {
+      expect(xml).toContain('table:formula="of:=[.A1]*2"');
+      expect(xml).toContain('office:value="42"');
+    } else expect(xml).toContain(String(expected));
+    expect(await zip.file("mimetype").async("string")).toContain(
+      "application/vnd.oasis.opendocument.",
+    );
+    await page.screenshot({
+      path: "/tmp/taskasaur-office-" + extension + ".png",
+    });
+    await page.getByRole("button", { name: "Office", exact: true }).click();
+  }
+  await page.evaluate(() => navigator.serviceWorker.ready);
   await context.setOffline(true);
   await page.reload();
-  await page
-    .getByRole("button", { name: "Untitled presentation", exact: true })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Slide title", exact: true }),
-  ).toHaveValue("Offline slides");
-  await page
-    .getByRole("button", { name: "Office", exact: true })
-    .last()
-    .click();
-  await page
-    .getByRole("button", { name: "Untitled spreadsheet", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Cell A1", exact: true }),
-  ).toHaveText("42");
-  await page
-    .getByRole("button", { name: "Office", exact: true })
-    .last()
-    .click();
-  await page
-    .getByRole("button", { name: "Untitled document", exact: true })
-    .click();
-  await expect(page.locator(".ql-editor")).toContainText(
-    "Offline document content",
-  );
+  for (const [, kind, , expected] of cases) {
+    await page
+      .getByRole("button", { name: new RegExp("^Untitled " + kind + "\\.") })
+      .click();
+    await expect(page.getByText("Ready", { exact: true }))
+      .toBeVisible({
+        timeout: 60000,
+      })
+      .catch(async (e) => {
+        console.log(
+          "Frames:",
+          await Promise.all(
+            page.frames().map(async (f) => ({
+              url: f.url(),
+              body: await f
+                .locator("body")
+                .innerText()
+                .catch(() => "unavailable"),
+            })),
+          ),
+        );
+        console.log(
+          "Caches:",
+          await page.evaluate(async () =>
+            Promise.all(
+              (await caches.keys()).map(async (name) => ({
+                name,
+                keys: (await (await caches.open(name)).keys()).map(
+                  (r) => r.url,
+                ),
+              })),
+            ),
+          ),
+        );
+        throw e;
+      });
+    expect(String(await inspect(kind, false))).toContain(String(expected));
+    await page.getByRole("button", { name: "Office", exact: true }).click();
+  }
+  expect(
+    await page.locator(".ql-editor,[data-custom-office-editor]").count(),
+  ).toBe(0);
+  expect(errors).toEqual([]);
   console.log(
-    "Documents, spreadsheet formulas, presentations, exports and offline cold reopen passed.",
+    "Upstream LibreOffice ODT, ODS formula, ODP, durable core saves, exports and cold offline reopen passed.",
   );
 } finally {
   await browser.close();
+  await rm(directory, { recursive: true, force: true });
 }

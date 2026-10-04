@@ -54,7 +54,27 @@ self.addEventListener("fetch", (event) => {
     url.pathname.startsWith("/device-stream")
   )
     return;
-  if (url.pathname.startsWith("/office-engine/")) return; // The editor owns its versioned, explicitly installed asset set.
+  if (url.pathname === "/office-editor.html") {
+    event.respondWith(
+      (async () =>
+        (await (await caches.open(ASSETS)).match("/office-editor.html")) ??
+        fetch(event.request))(),
+    );
+    return;
+  }
+  if (url.pathname.startsWith("/office-engine/")) {
+    // Only the office installer writes verified, pinned assets into this cache.
+    const version = url.searchParams.get("v");
+    if (version && /^[a-f0-9]{40}$/.test(version))
+      event.respondWith(
+        (async () =>
+          (await (
+            await caches.open("taskasaur-office-" + version)
+          ).match(event.request, { ignoreVary: true })) ??
+          fetch(event.request))(),
+      );
+    return;
+  }
   event.respondWith(
     (async () => {
       const cache = await caches.open(

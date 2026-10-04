@@ -1,9 +1,23 @@
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, cp } from "node:fs/promises";
 import { createHash } from "node:crypto";
 const manifest = JSON.parse(await readFile("dist/.vite/manifest.json", "utf8"));
 const files = new Set(),
   visited = new Set();
-files.add('/THIRD_PARTY_NOTICES.txt');
+files.add("/THIRD_PARTY_NOTICES.txt");
+for (const name of [
+  "office-editor.html",
+  "office-bridge.js",
+  "office-thread.js",
+  "office-release.json",
+])
+  files.add("/" + name);
+for (const name of await readdir("public/office-templates"))
+  files.add("/office-templates/" + name);
+await cp(
+  process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/zeta",
+  "dist/office-engine",
+  { recursive: true },
+);
 function include(key) {
   if (visited.has(key)) return;
   visited.add(key);
@@ -22,10 +36,10 @@ for (const [key, entry] of Object.entries(manifest))
 // Lazy editors, peer transports and TypeScript workers must cold-start offline too.
 for (const file of await readdir("dist/assets"))
   if (!file.endsWith(".map")) files.add("/assets/" + file);
-const version = createHash("sha256")
-  .update(await readFile("dist/index.html"))
-  .digest("hex")
-  .slice(0, 16);
+const hash = createHash("sha256").update(await readFile("dist/index.html"));
+for (const filename of [...files].sort())
+  hash.update(filename).update(await readFile("dist" + filename));
+const version = hash.digest("hex").slice(0, 16);
 await writeFile(
   "dist/offline-assets.json",
   JSON.stringify({ version, files: [...files].sort() }),

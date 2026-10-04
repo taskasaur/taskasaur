@@ -26,11 +26,16 @@ export function officeAssets(): Plugin {
     }
     try {
       const root = await realpath(
-        process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/wasm",
+        process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/zeta",
       );
       const relative = decodeURIComponent(
         new URL(req.url, "http://localhost").pathname.slice(15),
       );
+      if (relative === "cool.html") {
+        res.setHeader("Content-Type", "text/html");
+        res.end(await readFile("public/office-editor.html"));
+        return;
+      }
       const filename = await realpath(path.resolve(root, relative));
       if (!filename.startsWith(root + path.sep))
         throw new Error("Invalid path");
@@ -42,14 +47,6 @@ export function officeAssets(): Plugin {
       );
       res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
       res.setHeader("Cache-Control", "public, max-age=3600");
-      if (relative === "cool.html") {
-        const html = (await readFile(filename, "utf8")).replace(
-          '<script src="src/main.js" defer></script>',
-          '<script src="/office-bridge.js" defer></script><script src="src/main.js" defer></script>',
-        );
-        res.end(req.method === "HEAD" ? undefined : html);
-        return;
-      }
       res.setHeader("Content-Length", info.size);
       if (req.method === "HEAD") {
         res.end();

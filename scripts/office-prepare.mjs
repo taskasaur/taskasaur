@@ -1,61 +1,85 @@
+/** Install the upstream full Writer/Calc/Impress WASM build, pinned by digest. */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  writeFile,
+  rename,
+  rm,
+  copyFile,
+} from "node:fs/promises";
 import { createReadStream, createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
-import { execFileSync } from "node:child_process";
 import path from "node:path";
-const url =
-  "https://www.collaboraoffice.com/downloads/COOL-Wasm-Nightly/cool-wasm-2026-06-30_18-26.tar";
-const expected =
-  "44d34343109c7771a7b295da4f76bee629422fa5977ad63d286029fdfae48e61";
+const release = JSON.parse(
+  await readFile("public/office-release.json", "utf8"),
+);
 const root = path.resolve(
-    process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/wasm",
-  ),
-  directory = path.dirname(root);
-await mkdir(directory, { recursive: true });
-const archive = process.argv[2] ?? path.join(directory, "engine.tar");
-if (!process.argv[2]) {
-  console.log(
-    "Downloading the pinned Collabora engine (2.4 GB archive; debug files will be excluded).",
-  );
-  const response = await fetch(url);
-  if (!response.ok || !response.body) throw new Error("Engine download failed");
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(archive));
+  process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/zeta",
+);
+await mkdir(root, { recursive: true });
+async function hash(file) {
+  const value = createHash("sha256");
+  for await (const chunk of createReadStream(file)) value.update(chunk);
+  return value.digest("hex");
 }
-const hash = createHash("sha256");
-for await (const chunk of createReadStream(archive)) hash.update(chunk);
-if (hash.digest("hex") !== expected)
-  throw new Error("Office engine checksum mismatch");
-const entries = execFileSync("tar", ["-tf", archive], {
-  encoding: "utf8",
-  maxBuffer: 16 * 1024 * 1024,
-}).split("\n");
-if (entries.some((p) => p.startsWith("/") || p.split("/").includes("..")))
-  throw new Error("Unsafe archive path");
-execFileSync("tar", [
-  "-xf",
-  archive,
-  "-C",
-  directory,
-  "--exclude=*.debug.wasm",
-  "--exclude=*.dwp",
-  "--exclude=*.map",
-]);
+for (const asset of release.assets) {
+  const target = path.join(root, asset.path);
+  try {
+    if ((await hash(target)) === asset.sha256) {
+      console.log("Verified", asset.path);
+      continue;
+    }
+  } catch {}
+  const temp = target + ".download";
+  try {
+    const response = await fetch(release.baseUrl + asset.path);
+    if (!response.ok || !response.body)
+      throw Error("Office asset download failed: " + asset.path);
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(temp));
+    if ((await hash(temp)) !== asset.sha256)
+      throw Error(
+        "Upstream office asset changed: " +
+          asset.path +
+          ". Review and pin the new release before installing it.",
+      );
+    await rename(temp, target);
+    console.log("Installed", asset.path);
+  } finally {
+    await rm(temp, { force: true });
+  }
+}
+await copyFile(
+  "node_modules/zetajs/source/zeta.js",
+  path.join(root, "zeta.js"),
+);
+await copyFile(
+  "node_modules/zetajs/LICENSE",
+  path.join(root, "ZetaJS-LICENSE"),
+);
 await writeFile(
-  path.join(directory, "release.json"),
-  JSON.stringify(
-    {
-      source: url,
-      sha256: expected,
-      version: "2026-06-30",
-      engine: "Collabora/LibreOffice",
-      license: "MPL-2.0 and bundled component licenses",
-    },
-    null,
-    2,
-  ),
+  path.join(root, "release.json"),
+  JSON.stringify(release, null, 2),
+);
+// Retain the actual runtime's bundled license notices and source provenance beside it.
+const metadata = JSON.parse(
+  await readFile(path.join(root, "soffice.data.js.metadata"), "utf8"),
+);
+const data = await readFile(path.join(root, "soffice.data"));
+const notices = metadata.files
+  .filter((f) => /\/(license|notice|copying|readme)(\.|\/|$)/i.test(f.filename))
+  .map(
+    (f) => f.filename + "\n" + data.subarray(f.start, f.end).toString("utf8"),
+  )
+  .join("\n\n");
+await writeFile(
+  path.join(root, "ENGINE-NOTICES.txt"),
+  "Source: " +
+    release.source +
+    "\nMPL-2.0 / LGPL-3.0+ and bundled component licenses\n\n" +
+    notices,
 );
 console.log(
-  "Offline engine assets installed. Browser/native platform acceptance is still required.",
+  "Full LibreOffice engine installed; npm run build:web includes it in platform bundles.",
 );

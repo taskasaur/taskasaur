@@ -40,7 +40,7 @@
     "format": "prettier --write packages src electron scripts tests docs",
     "build:desktop": "node scripts/desktop.mjs",
     "postinstall": "node scripts/native-prepare.mjs && npm run sdk:build",
-    "prebuild:web": "npm run sdk:verify && npm run core:verify && npm run ui:verify && node scripts/third-party-notices.mjs",
+    "prebuild:web": "npm run sdk:verify && npm run core:verify && npm run ui:verify && node scripts/third-party-notices.mjs && npm run office:prepare",
     "postbuild:web": "node scripts/offline-assets.mjs",
     "core:verify": "node scripts/core-release.mjs",
     "postbuild:client": "node scripts/offline-assets.mjs",
@@ -48,7 +48,7 @@
     "sdk:build": "node scripts/build-platform.mjs",
     "peer": "tsx apps/headless/main.ts",
     "build:peer": "node scripts/build-peer.mjs",
-    "prebuild:client": "npm run ui:verify && node scripts/third-party-notices.mjs",
+    "prebuild:client": "npm run ui:verify && node scripts/third-party-notices.mjs && npm run office:prepare",
     "ui:verify": "node scripts/verify-shadcn.mjs",
     "ui:types": "node scripts/build-ui-types.mjs"
   },
@@ -87,18 +87,12 @@
     "date-fns": "^4.3.0",
     "dexie": "4.4.6",
     "dexie-react-hooks": "4.4.0",
-    "docx": "^9.5.1",
     "dompurify": "^3.4.16",
-    "exceljs": "^4.4.0",
-    "hot-formula-parser": "^4.0.0",
+    "jszip": "3.10.2",
     "libp2p": "^3.3.11",
     "lucide-react": "^0.511.0",
-    "mammoth": "^1.11.0",
     "next-themes": "^0.4.6",
     "openworkflow": "0.10.1",
-    "pptxgenjs": "^4.0.1",
-    "quill": "2.0.2",
-    "quill-delta": "5.1.0",
     "react": "^19.1.0",
     "react-day-picker": "^10.0.2",
     "react-dom": "^19.1.0",
@@ -106,6 +100,7 @@
     "tailwind-merge": "^3.6.0",
     "tsx": "4.23.15",
     "typescript": "^5.9.3",
+    "zetajs": "1.2.0",
     "zod": "^3.25.42"
   },
   "devDependencies": {
@@ -164,15 +159,6 @@
       ],
       "category": "Office"
     },
-    "extraResources": [
-      {
-        "from": ".taskasaur/office-engine/wasm",
-        "to": "office-engine/wasm",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "asarUnpack": [
       "**/node-pty/**"
     ]
@@ -183,12 +169,6 @@
   "overrides": {
     "cloudevents": {
       "uuid": "11.1.1"
-    },
-    "exceljs": {
-      "uuid": "11.1.1"
-    },
-    "pptxgenjs": {
-      "image-size": "2.0.4"
     }
   },
   "engines": {

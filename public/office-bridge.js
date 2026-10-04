@@ -1,54 +1,125 @@
-/* Taskasaur local-engine bridge. Loaded after upstream initialization and before src/main.js. */
-(() => {
-  const params=new URLSearchParams(location.search),session=params.get('taskasaurSession');
-  if(!session)return;
-  const origin=location.origin,path=params.get('file_path').replace(/^file:\/\//,'');
-  const send=(type,data={})=>parent.postMessage({type,session,...data},origin);
-  let module,loaded=false;
-  window.createEmscriptenModule=(kind,descriptor)=>{
-    // The pinned upstream factory only supplies these two properties. Own the
-    // factory here so initialization does not depend on another deferred script.
-    module={arguments:[kind,descriptor],uno_scripts:[]};
-    module.preRun=[()=>{
-      module.addRunDependency('taskasaur-file');
-      module.addRunDependency('taskasaur-ui-patches');
-      Promise.all([
-        ['sheetviewbox.ui','modules/scalc/ui'],
-        ['themeselectorpanel.ui','svx/ui'],
-      ].map(async([name,folder])=>{
-        const response=await fetch('/office-patches/'+name);
-        if(!response.ok) throw new Error('Required office resource could not be loaded');
-        const xml=await response.text(),directory='/instdir/share/config/soffice.cfg/'+folder;
-        module.FS.mkdirTree(directory);module.FS.writeFile(directory+'/'+name,xml);
-      })).then(()=>module.removeRunDependency('taskasaur-ui-patches')).catch(error=>send('taskasaur.office.error',{message:String(error)}));
-      send('taskasaur.office.load');
-    }];
-    module.onAbort=reason=>send('taskasaur.office.error',{message:String(reason)});
-    return module;
+/* Integration only. Document editing and the complete UI are the upstream LibreOffice engine.
+ * Based on allotropia/zetajs examples/web-office (MIT); see /office-engine/ZetaJS-LICENSE. */
+(async () => {
+  const params = new URLSearchParams(location.search),
+    session = params.get("taskasaurSession"),
+    origin = location.origin;
+  if (!session || parent === window) return;
+  const send = (type, data = {}) =>
+    parent.postMessage({ type, session, ...data }, origin);
+  const fail = (error) => {
+    document.getElementById("loading").textContent = String(error);
+    send("taskasaur.office.error", { message: String(error) });
   };
-  window.addEventListener('message',event=>{
-    if(event.source!==parent||event.origin!==origin||event.data?.session!==session)return;
-    const message=event.data;
-    if(message.type==='taskasaur.office.bytes'&&!loaded&&module){
-      try{module.FS.mkdirTree('/taskasaur');module.FS.writeFile(path,new Uint8Array(message.bytes));loaded=true;module.removeRunDependency('taskasaur-file');}
-      catch(error){send('taskasaur.office.error',{message:String(error)});}
-    }
-    if(message.type==='taskasaur.office.save'&&loaded&&window.app?.map){
-      const map=window.app.map;
-      const listener=result=>{
-        if(result.commandName!=='.uno:Save')return;
-        map.off('commandresult',listener);
-        if(!result.success){send('taskasaur.office.error',{message:'The document engine could not save this file.'});return;}
-        try{const bytes=module.FS.readFile(path).slice();parent.postMessage({type:'taskasaur.office.saved',session,requestId:message.requestId,bytes:bytes.buffer},origin,[bytes.buffer]);}
-        catch(error){send('taskasaur.office.error',{message:String(error)});}
-      };
-      map.on('commandresult',listener);map.save(false,false);
-    }
-  });
-  let subscribed=false;
-  const timer=setInterval(()=>{
-    if(!window.app?.map)return;
-    if(!subscribed){subscribed=true;window.app.map.on('updatemodificationindicator',event=>{if(event.status==='MODIFIED')send('taskasaur.office.dirty');});}
-    if(window.app.map._docLoaded && window.app.map.getDocType()) {clearInterval(timer);send('taskasaur.office.opened');}
-  },100);
+  try {
+    if (!crossOriginIsolated || typeof SharedArrayBuffer === "undefined")
+      throw Error(
+        "This platform cannot run the local office engine. Open the workspace in a browser or desktop app with shared WebAssembly memory support.",
+      );
+    const extension = params.get("file_path")?.split(".").at(-1);
+    if (!/^(odt|ods|odp|docx|xlsx|pptx|csv|txt)$/i.test(extension ?? ""))
+      throw Error("Unsupported office file type");
+    const path = "/tmp/office/document." + extension;
+    const response = await fetch("/office-release.json");
+    if (!response.ok) throw Error("Office release is unavailable");
+    const release = await response.json();
+    const canvas = document.getElementById("qtcanvas"),
+      loading = document.getElementById("loading");
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    canvas.addEventListener("keydown", (e) => e.preventDefault());
+    canvas.addEventListener("wheel", (e) => e.preventDefault(), {
+      passive: false,
+    });
+    let port,
+      loaded = false;
+    window.Module = {
+      canvas,
+      uno_scripts: [
+        "/office-engine/zeta.js?v=" + release.version,
+        "/office-thread.js",
+      ],
+      locateFile: (name) => "/office-engine/" + name + "?v=" + release.version,
+      mainScriptUrlOrBlob: new Blob(
+        [
+          "importScripts(" +
+            JSON.stringify(
+              origin + "/office-engine/soffice.js?v=" + release.version,
+            ) +
+            ");",
+        ],
+        { type: "text/javascript" },
+      ),
+      onAbort: fail,
+    };
+    window.addEventListener("message", (event) => {
+      if (
+        event.source !== parent ||
+        event.origin !== origin ||
+        event.data?.session !== session
+      )
+        return;
+      const message = event.data;
+      if (message.type === "taskasaur.office.bytes" && !loaded && port) {
+        try {
+          if (
+            !(message.bytes instanceof ArrayBuffer) ||
+            message.bytes.byteLength > 256 * 1024 * 1024
+          )
+            throw Error("Office files must be at most 256 MB");
+          FS.mkdirTree("/tmp/office");
+          FS.writeFile(path, new Uint8Array(message.bytes));
+          loaded = true;
+          port.postMessage({ cmd: "open", path });
+        } catch (e) {
+          fail(e);
+        }
+      }
+      if (message.type === "taskasaur.office.save" && loaded && port)
+        port.postMessage({ cmd: "save", requestId: message.requestId });
+    });
+    const script = document.createElement("script");
+    script.src = "/office-engine/soffice.js?v=" + release.version;
+    script.onerror = () =>
+      fail(
+        "The office engine is unavailable. Install its assets before opening a document.",
+      );
+    script.onload = () =>
+      Module.uno_main
+        .then((value) => {
+          port = value;
+          port.onmessage = (event) => {
+            const message = event.data;
+            if (message.cmd === "ready") send("taskasaur.office.load");
+            if (message.cmd === "opened") {
+              window.dispatchEvent(new Event("resize"));
+              canvas.style.visibility = "visible";
+              loading.style.display = "none";
+              send("taskasaur.office.opened");
+            }
+            if (message.cmd === "dirty") send("taskasaur.office.dirty");
+            if (message.cmd === "error") fail(message.message);
+            if (message.cmd === "saved") {
+              try {
+                const bytes = FS.readFile(path).slice();
+                parent.postMessage(
+                  {
+                    type: "taskasaur.office.saved",
+                    session,
+                    requestId: message.requestId,
+                    bytes: bytes.buffer,
+                  },
+                  origin,
+                  [bytes.buffer],
+                );
+              } catch (e) {
+                fail(e);
+              }
+            }
+          };
+        })
+        .catch(fail);
+    document.body.appendChild(script);
+  } catch (e) {
+    fail(e);
+  }
 })();

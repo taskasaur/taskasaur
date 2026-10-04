@@ -1,19 +1,27 @@
-# Offline office editing
+# Full offline office suite
 
-The Office plugin uses the shared interface on browsers, Electron, iOS and Android. Its portable editors are downloaded with the app and included in the offline shell:
+The optional Office Editor plugin embeds the upstream **ZetaOffice / LibreOffice** suite through [ZetaJS](https://github.com/allotropia/zetajs). Writer edits ODT documents, Calc edits ODS spreadsheets, and Impress edits ODP presentations. The suite also supplies its own DOCX/XLSX/PPTX import/export support, formatting, formulas and presentation layout. The complete upstream editor UI runs inside the app; Taskasaur supplies file loading and durable saves only.
 
-- Documents: Quill 2 (BSD), with Mammoth (BSD) for DOCX text/format import and docx (MIT) for DOCX export. The editable format preserves Quill deltas.
-- Spreadsheets: ExcelJS (MIT) retains XLSX workbooks, cells, styles and sheets. The shared table components provide editing; hot-formula-parser (MIT) calculates formulas locally. The grid shows up to 500 rows and 50 columns; additional imported workbook data remains in the XLSX file. Formula evaluation limits recursion and range size.
-- Presentations: the shared React components edit slides, text, images, colors and speaker notes and provide presentation mode. PptxGenJS (MIT) exports PPTX. The editable format preserves the complete Taskasaur slide model.
+The custom Taskasaur document model, rich-text editor, spreadsheet grid, formula parser and slide editor have been deleted. Existing stored files remain intact. Older proprietary Taskasaur office JSON files are not converted silently; retain their original Office imports or exports in Files.
 
-Documents and presentations use `application/vnd.taskasaur.office+json`, format `taskasaur-office-v1`. Spreadsheets retain XLSX. Import supports DOCX, plain text, XLSX, CSV and the editable Taskasaur format. These are lightweight editors, not layout-identical implementations of Microsoft Office: advanced DOCX layout, embedded objects and every Excel formula are not supported. Original imports are retained in Files. Existing ODF/PPTX files remain stored unchanged and can use the optional engine below or an external editor.
+This engine was selected as the smaller full-suite option: the pinned runtime is approximately 250 MiB uncompressed, including Writer, Calc and Impress. The previously pinned Collabora WASM nightly was approximately 339 MiB and omitted Impress. The acceptance test verifies actual ODT text, ODS formulas and calculated values, and ODP slide content, then saves through core and reopens all three offline.
 
-Saves commit through core's immutable file versions and encrypted chunks. Every approved device downloads file contents; simultaneous edits retain conflicting versions for review. Editing and exporting require no cloud service. The browser acceptance test creates and exports all three formats and reopens them after a cold offline reload. Native build success does not replace real-device acceptance.
+## Provisioning and offline operation
 
-## Optional LibreOffice engine
+`npm run office:prepare` downloads the official ZetaOffice runtime into `.taskasaur/office-engine/zeta`. `public/office-release.json` pins the upstream LibreOffice build `efaf0670b4d055f838a2849becb10f08aa06a257`, asset sizes, and SHA-256 digests. Downloads fail closed if the upstream CDN changes. ZetaJS is pinned through the npm lockfile. Platform builds include these assets in `dist/office-engine`, including Docker, Electron and mobile packages. `OFFICE_ASSET_PATH` can select a separately provisioned directory.
 
-When compatible assets are installed and the WebView provides cross-origin isolation, Office also exposes the original LibreOffice engine interface. `npm run office:prepare` verifies and extracts the pinned official COWASM archive. `OFFICE_ASSET_PATH` selects the extracted `wasm` directory for a headless peer; desktop packaging copies installed assets into `resources/office-engine/wasm`.
+On the web, first use verifies the engine bytes and stores them in a local versioned Cache API cache. The service worker serves those pinned assets and the editor frame offline. Engine caches are never synchronized or included in workspace files. Browser cache eviction can require downloading them again. Native bundles serve their packaged files locally.
 
-The pinned nightly `cool-wasm-2026-06-30_18-26.tar`, SHA-256 `44d34343109c7771a7b295da4f76bee629422fa5977ad63d286029fdfae48e61`, comes from [Collabora's official directory](https://www.collaboraoffice.com/downloads/COOL-Wasm-Nightly/). It is approximately 339 MB after excluding debug assets and contains Writer and Calc, not Impress. It is not required for the portable editors or their presentation support. `deploy/office/Dockerfile` retains the separate optional source builder with Writer, Calc and Impress enabled.
+The engine requires WebAssembly threads, SharedArrayBuffer, and a cross-origin isolated context. Serve COOP `same-origin` and COEP `require-corp`; the bundled HTTP/desktop hosts already do this. Capabilities are checked before opening a document. Unsupported WebViews show the limitation instead of substituting a reduced editor. Mobile build success does not establish that an OS WebView supplies these capabilities or that the upstream desktop-style UI is touch-optimized; real-device acceptance remains necessary.
 
-`public/office-patches` supplies two upstream UI resources missing from this nightly. Preserve their MPL-2.0 terms and the engine's bundled notices. Threaded WASM engine support varies by WebView; unsupported platforms use the portable editors.
+## Integration contract
+
+`public/office-editor.html`, `office-bridge.js` and `office-thread.js` adapt the upstream engine's UNO file APIs. They do not implement an office document format, grid, layout engine, or toolbar. The bridge verifies the parent origin, source window and per-session token. It accepts only supported document extensions, caps an editing session's file at 256 MiB, disables document macros and external-link updates on load, and waits for UNO save completion before reading bytes. Taskasaur acknowledges saving only after core's immutable version and encrypted chunks are durable. Concurrent saves retain conflicting versions for review.
+
+Use the app's Save and Export controls for workspace files. Saving the opened document through the suite's normal Save command also commits to core. The suite's filesystem dialogs operate inside its virtual filesystem, not the workspace directory.
+
+Run `TEST_APP_URL=http://localhost:8080 node tests/browser/office.mjs` against a production build and the published signed Office plugin. The test exercises the upstream UNO engine, checks real ODF ZIP/XML output and performs a cold offline reload. No custom editor fallback is present.
+
+## Licenses and source
+
+ZetaJS and its integration example are MIT-licensed. LibreOffice is MPL-2.0 / LGPL-3.0+ with its bundled third-party licenses. The preparation script retains the runtime's bundled notices and ZetaJS license in the engine directory. [The exact engine source](https://git.libreoffice.org/core/+/efaf0670b4d055f838a2849becb10f08aa06a257) and [upstream integration sources](https://github.com/allotropia/zetajs/tree/main/examples/web-office) are public. The blank templates were generated by this upstream engine and contain no Taskasaur-specific document format.

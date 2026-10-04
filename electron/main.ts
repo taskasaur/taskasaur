@@ -168,30 +168,20 @@ app
     protocol.handle("taskasaur", async (request) => {
       const url = new URL(request.url);
       if (url.host !== "app") return new Response("Not found", { status: 404 });
-      const assetPath = decodeURIComponent(url.pathname),
-        office = assetPath.startsWith("/office-engine/");
-      const root = office
-        ? path.join(process.resourcesPath, "office-engine", "wasm")
-        : path.join(here, "../dist");
+      const root = path.resolve(here, "../dist");
+      const assetPath = decodeURIComponent(url.pathname);
       const filename = path.resolve(
         root,
-        office
-          ? assetPath.slice("/office-engine/".length)
-          : assetPath === "/"
-            ? "index.html"
+        assetPath === "/"
+          ? "index.html"
+          : assetPath === "/office-engine/cool.html"
+            ? "office-editor.html"
             : assetPath.slice(1),
       );
       if (!filename.startsWith(root + path.sep))
         return new Response("Invalid path", { status: 400 });
       try {
         let bytes: Buffer | string = await readFile(filename);
-        if (office && assetPath.endsWith("/cool.html"))
-          bytes = bytes
-            .toString()
-            .replace(
-              '<script src="src/main.js" defer></script>',
-              '<script src="/office-bridge.js" defer></script><script src="src/main.js" defer></script>',
-            );
         const types: Record<string, string> = {
           ".html": "text/html",
           ".js": "text/javascript",

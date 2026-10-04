@@ -379,21 +379,7 @@ export async function createBrowserPluginHost(
                                   ),
                                 };
                               })
-                            : id === "office-editor" &&
-                                manifest.version === "1.0.0"
-                              ? React.lazy(async () => {
-                                  const { PortableOffice } =
-                                    await import("./portable-office");
-                                  return {
-                                    default: () => (
-                                      <PortableOffice
-                                        runtime={runtime}
-                                        legacy={surface.render}
-                                      />
-                                    ),
-                                  };
-                                })
-                              : surface.render;
+                            : surface.render;
                 const registered = {
                   ...surface,
                   render,

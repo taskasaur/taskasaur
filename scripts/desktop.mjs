@@ -9,6 +9,10 @@ if (!process.argv.includes("--dev")) {
     },
   );
   if (notices.status !== 0) process.exit(notices.status ?? 1);
+  const office = spawnSync(process.execPath, ["scripts/office-prepare.mjs"], {
+    stdio: "inherit",
+  });
+  if (office.status !== 0) process.exit(office.status ?? 1);
 }
 const args = process.argv.includes("--dev") ? [] : ["build"];
 const child = spawn(

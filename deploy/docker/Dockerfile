@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.source="https://github.com/taskasaur/taskasaur" \
       org.opencontainers.image.title="Taskasaur peer" \
       org.opencontainers.image.version=$TASKASAUR_VERSION \
       org.opencontainers.image.revision=$SOURCE_REVISION
-ENV NODE_ENV=production TASKASAUR_DATA=/data TASKASAUR_HOST=0.0.0.0 TASKASAUR_RELAY=1 OFFICE_ASSET_PATH=/app/office-engine
+ENV NODE_ENV=production TASKASAUR_DATA=/data TASKASAUR_HOST=0.0.0.0 TASKASAUR_RELAY=1 OFFICE_ASSET_PATH=/app/dist/office-engine
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/dist-peer ./dist-peer
 COPY --from=build /app/node_modules ./node_modules

@@ -237,9 +237,14 @@ const http = createServer(async (req, res) => {
       res.end();
       return;
     }
+    if (url.pathname === "/office-engine/cool.html") {
+      res.setHeader("Content-Type", "text/html");
+      res.end(await readFile(path.join(webRoot, "office-editor.html")));
+      return;
+    }
     if (url.pathname.startsWith("/office-engine/")) {
       const root = await realpath(
-          process.env.OFFICE_ASSET_PATH ?? ".taskasaur/office-engine/wasm",
+          process.env.OFFICE_ASSET_PATH ?? path.join(webRoot, "office-engine"),
         ),
         file = await realpath(
           path.resolve(root, decodeURIComponent(url.pathname.slice(15))),
@@ -254,14 +259,6 @@ const http = createServer(async (req, res) => {
         mime[path.extname(file)] ?? "application/octet-stream",
       );
       res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-      if (file === path.join(root, "cool.html")) {
-        const html = (await readFile(file, "utf8")).replace(
-          '<script src="src/main.js" defer></script>',
-          '<script src="/office-bridge.js" defer></script><script src="src/main.js" defer></script>',
-        );
-        res.end(req.method === "HEAD" ? undefined : html);
-        return;
-      }
       res.setHeader("Content-Length", (await stat(file)).size);
       if (req.method === "HEAD") {
         res.end();
