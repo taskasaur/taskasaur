@@ -8,6 +8,7 @@ import {
   workspaceFolderAvailable,
   workspaceFileAvailable,
   selectWorkspaceLocation,
+  forgetWorkspaceLocation,
   type WorkspaceLocation,
 } from "../platform-browser/workspace-location";
 import { WorkspaceStorage } from "../storage/workspace";
@@ -101,9 +102,26 @@ export function OpenWorkspaceFile({
   ) {
     await validateWorkspaceHistory(value.manifest.workspace);
     const device = await browserDevice();
-    if (selected && workspaceRouter.blocked.has(value.manifest.workspace.id))
-      await workspaceRouter.mount(value, false);
-    const node = await importWorkspace(device, value, approval);
+    const id = value.manifest.workspace.id;
+    let node;
+    if (selected) {
+      if (workspaceRouter.blocked.has(id))
+        await workspaceRouter.mount(value, false);
+      node = await importWorkspace(device, value, approval);
+    } else {
+      // Import always writes to internal storage, including when this workspace
+      // was previously linked to a file. Never write back to the selected archive.
+      await device.closeWorkspace(id);
+      const wasFile = workspaceRouter.blocked.delete(id);
+      try {
+        node = await importWorkspace(device, value, approval);
+        await forgetWorkspaceLocation(id);
+      } catch (error) {
+        await device.closeWorkspace(id);
+        if (wasFile) workspaceRouter.blocked.add(id);
+        throw error;
+      }
+    }
     if (selected) {
       const snapshot = await workspaceSnapshot(node);
       await workspaceRouter.mount(value, true, snapshot.excludedKeys);
@@ -127,6 +145,7 @@ export function OpenWorkspaceFile({
     setSource(value);
     setLocation(selected);
     setInvitation("");
+    setRequest("");
     setError("");
     try {
       await open(value, selected);
@@ -149,34 +168,54 @@ export function OpenWorkspaceFile({
   };
   return (
     <div className="space-y-4">
-      <Button
-        variant="outline"
-        disabled={busy}
-        onClick={() => {
-          if (!workspaceFileAvailable()) {
-            input.current?.click();
-            return;
-          }
-          void run(async () => {
-            const selected = await selectWorkspaceLocation("file", false, {
-              requestPassword,
+      <div className="space-y-2">
+        <Button
+          variant="outline"
+          disabled={busy || !workspaceFileAvailable()}
+          onClick={() => {
+            void run(async () => {
+              const selected = await selectWorkspaceLocation("file", false, {
+                requestPassword,
+              });
+              try {
+                await load(
+                  await WorkspaceStorage.open(selected.files),
+                  selected,
+                );
+              } catch (error) {
+                if (
+                  workspaceRouter?.mounts.get(
+                    pending.current?.manifest.workspace.id ?? "",
+                  ) !== pending.current
+                )
+                  await selected.files.close?.();
+                throw error;
+              }
             });
-            try {
-              await load(await WorkspaceStorage.open(selected.files), selected);
-            } catch (error) {
-              if (
-                workspaceRouter?.mounts.get(
-                  pending.current?.manifest.workspace.id ?? "",
-                ) !== pending.current
-              )
-                await selected.files.close?.();
-              throw error;
-            }
-          });
-        }}
-      >
-        Open file workspace
-      </Button>
+          }}
+        >
+          Open file workspace
+        </Button>
+        {!workspaceFileAvailable() && (
+          <p className="text-xs text-muted-foreground">
+            This platform does not support opening and saving directly to a
+            .taskasaur file. Use Import workspace to keep an internal copy
+            instead.
+          </p>
+        )}
+      </div>
+      <div className="space-y-2">
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => input.current?.click()}
+        >
+          Import workspace
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          Copy a .taskasaur file into an internal workspace on this device.
+        </p>
+      </div>
       <Input
         ref={input}
         className="hidden"

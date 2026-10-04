@@ -115,7 +115,7 @@ export function Welcome({
             <img
               src="/taskasaur_icon.png"
               alt="Taskasaur"
-              className="mx-auto h-40 w-40 sm:h-48 sm:w-48 object-contain"
+              className="mx-auto h-auto w-80 max-w-full sm:w-96 object-contain"
             />
             <p className="text-center text-muted-foreground">
               Your workspace lives on this device. Work offline and synchronize

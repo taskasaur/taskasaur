@@ -131,9 +131,11 @@ try {
   ).identity.id;
   await second.getByRole("button", { name: "Back", exact: true }).click();
   await second.getByRole("button", { name: "Open", exact: true }).click();
+  const chooseImport = second.waitForEvent("filechooser");
   await second
-    .getByLabel("Workspace archive", { exact: true })
-    .setInputFiles(archive);
+    .getByRole("button", { name: "Import workspace", exact: true })
+    .click();
+  await (await chooseImport).setFiles(archive);
   await navigate(second, "Files");
   await expect(
     second.getByRole("button", { name: "only-in-a.odt", exact: true }),
@@ -227,7 +229,69 @@ try {
   await expect(
     page.getByRole("button", { name: "encrypted.txt", exact: true }),
   ).toBeVisible();
-  // Unsupported platforms explain the limitation and keep file creation disabled.
+  // Importing a linked file switches to an internal copy without changing the file.
+  await leaveWorkspace(page);
+  const readLiveFile = () =>
+    page.evaluate(async () =>
+      Array.from(
+        new Uint8Array(
+          await (
+            await (
+              await navigator.storage.getDirectory()
+            ).getFileHandle("live.taskasaur")
+          )
+            .getFile()
+            .then((file) => file.arrayBuffer()),
+        ),
+      ),
+    );
+  const originalFile = await readLiveFile();
+  await click("Open");
+  const importLiveFile = page.waitForEvent("filechooser");
+  await click("Import workspace");
+  await (
+    await importLiveFile
+  ).setFiles({
+    name: "live.taskasaur",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(originalFile),
+  });
+  await page
+    .getByLabel("Workspace password", { exact: true })
+    .fill("browser workspace password");
+  await click("Unlock");
+  await navigate(page, "Files");
+  await expect(
+    page.getByRole("button", { name: "encrypted.txt", exact: true }),
+  ).toBeVisible();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({
+      name: "internal-only.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Changes after import stay internal"),
+    });
+  await expect(
+    page.getByRole("button", { name: "internal-only.txt", exact: true }),
+  ).toBeVisible();
+  await leaveWorkspace(page);
+  expect(await readLiveFile()).toEqual(originalFile);
+  await click("Open");
+  await page.getByLabel("Open internal workspace", { exact: true }).click();
+  await page.getByRole("button", { name: "live", exact: true }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("live");
+  await page.reload();
+  await navigate(page, "Files");
+  await expect(
+    page.getByRole("button", { name: "internal-only.txt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Unlock workspace" }),
+  ).toHaveCount(0);
+
+  // Unsupported platforms can import, but cannot open or create live file workspaces.
   const fallbackContext = await browser.newContext();
   await fallbackContext.addInitScript(() => {
     delete window.showSaveFilePicker;
@@ -246,6 +310,42 @@ try {
     "Device request copied",
   );
   await fallback.getByRole("button", { name: "Back", exact: true }).click();
+  await fallback.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(
+    fallback.getByRole("button", { name: "Open file workspace", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    fallback.getByText(
+      "This platform does not support opening and saving directly to a .taskasaur file. Use Import workspace to keep an internal copy instead.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await fallback.setViewportSize({ width: 390, height: 844 });
+  await fallback.screenshot({ path: "/tmp/taskasaur-open-import-mobile.png" });
+  const importWithoutFileAccess = fallback.waitForEvent("filechooser");
+  await fallback
+    .getByRole("button", { name: "Import workspace", exact: true })
+    .click();
+  await (await importWithoutFileAccess).setFiles(archive);
+  await navigate(fallback, "Files");
+  await expect(
+    fallback.getByRole("button", { name: "only-in-a.odt", exact: true }),
+  ).toBeVisible();
+  await leaveWorkspace(fallback);
+  await fallback.getByRole("button", { name: "Open", exact: true }).click();
+  await fallback.getByLabel("Open internal workspace", { exact: true }).click();
+  await fallback
+    .getByRole("button", { name: "Workspace A", exact: true })
+    .click();
+  await expect(
+    fallback.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Workspace A");
+  await fallback.reload();
+  await navigate(fallback, "Files");
+  await expect(
+    fallback.getByRole("button", { name: "only-in-a.odt", exact: true }),
+  ).toBeVisible();
+  await leaveWorkspace(fallback);
   await fallback.getByRole("button", { name: "Create", exact: true }).click();
   await expect(
     fallback.getByRole("button", {
@@ -275,7 +375,7 @@ try {
   await fallbackContext.close();
   expect(errors).toEqual([]);
   console.log(
-    "Welcome layouts, request copying, separate databases, automatic credentials, fresh-device import, encrypted live-file reopen and disabled file creation without picker support passed.",
+    "Welcome layouts, copying, separate databases, explicit imports with/without file access, encrypted live-to-internal import, unchanged source bytes, reload, and disabled unsupported file controls passed.",
   );
 } finally {
   await browser.close();

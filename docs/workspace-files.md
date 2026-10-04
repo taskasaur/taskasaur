@@ -12,7 +12,7 @@ The welcome screen has three choices:
 
 - **Create**: name an internal workspace and use the connected arrow button, or choose **Create file workspace** and select a new `.taskasaur` file. On platforms without direct file access, the button is disabled and explains that an internal workspace can be created instead.
 - **Join**: use the attached copy button to send the single-line **Device request** to the owner and paste the returned **Workspace invitation**.
-- **Open**: choose an internal workspace from the dropdown, or use **Open file workspace**. Where direct file access is unavailable, the file picker imports an internal copy.
+- **Open**: choose an internal workspace from the dropdown, use **Open file workspace** for live editing, or choose **Import workspace** to copy a file into internal storage. Import is available on every platform; Open file workspace is disabled with an explanation when direct file access is unavailable. Imports preserve workspace history and connections without writing to the source file. Importing a previously linked workspace switches this device to an internal copy.
 
 Each browser workspace has a separate top-level IndexedDB database (`taskasaur-peer-v1.workspace.<workspace-id>`), plus its own query/UI projection. Existing prefixed storage is migrated only when that workspace is opened. Startup reopens only the selected workspace. **Switch workspace** closes its plugin runtime, storage handles and peer handler, then returns to the welcome screen. Desktop services also deactivate that workspace; headless peers continue to serve their configured workspaces. Opening a different workspace does not read another workspace's file contents.
 

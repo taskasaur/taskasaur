@@ -129,10 +129,11 @@ try {
       Array.from(await readFile(archive)),
     );
     await click(second, "Open file workspace");
-  } else
-    await second
-      .getByLabel("Workspace archive", { exact: true })
-      .setInputFiles(archive);
+  } else {
+    const chosen = second.waitForEvent("filechooser");
+    await click(second, "Import workspace");
+    await (await chosen).setFiles(archive);
+  }
   if (!liveFile) {
     await expect(
       second.getByLabel("Workspace file device request", { exact: true }),

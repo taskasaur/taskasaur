@@ -256,8 +256,55 @@ try {
   await expect(
     restored.getByRole("button", { name: "single-file.txt", exact: true }),
   ).toBeVisible();
+  // Import switches a linked workspace to internal storage without changing its file.
+  await leaveWorkspace(restored);
+  const originalArchive = await readFile(encrypted);
+  await restored.getByRole("button", { name: "Open", exact: true }).click();
+  const importPicker = restored.waitForEvent("filechooser");
+  await restored
+    .getByRole("button", { name: "Import workspace", exact: true })
+    .click();
+  await (await importPicker).setFiles(encrypted);
+  await restored
+    .getByLabel("Workspace password", { exact: true })
+    .fill("desktop workspace password");
+  await restored.getByRole("button", { name: "Unlock", exact: true }).click();
+  await navigate(restored, "Files");
+  await expect(
+    restored.getByRole("button", { name: "single-file.txt", exact: true }),
+  ).toBeVisible();
+  expect(
+    await restored.evaluate(
+      async (id) =>
+        (await window.taskasaurNative.workspace.list()).some(
+          (value) => value.workspaceId === id,
+        ),
+      originalId,
+    ),
+  ).toBe(false);
+  await restored.locator('input[type="file"]').setInputFiles({
+    name: "imported-internal.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("An internal edit must not change the imported file"),
+  });
+  await expect(
+    restored.getByRole("button", {
+      name: "imported-internal.txt",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await restored.reload();
+  await navigate(restored, "Files");
+  await expect(
+    restored.getByRole("button", {
+      name: "imported-internal.txt",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await leaveWorkspace(restored);
+  expect(await readFile(encrypted)).toEqual(originalArchive);
   console.log(
-    "Electron file writes/reopen, separate workspaces, portable credentials, encryption, complete local deletion with preserved external files, native peer and PTY addon passed.",
+    "Electron file writes/reopen, internal imports with unchanged source files, separate workspaces, portable credentials, encryption, complete local deletion with preserved external files, native peer and PTY addon passed.",
   );
 } finally {
   await app?.close();
