@@ -1,4 +1,6 @@
 import { chromium, expect } from "@playwright/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 950 },
@@ -193,7 +195,7 @@ try {
   await page.screenshot({
     timeout: 60000,
     animations: "disabled",
-    path: "/private/tmp/taskasaur-navigation-desktop.png",
+    path: join(tmpdir(), "taskasaur-navigation-desktop.png"),
   });
   await page.setViewportSize({ width: 390, height: 844 });
   const mobile = page.getByRole("navigation", {
@@ -215,7 +217,7 @@ try {
   await page.screenshot({
     timeout: 60000,
     animations: "disabled",
-    path: "/private/tmp/taskasaur-navigation-mobile.png",
+    path: join(tmpdir(), "taskasaur-navigation-mobile.png"),
   });
   expect(
     await page.evaluate(
@@ -229,7 +231,7 @@ try {
 } catch (error) {
   console.error(await page.locator("body").innerText());
   await page.screenshot({
-    path: "/private/tmp/taskasaur-navigation-failure.png",
+    path: join(tmpdir(), "taskasaur-navigation-failure.png"),
     fullPage: true,
   });
   throw error;

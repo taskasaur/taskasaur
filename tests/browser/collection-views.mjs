@@ -1,5 +1,7 @@
 import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -201,7 +203,7 @@ try {
   for (let i = 0; i < initialFields.indexOf("description"); i++)
     await description.getByRole("button", { name: /down$/ }).click();
   await expect.poll(visibleFields).toEqual(initialFields);
-  await page.screenshot({ path: "/private/tmp/taskasaur-columns.png" });
+  await page.screenshot({ path: join(tmpdir(), "taskasaur-columns.png") });
   await click("Group");
   await expect(page.locator("[data-column-row]")).toHaveCount(0);
   await click("Add group");
@@ -261,7 +263,7 @@ try {
   await expect(page.locator('[data-board-group="status"]')).toHaveCount(2);
   await expect(page.locator('[data-board-group="description"]')).toHaveCount(4);
   await page.screenshot({
-    path: "/private/tmp/taskasaur-board.png",
+    path: join(tmpdir(), "taskasaur-board.png"),
     animations: "disabled",
   });
   for (const [mode, display] of [
@@ -297,7 +299,7 @@ try {
   await click("Add filter");
   await click("Add filter");
   await page.screenshot({
-    path: "/private/tmp/taskasaur-filter.png",
+    path: join(tmpdir(), "taskasaur-filter.png"),
     animations: "disabled",
   });
   await page.keyboard.press("Escape");
@@ -330,7 +332,7 @@ try {
     .boundingBox();
   expect(filterPopup.x + filterPopup.width).toBeLessThanOrEqual(390);
   await page.screenshot({
-    path: "/private/tmp/taskasaur-mobile.png",
+    path: join(tmpdir(), "taskasaur-mobile.png"),
     animations: "disabled",
   });
   await page.keyboard.press("Escape");
@@ -357,7 +359,7 @@ try {
 } catch (error) {
   console.error(await page.locator("body").innerText());
   await page.screenshot({
-    path: "/private/tmp/taskasaur-collection-failure.png",
+    path: join(tmpdir(), "taskasaur-collection-failure.png"),
   });
   throw error;
 } finally {
