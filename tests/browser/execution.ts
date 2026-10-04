@@ -1,4 +1,8 @@
-import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  navigate,
+  addColumnTemplates,
+} from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -47,7 +51,7 @@ async function selectComputer(name: RegExp) {
 }
 try {
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:58597");
-  await button("Create workspace").click();
+  await createWorkspace(page);
   await install("Automation Runtime");
   await install("Automation Editor");
   await nav("Devices").click();

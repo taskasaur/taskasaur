@@ -1,3 +1,4 @@
+import { createWorkspace } from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,7 +50,7 @@ const newTask = async (title, extra) => {
 };
 try {
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:5173");
-  await click("Create workspace");
+  await createWorkspace(page);
   await expect(
     page.locator(".page-header,.workspace-label,.eyebrow"),
   ).toHaveCount(0);

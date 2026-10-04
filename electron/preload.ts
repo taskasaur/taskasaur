@@ -8,8 +8,12 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
     keys: (prefix: string) => ipcRenderer.invoke("replica:keys", prefix),
   },
   workspace: {
-    choose: (kind: "file" | "folder", create: boolean) =>
-      ipcRenderer.invoke("workspace:choose", kind, create),
+    choose: (kind: "file" | "folder", create: boolean, password?: string) =>
+      ipcRenderer.invoke("workspace:choose", kind, create, password),
+    unlock: (id: string, password: string) =>
+      ipcRenderer.invoke("workspace:unlock", id, password),
+    resume: (workspaceId: string, password?: string) =>
+      ipcRenderer.invoke("workspace:resume", workspaceId, password),
     list: () => ipcRenderer.invoke("workspace:list"),
     read: (id: string, path: string) =>
       ipcRenderer.invoke("workspace:read", id, path),
@@ -30,7 +34,10 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
   peer: {
     request: (address: string, packet: unknown) =>
       ipcRenderer.invoke("peer:request", address, packet),
-    join: (invitation: string) => ipcRenderer.invoke("peer:join", invitation),
+    select: (workspaceId?: string) =>
+      ipcRenderer.invoke("peer:select", workspaceId),
+    join: (invitation: string, credential?: unknown) =>
+      ipcRenderer.invoke("peer:join", invitation, credential),
     info: () => ipcRenderer.invoke("peer:info"),
     configure: (options: unknown) =>
       ipcRenderer.invoke("peer:configure", options),

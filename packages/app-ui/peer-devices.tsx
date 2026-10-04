@@ -2,8 +2,6 @@ import { SharedInput, SharedTextarea } from "../ui/html-controls";
 import { LegacySelect } from "../ui/choice-select";
 import { useState, useEffect, useSyncExternalStore } from "react";
 import type { NativeInfo, NativeSettings } from "./network";
-import { exportBackup } from "../core/backup";
-import { download } from "./download";
 import type { AppRuntime } from "./runtime";
 import { currentPolicy, type Role } from "../core/identity";
 import { Button } from "../ui/primitives/button";
@@ -37,7 +35,6 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
     status = runtime.node.replica.status();
   const [native, setNative] = useState<NativeInfo>(),
     [nativeInvitation, setNativeInvitation] = useState(""),
-    [passphrase, setPassphrase] = useState(""),
     [missing, setMissing] = useState(0);
   useEffect(() => {
     void window.taskasaurNative?.peer.info().then(setNative);
@@ -383,42 +380,6 @@ export function PeerDevicesView({ runtime }: { runtime: AppRuntime }) {
           )}
         </section>
       )}
-      <section className="settings-card space-y-3">
-        <h2>Encrypted device backup</h2>
-        <p className="text-sm">
-          Includes locally saved records, files and this device’s recovery keys.
-          Keep the passphrase separately. Restore only after retiring the
-          original device identity; use pairing for an additional device.
-        </p>
-        <label className="field-row">
-          Backup passphrase
-          <SharedInput
-            type="password"
-            autoComplete="new-password"
-            className="core-input"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-          />
-        </label>
-        <Button
-          disabled={busy || passphrase.length < 12}
-          onClick={() =>
-            void act(async () => {
-              await runtime.node.replica.flush();
-              download(
-                "taskasaur-device-backup.json",
-                new Blob(
-                  [await exportBackup(runtime.device.storage, passphrase)],
-                  { type: "application/json" },
-                ),
-              );
-              setPassphrase("");
-            })
-          }
-        >
-          Download encrypted backup
-        </Button>
-      </section>
     </div>
   );
 }

@@ -21,6 +21,7 @@ export async function registerWorkspaceFolders(
 ) {
   // Keep the config filename so existing folder bindings migrate without losing access.
   const config = path.join(app.getPath("userData"), "workspace-folders.json");
+  const pending = new Map<string, Location>();
   const opened = new Map<string, Location & { files: WorkspaceFiles }>(),
     ids = new Map<string, string>();
   let locations: Record<string, Location | string> = {};
@@ -29,13 +30,13 @@ export async function registerWorkspaceFolders(
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
-  async function open(location: Location, create = false) {
+  async function open(location: Location, create = false, password?: string) {
     let id = ids.get(location.path);
     if (!id) {
       id = crypto.randomUUID();
       const files =
         location.kind === "file"
-          ? await openNodeWorkspaceArchive(location.path, create)
+          ? await openNodeWorkspaceArchive(location.path, create, password)
           : await NodeWorkspaceFiles.open(location.path);
       opened.set(id, { ...location, files });
       ids.set(location.path, id);
@@ -50,7 +51,12 @@ export async function registerWorkspaceFolders(
   };
   ipcMain.handle(
     "workspace:choose",
-    async (event, kind: "file" | "folder" = "folder", create = false) => {
+    async (
+      event,
+      kind: "file" | "folder" = "folder",
+      create = false,
+      password?: string,
+    ) => {
       trusted(event);
       if (!["file", "folder"].includes(kind) || typeof create !== "boolean")
         throw Error("Invalid workspace selection");
@@ -82,29 +88,54 @@ export async function registerWorkspaceFolders(
       if (!selected) throw Error("Workspace selection canceled");
       if (ids.has(selected))
         throw Error("This workspace location is already open");
-      return open({ path: selected, kind }, create);
+      try {
+        return await open({ path: selected, kind }, create, password);
+      } catch (error) {
+        if ((error as { kind?: string }).kind !== "PASSWORD_REQUIRED")
+          throw error;
+        const id = crypto.randomUUID();
+        pending.set(id, { path: selected, kind });
+        return { id, label: path.basename(selected), kind, locked: true };
+      }
     },
   );
   ipcMain.handle("workspace:list", async (event) => {
     trusted(event);
-    return Promise.all(
-      Object.entries(locations).map(async ([workspaceId, value]) => {
-        const location: Location =
-          typeof value === "string" ? { path: value, kind: "folder" } : value;
-        try {
-          return { ...(await open(location)), workspaceId };
-        } catch (e) {
-          return {
-            workspaceId,
-            id: "",
-            label: path.basename(location.path),
-            kind: location.kind,
-            error: String(e),
-          };
-        }
-      }),
-    );
+    return Object.entries(locations).map(([workspaceId, value]) => {
+      const location: Location =
+        typeof value === "string" ? { path: value, kind: "folder" } : value;
+      return {
+        workspaceId,
+        id: ids.get(location.path) ?? "",
+        label: path.basename(location.path),
+        kind: location.kind,
+      };
+    });
   });
+  ipcMain.handle(
+    "workspace:resume",
+    async (event, workspaceId: string, password?: string) => {
+      trusted(event);
+      const value = locations[workspaceId];
+      if (!value) throw Error("Workspace location is not saved");
+      return open(
+        typeof value === "string" ? { path: value, kind: "folder" } : value,
+        false,
+        password,
+      );
+    },
+  );
+  ipcMain.handle(
+    "workspace:unlock",
+    async (event, id: string, password: string) => {
+      trusted(event);
+      const location = pending.get(id);
+      if (!location) throw Error("Select this workspace file first");
+      const result = await open(location, false, password);
+      pending.delete(id);
+      return result;
+    },
+  );
   ipcMain.handle("workspace:read", async (event, id: string, name: string) => {
     trusted(event);
     return get(id).files.read(name);
@@ -166,6 +197,7 @@ export async function registerWorkspaceFolders(
   });
   ipcMain.handle("workspace:close", async (event, id: string) => {
     trusted(event);
+    pending.delete(id);
     const location = opened.get(id);
     if (!location) return;
     await location.files.close?.();

@@ -1,6 +1,6 @@
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
-import { navigate } from "./navigation-helpers.mjs";
+import { createWorkspace, navigate } from "./navigation-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const context = await browser.newContext(),
@@ -11,7 +11,7 @@ try {
   const click = (name) =>
     page.getByRole("button", { name, exact: true }).click();
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:58597");
-  await click("Create workspace");
+  await createWorkspace(page);
   await navigate(page, "Variables");
   await click("New entry");
   await page.getByLabel("Name", { exact: true }).fill("Last retained record");

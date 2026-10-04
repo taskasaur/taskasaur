@@ -1,5 +1,9 @@
 import { chromium, expect } from "@playwright/test";
-import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  navigate,
+  addColumnTemplates,
+} from "./navigation-helpers.mjs";
 import { reviewInventory } from "./inventory-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
@@ -10,9 +14,7 @@ try {
   page.setDefaultTimeout(30000);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:4177");
-  await page
-    .getByRole("button", { name: "Create workspace", exact: true })
-    .click();
+  await createWorkspace(page);
   for (const name of ["Dashboard", "Tasks"]) {
     const row = page
       .getByRole("row")

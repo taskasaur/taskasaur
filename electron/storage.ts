@@ -4,7 +4,13 @@ import { base64, unbase64, utf8, text } from "../packages/core/crypto";
 /** OS keychain protects identity/transport keys. Workspace journals already use AES-GCM. */
 export class DesktopStorage extends FileStorage {
   private sensitive(key: string) {
-    return key === "device/identity" || key === "network/private-key";
+    return (
+      key === "device/identity" ||
+      key === "network/private-key" ||
+      /^workspace\/[0-9a-f-]{36}\/local\/(?:export|connection)-credential$/.test(
+        key,
+      )
+    );
   }
   async get(key: string) {
     const saved = await super.get(key);

@@ -3,7 +3,7 @@ import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import JSZip from "jszip";
-import { navigate } from "./navigation-helpers.mjs";
+import { createWorkspace, navigate } from "./navigation-helpers.mjs";
 const liveFile = process.env.TEST_WORKSPACE_KIND === "file";
 const browser = await chromium.launch({ channel: "chrome", headless: true }),
   directory = await mkdtemp(path.join(tmpdir(), "taskasaur-workspace-ui-"));
@@ -38,15 +38,14 @@ try {
         );
     });
   await first.goto(url);
-  await click(first, "Create workspace");
+  await createWorkspace(first);
   await navigate(first, "Settings");
-  await click(
-    first,
-    liveFile ? "Save and work from file" : "Save and work from folder",
-  );
-  await expect(first.getByRole("status")).toContainText(
-    "Workspace writes now go directly",
-  );
+  if (liveFile) {
+    await click(first, "Save and work from file");
+    await expect(first.getByRole("status")).toContainText(
+      "Workspace writes now go directly",
+    );
+  }
   await navigate(first, "Files");
   await first.locator('input[type="file"]').setInputFiles({
     name: "portable.txt",
@@ -82,24 +81,12 @@ try {
     const zip = await JSZip.loadAsync(new Uint8Array(bytes));
     return JSON.parse(await zip.file("workspace.json").async("string"));
   };
-  const folderBefore = liveFile
-    ? await fileManifest(first)
-    : await first.evaluate(async () =>
-        JSON.parse(
-          await (
-            await (
-              await (
-                await navigator.storage.getDirectory()
-              ).getDirectoryHandle("workspace")
-            ).getFileHandle("workspace.json")
-          )
-            .getFile()
-            .then((f) => f.text()),
-        ),
-      );
-  expect(
-    Object.keys(folderBefore.entries).some((k) => k.includes("/blobs/")),
-  ).toBe(true);
+  if (liveFile)
+    expect(
+      Object.keys((await fileManifest(first)).entries).some((k) =>
+        k.includes("/blobs/"),
+      ),
+    ).toBe(true);
   await first.reload();
   await navigate(first, "Variables");
   await expect(
@@ -121,6 +108,7 @@ try {
     ),
   ).toBe(false);
   await second.goto(url);
+  await click(second, "Open");
   if (liveFile) {
     await second.evaluate(
       async (bytes) => {
@@ -133,7 +121,7 @@ try {
       },
       Array.from(await readFile(archive)),
     );
-    await click(second, "Open workspace file");
+    await click(second, "Open file workspace");
   } else
     await second
       .getByLabel("Workspace archive", { exact: true })
@@ -141,11 +129,6 @@ try {
   await expect(
     second.getByLabel("Workspace file device request", { exact: true }),
   ).not.toHaveValue("");
-  await click(
-    second,
-    liveFile ? "Open and write to file" : "Import and open workspace",
-  );
-  await expect(second.getByRole("alert")).toContainText("Approve this device");
   const request = await second
     .getByLabel("Workspace file device request", { exact: true })
     .inputValue();
@@ -163,10 +146,7 @@ try {
         .inputValue(),
     );
   await a.close(); // The original writer is closed before the new identity restores.
-  await click(
-    second,
-    liveFile ? "Open and write to file" : "Import and open workspace",
-  );
+  await click(second, "Open workspace");
   await expect(
     second.getByRole("button", { name: "Open settings menu", exact: true }),
   ).toBeVisible();
@@ -203,7 +183,7 @@ try {
   ).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
-    `${liveFile ? "Live single-file" : "Folder and archive"} writes, identity exclusion, approval, original-device shutdown, byte-exact restore and offline restart passed.`,
+    `${liveFile ? "Live single-file" : "Internal archive"} writes, identity exclusion, approval, original-device shutdown, byte-exact restore and offline restart passed.`,
   );
 } catch (e) {
   console.error(e);

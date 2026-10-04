@@ -1,4 +1,8 @@
-import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  navigate,
+  addColumnTemplates,
+} from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
@@ -8,9 +12,7 @@ try {
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto(process.env.TEST_APP_URL ?? "http://localhost:4173");
-  await page
-    .getByRole("button", { name: "Create workspace", exact: true })
-    .click();
+  await createWorkspace(page);
   await navigate(page, "Plugins");
   const row = page
     .getByRole("row")

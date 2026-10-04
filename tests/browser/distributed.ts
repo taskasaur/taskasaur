@@ -1,4 +1,8 @@
-import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  navigate,
+  addColumnTemplates,
+} from "./navigation-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -32,9 +36,7 @@ try {
   });
   const url = process.env.TEST_APP_URL ?? "http://127.0.0.1:58597";
   await first.goto(url);
-  await first
-    .getByRole("button", { name: "Create workspace", exact: true })
-    .click();
+  await createWorkspace(first);
   async function install(page: typeof first, name: string) {
     console.log("Installing", name);
     await expect(page.getByRole("navigation", { name: "Current page" }))
@@ -102,9 +104,10 @@ try {
     .toBe(true);
   console.log("Pairing second browser");
   await second.goto(url);
-  await second
-    .getByRole("button", { name: "Join workspace", exact: true })
-    .click();
+  await second.getByRole("button", { name: "Join", exact: true }).click();
+  await expect(
+    second.getByRole("textbox", { name: "Device request", exact: true }),
+  ).not.toHaveValue("");
   const request = await second
     .getByRole("textbox", { name: "Device request", exact: true })
     .inputValue();
@@ -126,7 +129,7 @@ try {
         .inputValue(),
     );
   await second
-    .getByRole("button", { name: "Join and save local copy", exact: true })
+    .getByRole("button", { name: "Join workspace", exact: true })
     .click();
   await install(second, "Tasks");
   await navigate(second, "Tasks");

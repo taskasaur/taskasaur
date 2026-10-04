@@ -41,7 +41,7 @@ import type {
   Mutation,
   PluginEvent,
 } from "@taskasaur/platform/plugin-sdk";
-import { browserDevice } from "../platform-browser/device";
+import { browserDevice, activateWorkspace } from "../platform-browser/device";
 import type { DeviceCore, WorkspaceNode } from "../core/device";
 import { deviceRecordId } from "../core/records";
 import { ensureCollectionTables, scopedTableStore } from "./collection-tables";
@@ -50,7 +50,7 @@ import type {
   PluginCommand,
   SearchCollectionOptions,
 } from "@taskasaur/platform/plugin-sdk/navigation";
-import { currentPolicy } from "../core/identity";
+import { currentPolicy, delegateDevice } from "../core/identity";
 import { workflowTriggers, reminders, operationId } from "../core/schedules";
 import { PortableWorkflows } from "../core/workflows";
 import { runBrowserTypeScript } from "../platform-browser/typescript";
@@ -71,6 +71,7 @@ export interface WorkspaceProfile {
   name: string;
   serverUrl: string;
   connected: boolean;
+  storage?: "internal" | "file";
 }
 class Bootstrap extends Dexie {
   profiles!: Table<WorkspaceProfile, string>;
@@ -112,6 +113,9 @@ export class AppRuntime {
   inventoryError = "";
   private inventory?: PluginInventory;
   private closed = false;
+  assertActive() {
+    invariant(!this.closed, "WORKSPACE_CLOSED", "This workspace is closed");
+  }
   async refreshInventory() {
     try {
       const inventory = await readInventory(
@@ -285,7 +289,8 @@ export class AppRuntime {
     };
   }
 
-  async initialize() {
+  async initialize(requestPassword?: () => Promise<string>) {
+    await activateWorkspace(this.profile.workspaceId, requestPassword);
     let extensions =
       (await this.db.getMetadata<ExtensionContract[]>("core.extensions")) ?? [];
     this.registerPackages(extensions);
@@ -328,25 +333,51 @@ export class AppRuntime {
     const native = window.taskasaurNative;
     if (native) {
       const info = await native.peer.info();
-      if (
-        !info.workspaces.includes(this.profile.workspaceId) &&
-        currentPolicy(this.node.replica.access).owner.id ===
+      if (!info.workspaces.includes(this.profile.workspaceId)) {
+        if (
+          currentPolicy(this.node.replica.access).owner.id ===
           this.device.identity.id
-      ) {
-        await native.peer.join(
-          await this.device.approve(this.profile.workspaceId, info.request),
-        );
-        info.workspaces.push(this.profile.workspaceId);
+        ) {
+          await native.peer.join(
+            await this.device.approve(this.profile.workspaceId, info.request),
+          );
+          info.workspaces.push(this.profile.workspaceId);
+        } else if (this.node.replica.access.credential) {
+          const credential = this.node.replica.access.credential;
+          const grant = await delegateDevice(
+            credential,
+            this.node.replica.access,
+            JSON.parse(info.request).identity,
+          );
+          await native.peer.join(
+            JSON.stringify({
+              format: "taskasaur-pairing-v1",
+              policies: this.node.replica.access.policies,
+              peers: this.node.link.peers,
+              delegations: [
+                ...(this.node.replica.access.delegations ?? []).filter(
+                  (d) => d.identity.id !== grant.identity.id,
+                ),
+                grant,
+              ],
+            }),
+            credential,
+          );
+          info.workspaces.push(this.profile.workspaceId);
+        }
       }
-      if (info.workspaces.includes(this.profile.workspaceId))
+      if (info.workspaces.includes(this.profile.workspaceId)) {
+        await native.peer.select(this.profile.workspaceId);
         await this.device.setPeers(this.profile.workspaceId, [
           "local:desktop",
           ...this.node.link.peers,
         ]);
+      }
     }
     // One-time import of previously downloaded records; retain the old database for rollback.
     if (!(await this.db.getMetadata("peer.migrated"))) {
       for (const record of await this.db.records.toArray()) {
+        if (record.workspaceId !== this.profile.workspaceId) continue;
         if (!this.node.records.get(record.id))
           await this.node.replica.update(
             "record/" + record.id,
@@ -354,6 +385,11 @@ export class AppRuntime {
           );
       }
       for (const version of await this.db.fileVersions.toArray()) {
+        if (
+          this.node.records.get(version.fileId)?.workspaceId !==
+          this.profile.workspaceId
+        )
+          continue;
         await this.node.protocol.files.save(
           version.fileId,
           new Uint8Array(await version.blob.arrayBuffer()),
@@ -813,6 +849,7 @@ export class AppRuntime {
     }
   }
   collection(id: string, allTables = false) {
+    this.assertActive();
     const schema = getSchema(id);
     const source = this.db
       .scoped(
@@ -882,6 +919,7 @@ export class AppRuntime {
     body?: unknown,
     method = body === undefined ? "GET" : "POST",
   ): Promise<T> {
+    this.assertActive();
     const url = new URL(path, "https://local.invalid/"),
       route = url.pathname.slice(1),
       input = (body ?? {}) as Record<string, any>;
@@ -1195,7 +1233,9 @@ export class AppRuntime {
     await this.refreshHost();
   }
   async synchronize() {
+    if (this.closed) return;
     return this.syncQueue.run(async () => {
+      if (this.closed) return;
       await this.announce();
       await this.node.synchronize();
       await this.node.flushCommands();
@@ -1211,6 +1251,7 @@ export class AppRuntime {
     });
   }
   async fileBytes(fileId: string) {
+    this.assertActive();
     const file = this.node.records.get(fileId);
     invariant(file?.data.version_id, "NOT_FOUND", "File has no saved version");
     const { manifest, bytes } = await this.node.protocol.files.read(
@@ -1226,7 +1267,9 @@ export class AppRuntime {
     };
   }
   async close() {
+    if (this.closed) return;
     this.closed = true;
+    await this.syncQueue.idle().catch(() => {});
     await this.automation?.close();
     if (this.projectionListener)
       this.node?.replica.listeners.delete(this.projectionListener);
@@ -1235,6 +1278,10 @@ export class AppRuntime {
     this.surfaces.clear();
     this.notifySurfaces();
     this.db.close();
+    if (this.node) {
+      await this.device.closeWorkspace(this.node.replica.workspaceId);
+      await window.taskasaurNative?.peer.select();
+    }
   }
 }
 export async function profiles() {

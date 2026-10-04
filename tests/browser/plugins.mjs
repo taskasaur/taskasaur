@@ -1,4 +1,4 @@
-import { navigate } from "./navigation-helpers.mjs";
+import { createWorkspace, navigate } from "./navigation-helpers.mjs";
 import { reviewInventory } from "./inventory-helpers.mjs";
 import { chromium, expect } from "@playwright/test";
 
@@ -11,9 +11,7 @@ try {
   const failures = [];
   page.on("pageerror", (error) => failures.push(error.message));
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:58597");
-  await page
-    .getByRole("button", { name: "Create workspace", exact: true })
-    .click();
+  await createWorkspace(page);
   await navigate(page, "Plugins");
   for (const name of [
     "Tasks",

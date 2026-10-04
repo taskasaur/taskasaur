@@ -1,3 +1,4 @@
+import type { Identity } from "../core/crypto";
 import type { DurableStorage } from "../storage";
 import type { PeerPacket } from "../sync/protocol";
 export interface NativeSettings {
@@ -22,6 +23,20 @@ declare global {
         choose(
           kind: "file" | "folder",
           create: boolean,
+          password?: string,
+        ): Promise<{
+          id: string;
+          label: string;
+          kind: "file" | "folder";
+          locked?: boolean;
+        }>;
+        unlock(
+          id: string,
+          password: string,
+        ): Promise<{ id: string; label: string; kind: "file" | "folder" }>;
+        resume(
+          workspaceId: string,
+          password?: string,
         ): Promise<{ id: string; label: string; kind: "file" | "folder" }>;
         list(): Promise<
           Array<{
@@ -46,7 +61,8 @@ declare global {
       };
       peer: {
         request(address: string, packet: PeerPacket): Promise<PeerPacket>;
-        join(invitation: string): Promise<void>;
+        select(workspaceId?: string): Promise<void>;
+        join(invitation: string, credential?: Identity): Promise<void>;
         info(): Promise<NativeInfo>;
         configure(options: NativeSettings): Promise<NativeInfo>;
       };

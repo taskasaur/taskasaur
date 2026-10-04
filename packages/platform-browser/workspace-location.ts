@@ -49,15 +49,50 @@ export const workspaceFolderAvailable = () =>
   Boolean(window.taskasaurNative?.workspace) || directoryPickerAvailable();
 export const workspaceFileAvailable = () =>
   Boolean(window.taskasaurNative?.workspace) || filePickerAvailable();
+export interface WorkspaceOpenOptions {
+  password?: string;
+  requestPassword?: () => Promise<string>;
+}
+const needsPassword = (error: unknown) =>
+  ["PASSWORD_REQUIRED", "INCORRECT_PASSWORD"].includes(
+    (error as { kind?: string })?.kind ?? "",
+  ) ||
+  /Enter the workspace password|Incorrect workspace password/.test(
+    String(error),
+  );
+async function unlock<T>(
+  work: (password?: string) => Promise<T>,
+  options: WorkspaceOpenOptions,
+) {
+  let password = options.password;
+  for (;;) {
+    try {
+      return await work(password);
+    } catch (error) {
+      if (!needsPassword(error) || !options.requestPassword) throw error;
+      password = await options.requestPassword();
+    }
+  }
+}
 export async function selectWorkspaceLocation(
   kind: "file" | "folder" = "folder",
   create = false,
+  options: WorkspaceOpenOptions = {},
 ): Promise<WorkspaceLocation> {
   if (window.taskasaurNative?.workspace) {
-    const selected = await window.taskasaurNative.workspace.choose(
-      kind,
-      create,
-    );
+    const api = window.taskasaurNative.workspace;
+    let selected = await api.choose(kind, create, options.password);
+    if (selected.locked) {
+      try {
+        selected = await unlock(
+          (password) => api.unlock(selected.id, password ?? ""),
+          options,
+        );
+      } catch (error) {
+        await api.close(selected.id);
+        throw error;
+      }
+    }
     return nativeLocation(selected.id, selected.label, selected.kind);
   }
   if (kind === "file") {
@@ -65,7 +100,10 @@ export async function selectWorkspaceLocation(
     return {
       label: handle.name,
       kind,
-      files: await openBrowserWorkspaceArchive(handle, create),
+      files: await unlock(
+        (password) => openBrowserWorkspaceArchive(handle, create, password),
+        options,
+      ),
       remember: (id) => rememberFolder(id, handle),
     };
   }
@@ -79,39 +117,65 @@ export async function selectWorkspaceLocation(
 }
 export async function restoreWorkspaceLocations(
   accept: (id: string, source?: WorkspaceStorage) => Promise<void>,
+  workspaceId?: string,
+  options: WorkspaceOpenOptions = {},
 ) {
   if (window.taskasaurNative?.workspace) {
-    for (const item of await window.taskasaurNative.workspace.list()) {
+    const api = window.taskasaurNative.workspace;
+    for (const item of await api.list()) {
+      if (!workspaceId) {
+        await accept(item.workspaceId);
+        continue;
+      }
+      if (workspaceId !== item.workspaceId) continue;
       let source: WorkspaceStorage | undefined;
       try {
-        if (item.error) throw Error(item.error);
-        source = await WorkspaceStorage.open(
-          nativeLocation(item.id, item.label, item.kind).files,
+        const selected = await unlock(
+          (password) => api.resume(workspaceId, password),
+          options,
         );
-        if (source.manifest.workspace.id !== item.workspaceId)
+        source = await WorkspaceStorage.open(
+          nativeLocation(selected.id, selected.label, selected.kind).files,
+        );
+        if (source.manifest.workspace.id !== workspaceId)
           throw Error("Workspace location changed");
-        await accept(item.workspaceId, source);
-      } catch {
+        await accept(workspaceId, source);
+      } catch (error) {
         await source?.close();
-        await accept(item.workspaceId);
+        await accept(workspaceId);
+        throw error;
       }
     }
   } else
-    for (const folder of await savedFolders()) {
+    for (const location of await savedFolders()) {
+      if (!workspaceId) {
+        await accept(location.workspaceId);
+        continue;
+      }
+      if (workspaceId !== location.workspaceId) continue;
       let source: WorkspaceStorage | undefined;
       try {
         source =
-          folder.handle.kind === "file"
+          location.handle.kind === "file"
             ? await WorkspaceStorage.open(
-                await openBrowserWorkspaceArchive(folder.handle),
+                await unlock(
+                  (password) =>
+                    openBrowserWorkspaceArchive(
+                      location.handle as FileSystemFileHandle,
+                      false,
+                      password,
+                    ),
+                  options,
+                ),
               )
-            : await openSavedFolder(folder.handle);
-        if (source.manifest.workspace.id !== folder.workspaceId)
+            : await openSavedFolder(location.handle);
+        if (source.manifest.workspace.id !== workspaceId)
           throw Error("Workspace location changed");
-        await accept(folder.workspaceId, source);
-      } catch {
+        await accept(workspaceId, source);
+      } catch (error) {
         await source?.close();
-        await accept(folder.workspaceId);
+        await accept(workspaceId);
+        throw error;
       }
     }
 }

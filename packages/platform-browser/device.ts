@@ -9,6 +9,21 @@ import { WorkspaceRouter } from "../storage/workspace";
 import { restoreWorkspaceLocations } from "./workspace-location";
 let running: Promise<DeviceCore> | undefined;
 export let workspaceRouter: WorkspaceRouter;
+export async function activateWorkspace(
+  id: string,
+  requestPassword?: () => Promise<string>,
+) {
+  await browserDevice();
+  if (!workspaceRouter.blocked.has(id)) return;
+  await restoreWorkspaceLocations(
+    async (workspaceId, source) => {
+      if (source) await workspaceRouter.mount(source, false);
+      else workspaceRouter.blocked.add(workspaceId);
+    },
+    id,
+    { requestPassword },
+  );
+}
 export function browserDevice() {
   return (running ??= (async () => {
     const native = window.taskasaurNative;

@@ -17,6 +17,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { startNativeRuntime } from "../packages/platform-node/runtime";
 import { DesktopStorage } from "./storage";
+import type { Identity } from "../packages/core/crypto";
 import type { NativeSettings } from "../packages/app-ui/network";
 import type { PeerPacket } from "../packages/sync/protocol";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,7 @@ app
       name: os.hostname() + " services",
       storage: new DesktopStorage(path.join(directory, "replicas")),
       ...settings,
+      activeWorkspaces: [],
       network: { listen: ["/ip4/0.0.0.0/tcp/0/ws"], relay: true },
     });
     const rendererStorage = new DesktopStorage(
@@ -116,17 +118,31 @@ app
       trusted(event);
       return info();
     });
-    ipcMain.handle("peer:join", async (event, invitation: string) => {
+    ipcMain.handle("peer:select", async (event, workspaceId?: string) => {
       trusted(event);
-      const node = await runtime!.core.join(invitation);
-      await runtime!.services.attachWorkspace(node.replica.workspaceId);
+      if (
+        workspaceId !== undefined &&
+        (typeof workspaceId !== "string" ||
+          !runtime!.core.profiles().some((p) => p.id === workspaceId))
+      )
+        throw Error("Unknown workspace");
+      await runtime!.selectWorkspace(workspaceId);
     });
+    ipcMain.handle(
+      "peer:join",
+      async (event, invitation: string, credential?: Identity) => {
+        trusted(event);
+        const node = await runtime!.core.join(invitation, credential);
+        await runtime!.selectWorkspace(node.replica.workspaceId);
+      },
+    );
     ipcMain.handle(
       "peer:request",
       async (event, address: string, packet: PeerPacket) => {
         trusted(event);
         if (address === "local:desktop") {
-          const node = await runtime!.core.workspace(packet.workspaceId);
+          const node = runtime!.core.workspaces.get(packet.workspaceId);
+          if (!node) throw Error("This workspace is closed");
           return node.protocol.receive(packet);
         }
         return runtime!.core.transport!.request(address, packet);

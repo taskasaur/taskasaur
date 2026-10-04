@@ -43,3 +43,20 @@ export async function addColumnTemplates(page, plugin, labels) {
   }
   await navigate(page, plugin);
 }
+
+/** Exercise the real welcome flow; every test owns an explicitly named workspace. */
+export async function createWorkspace(page, name = "My workspace") {
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByLabel("Internal workspace name", { exact: true }).fill(name);
+  await page
+    .getByRole("button", { name: "Create internal workspace", exact: true })
+    .click();
+  await page.getByRole("navigation", { name: "Current page" }).waitFor();
+}
+export async function leaveWorkspace(page) {
+  await navigate(page, "Settings");
+  await page
+    .getByRole("button", { name: "Switch workspace", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Create", exact: true }).waitFor();
+}

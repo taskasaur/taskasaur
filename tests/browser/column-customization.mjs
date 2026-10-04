@@ -1,5 +1,9 @@
 import { chromium, expect } from "@playwright/test";
-import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  navigate,
+  addColumnTemplates,
+} from "./navigation-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const page = await browser.newPage(),
@@ -18,7 +22,7 @@ try {
     await page.getByRole("option", { name: value, exact: true }).click();
   };
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:4177");
-  await click("Create workspace");
+  await createWorkspace(page);
   await navigate(page, "Tables");
   await click("New table");
   await page.getByLabel("Name", { exact: true }).fill("Typed selections");

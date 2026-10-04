@@ -21,7 +21,6 @@ import { lockDirectory } from "../../packages/platform-node/lock";
 import { DeviceCore } from "../../packages/core/device";
 import { startNativeRuntime } from "../../packages/platform-node/runtime";
 import { snapshotStorage } from "../../packages/storage";
-import { exportBackup, restoreBackup } from "../../packages/core/backup";
 import { isRequiredCore } from "@taskasaur/platform/core/catalog";
 const { values } = parseArgs({
   options: {
@@ -49,15 +48,14 @@ const { values } = parseArgs({
     output: { type: "string" },
     "workspace-id": { type: "string" },
     plugin: { type: "string" },
-    backup: { type: "string" },
-    restore: { type: "string" },
+    "include-credentials": { type: "boolean" },
     "passphrase-file": { type: "string" },
     help: { type: "boolean" },
   },
 });
 if (values.help) {
   console.log(
-    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --workspace-file <file.taskasaur> (live shared workspace; --data keeps device identity)\n  --workspace-folder <folder> (existing directory layout)\n  --import-workspace <file.taskasaur> [--join invitation.json]\n  --export-workspace <file.taskasaur> --workspace-id <id>\n  --plugin <id> --workspace-id <id>",
+    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --workspace-file <file.taskasaur> (live shared workspace; --data keeps device identity)\n  --workspace-folder <folder> (existing directory layout)\n  --import-workspace <file.taskasaur> [--join invitation.json]\n  --export-workspace <file.taskasaur> --workspace-id <id>\n  --include-credentials (explicitly include portable access in an export)\n  --passphrase-file <private-file> (optional workspace encryption password)\n  --plugin <id> --workspace-id <id>",
   );
   process.exit(0);
 }
@@ -70,36 +68,11 @@ const workspaceFolder =
   values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER;
 if (workspaceFile && workspaceFolder)
   throw Error("Choose one workspace file or folder");
-if (values.backup || values.restore) {
-  if (
-    !values["passphrase-file"] ||
-    Boolean(values.backup) === Boolean(values.restore)
-  )
-    throw Error("Choose --backup or --restore and provide --passphrase-file");
-  const unlock = await lockDirectory(directory),
-    storage = snapshotStorage(
-      new FileStorage(path.join(directory, "replicas")),
-    );
-  try {
-    const password = (
-      await readFile(values["passphrase-file"], "utf8")
-    ).replace(/\r?\n$/, "");
-    if (values.restore)
-      await restoreBackup(
-        storage,
-        await readFile(values.restore, "utf8"),
-        password,
-      );
-    else
-      await writeFile(values.backup!, await exportBackup(storage, password), {
-        mode: 0o600,
-        flag: "wx",
-      });
-  } finally {
-    await unlock();
-  }
-  process.exit(0);
-}
+const passwordFile =
+  values["passphrase-file"] ?? process.env.TASKASAUR_WORKSPACE_PASSWORD_FILE;
+const workspacePassword = passwordFile
+  ? (await readFile(passwordFile, "utf8")).replace(/\r?\n$/, "")
+  : undefined;
 if (values["export-workspace"] || values["import-workspace"]) {
   if (values["export-workspace"] && values["import-workspace"])
     throw Error("Choose import or export");
@@ -112,7 +85,11 @@ if (values["export-workspace"] || values["import-workspace"]) {
   try {
     if (workspaceFile || workspaceFolder) {
       const files = workspaceFile
-        ? await openNodeWorkspaceArchive(workspaceFile)
+        ? await openNodeWorkspaceArchive(
+            workspaceFile,
+            false,
+            workspacePassword,
+          )
         : await NodeWorkspaceFiles.open(workspaceFolder!);
       try {
         const source = await WorkspaceStorage.open(files);
@@ -134,6 +111,7 @@ if (values["export-workspace"] || values["import-workspace"]) {
     if (values["import-workspace"]) {
       const source = await openWorkspaceArchive(
         new Uint8Array(await readFile(values["import-workspace"])),
+        workspacePassword,
       );
       const node = await importWorkspace(
         core,
@@ -147,7 +125,10 @@ if (values["export-workspace"] || values["import-workspace"]) {
       );
       await writeFile(
         values["export-workspace"]!,
-        await exportWorkspace(node),
+        await exportWorkspace(node, {
+          password: workspacePassword,
+          includeCredentials: values["include-credentials"],
+        }),
         { mode: 0o600, flag: "wx" },
       );
       console.log("Workspace archive saved");
@@ -200,6 +181,7 @@ const runtime = await startNativeRuntime({
   directory,
   workspaceFolder,
   workspaceFile,
+  workspacePassword,
   name: values.name ?? process.env.TASKASAUR_NAME,
   createWorkspace:
     values.workspace ??

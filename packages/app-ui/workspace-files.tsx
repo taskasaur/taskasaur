@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/primitives/button";
 import { Input } from "../ui/primitives/input";
-import { SharedTextarea } from "../ui/html-controls";
+import { Switch } from "../ui/primitives/switch";
+import { useWorkspacePassword, passwordRequired } from "./workspace-password";
 import { browserDevice, workspaceRouter } from "../platform-browser/device";
 import {
   workspaceFolderAvailable,
@@ -15,177 +16,239 @@ import {
   importWorkspace,
   openWorkspaceArchive,
   workspaceSnapshot,
+  validateWorkspaceHistory,
 } from "../core/workspace-package";
 import {
   profileForNode,
+  saveProfile,
   type AppRuntime,
   type WorkspaceProfile,
 } from "./runtime";
 import { download } from "./download";
 
+export interface WorkspaceFileOptions {
+  encrypted: boolean;
+  password: string;
+  includeCredentials: boolean;
+}
+export const defaultWorkspaceFileOptions: WorkspaceFileOptions = {
+  encrypted: false,
+  password: "",
+  includeCredentials: false,
+};
+export function WorkspaceFileOptionsFields({
+  value,
+  onChange,
+}: {
+  value: WorkspaceFileOptions;
+  onChange(value: WorkspaceFileOptions): void;
+}) {
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="flex items-center gap-2">
+        <Switch
+          aria-label="Encrypt workspace file"
+          checked={value.encrypted}
+          onCheckedChange={(encrypted) => onChange({ ...value, encrypted })}
+        />
+        <span>Encrypt workspace file</span>
+      </div>
+      {value.encrypted && (
+        <Input
+          type="password"
+          autoComplete="new-password"
+          aria-label="New workspace password"
+          placeholder="Workspace password (at least 8 characters)"
+          value={value.password}
+          onChange={(event) =>
+            onChange({ ...value, password: event.target.value })
+          }
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <Switch
+          aria-label="Include credentials"
+          checked={value.includeCredentials}
+          onCheckedChange={(includeCredentials) =>
+            onChange({ ...value, includeCredentials })
+          }
+        />
+        <span>Include credentials</span>
+      </div>
+      {value.includeCredentials && (
+        <p className="text-xs text-muted-foreground">
+          Includes plugin credentials and access to reconnect. Anyone who can
+          open this file can use that access.
+        </p>
+      )}
+    </div>
+  );
+}
 export function OpenWorkspaceFile({
   onOpen,
 }: {
   onOpen(profile: WorkspaceProfile): Promise<void>;
 }) {
   const [source, setSource] = useState<WorkspaceStorage>(),
-    [folder, setFolder] = useState<WorkspaceLocation>(),
+    [location, setLocation] = useState<WorkspaceLocation>(),
     [request, setRequest] = useState(""),
     [invitation, setInvitation] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const pending = useRef<WorkspaceStorage | undefined>(undefined);
+  const input = useRef<HTMLInputElement>(null),
+    pending = useRef<WorkspaceStorage | undefined>(undefined);
+  const { requestPassword, dialog } = useWorkspacePassword();
+  async function discard(value: WorkspaceStorage) {
+    if (workspaceRouter?.mounts.get(value.manifest.workspace.id) === value)
+      await (await browserDevice()).closeWorkspace(value.manifest.workspace.id);
+    else await value.close();
+  }
   useEffect(
     () => () => {
       const value = pending.current;
-      if (
-        value &&
-        workspaceRouter.mounts.get(value.manifest.workspace.id) !== value
-      )
-        void value.close();
+      pending.current = undefined;
+      if (value) void discard(value).catch(() => {});
     },
     [],
   );
-  const load = async (value: WorkspaceStorage, handle?: WorkspaceLocation) => {
-    const previous = pending.current;
-    if (
-      previous &&
-      previous !== value &&
-      workspaceRouter.mounts.get(previous.manifest.workspace.id) !== previous
-    )
-      await previous.close();
+  async function open(
+    value: WorkspaceStorage,
+    selected?: WorkspaceLocation,
+    approval?: string,
+  ) {
+    await validateWorkspaceHistory(value.manifest.workspace);
+    const device = await browserDevice();
+    if (selected && workspaceRouter.blocked.has(value.manifest.workspace.id))
+      await workspaceRouter.mount(value, false);
+    const node = await importWorkspace(device, value, approval);
+    if (selected) {
+      const snapshot = await workspaceSnapshot(node);
+      await workspaceRouter.mount(value, true, snapshot.excludedKeys);
+      await selected.remember(node.replica.workspaceId);
+    }
+    const profile = await profileForNode(node);
+    profile.storage = selected ? "file" : "internal";
+    await saveProfile(profile);
+    pending.current = undefined;
+    try {
+      await onOpen(profile);
+    } catch (error) {
+      pending.current = value;
+      throw error;
+    }
+  }
+  async function load(value: WorkspaceStorage, selected?: WorkspaceLocation) {
+    if (pending.current && pending.current !== value)
+      await discard(pending.current);
     pending.current = value;
     setSource(value);
-    setFolder(handle);
-    setError("");
+    setLocation(selected);
     setInvitation("");
-    setRequest((await browserDevice()).pairingRequest());
+    setError("");
+    try {
+      await open(value, selected);
+    } catch (error) {
+      if ((error as { kind?: string }).kind !== "APPROVAL_REQUIRED")
+        throw error;
+      setRequest((await browserDevice()).pairingRequest());
+    }
+  }
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
-    <section className="mt-6 space-y-3 border-t pt-4">
-      <h2 className="font-medium">Open a workspace</h2>
-      <label className="field-row">
-        Workspace archive
-        <Input
-          aria-label="Workspace archive"
-          type="file"
-          accept=".taskasaur,.zip"
-          disabled={busy}
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            setBusy(true);
+    <div className="space-y-4">
+      <Button
+        variant="outline"
+        disabled={busy}
+        onClick={() => {
+          if (!workspaceFileAvailable()) {
+            input.current?.click();
+            return;
+          }
+          void run(async () => {
+            const selected = await selectWorkspaceLocation("file", false, {
+              requestPassword,
+            });
             try {
-              await load(
-                await openWorkspaceArchive(
-                  new Uint8Array(await file.arrayBuffer()),
-                ),
-              );
-            } catch (e) {
-              setError(String(e));
-            } finally {
-              setBusy(false);
-              e.target.value = "";
+              await load(await WorkspaceStorage.open(selected.files), selected);
+            } catch (error) {
+              if (
+                workspaceRouter?.mounts.get(
+                  pending.current?.manifest.workspace.id ?? "",
+                ) !== pending.current
+              )
+                await selected.files.close?.();
+              throw error;
             }
-          }}
-        />
-      </label>
-      {(["file", "folder"] as const)
-        .filter((kind) =>
-          kind === "file"
-            ? workspaceFileAvailable()
-            : workspaceFolderAvailable(),
-        )
-        .map((kind) => (
-          <Button
-            key={kind}
-            variant="outline"
-            disabled={busy}
-            onClick={async () => {
-              let handle: WorkspaceLocation | undefined;
-              setBusy(true);
-              try {
-                handle = await selectWorkspaceLocation(kind);
-                await load(await WorkspaceStorage.open(handle.files), handle);
-              } catch (e) {
-                await handle?.files.close?.();
-                setError(String(e));
-              } finally {
-                setBusy(false);
+          });
+        }}
+      >
+        Open file workspace
+      </Button>
+      <Input
+        ref={input}
+        className="hidden"
+        aria-label="Workspace archive"
+        type="file"
+        accept=".taskasaur,.zip"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (file)
+            void run(async () => {
+              const bytes = new Uint8Array(await file.arrayBuffer());
+              let password: string | undefined;
+              for (;;) {
+                try {
+                  await load(await openWorkspaceArchive(bytes, password));
+                  return;
+                } catch (error) {
+                  if (!passwordRequired(error)) throw error;
+                  password = await requestPassword();
+                }
               }
-            }}
-          >
-            Open workspace {kind}
-          </Button>
-        ))}
-      {source && (
-        <div className="space-y-3">
-          <p>{source.manifest.workspace.name}</p>
+            });
+        }}
+      />
+      {source && request && (
+        <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            A new device needs approval from the workspace owner. Copy this
-            request to their Devices page, then paste the returned invitation.
-            An already approved device can open directly.
+            Send this device request to the workspace owner. In Devices, they
+            can approve it and return an encrypted invitation for this device.
           </p>
-          <SharedTextarea
-            aria-label="Workspace file device request"
-            readOnly
-            value={request}
-          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="field-row">
+              Device request
+              <Input
+                aria-label="Workspace file device request"
+                readOnly
+                value={request}
+                onFocus={(event) => event.target.select()}
+              />
+            </label>
+            <label className="field-row">
+              Workspace invitation
+              <Input
+                aria-label="Workspace file approval"
+                value={invitation}
+                onChange={(event) => setInvitation(event.target.value)}
+              />
+            </label>
+          </div>
           <Button
-            variant="outline"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(request)
-                .catch((e) => setError(String(e)))
-            }
+            disabled={busy || !invitation}
+            onClick={() => void run(() => open(source, location, invitation))}
           >
-            Copy file device request
-          </Button>
-          <SharedTextarea
-            aria-label="Workspace file approval"
-            value={invitation}
-            onChange={(e) => setInvitation(e.target.value)}
-            placeholder="Workspace invitation"
-          />
-          <Button
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              setError("");
-              try {
-                const device = await browserDevice();
-                // Reconnect the selected package before opening an already mounted profile.
-                if (
-                  folder &&
-                  workspaceRouter.blocked.has(source.manifest.workspace.id)
-                ) {
-                  await workspaceRouter.mount(source, false);
-                }
-                const node = await importWorkspace(
-                  device,
-                  source,
-                  invitation || undefined,
-                );
-                if (folder) {
-                  const snapshot = await workspaceSnapshot(node);
-                  await workspaceRouter.mount(
-                    source,
-                    true,
-                    snapshot.excludedKeys,
-                  );
-                  await folder.remember(node.replica.workspaceId);
-                }
-                await onOpen(await profileForNode(node));
-              } catch (e) {
-                setError(e instanceof Error ? e.message : String(e));
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {folder
-              ? `Open and write to ${folder.kind}`
-              : "Import and open workspace"}
+            Open workspace
           </Button>
         </div>
       )}
@@ -194,10 +257,12 @@ export function OpenWorkspaceFile({
           {error}
         </p>
       )}
-    </section>
+      {dialog}
+    </div>
   );
 }
 export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
+  const [options, setOptions] = useState(defaultWorkspaceFileOptions);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -220,14 +285,18 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
         connections. Device identity, local settings, execution checkpoints, and
         caches stay on this device.
       </p>
+      <WorkspaceFileOptionsFields value={options} onChange={setOptions} />
       <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
-          disabled={busy}
+          disabled={busy || (options.encrypted && options.password.length < 8)}
           onClick={() =>
             void run(async () => {
               await runtime.node.synchronize();
-              const bytes = await exportWorkspace(runtime.node);
+              const bytes = await exportWorkspace(runtime.node, {
+                includeCredentials: options.includeCredentials,
+                password: options.encrypted ? options.password : undefined,
+              });
               download(
                 "workspace.taskasaur",
                 new Blob([new Uint8Array(bytes)], { type: "application/zip" }),
@@ -264,7 +333,7 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
         >
           Download all workspace content
         </Button>
-        {(["file", "folder"] as const)
+        {(["file"] as const)
           .filter((kind) =>
             kind === "file"
               ? workspaceFileAvailable()
@@ -274,19 +343,26 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
             <Button
               key={kind}
               variant="outline"
-              disabled={busy}
+              disabled={
+                busy || (options.encrypted && options.password.length < 8)
+              }
               onClick={async () => {
                 let handle: WorkspaceLocation | undefined;
                 let source: WorkspaceStorage | undefined;
                 setBusy(true);
                 setError("");
                 try {
-                  handle = await selectWorkspaceLocation(kind, true);
-                  const snapshot = await workspaceSnapshot(runtime.node);
+                  handle = await selectWorkspaceLocation(kind, true, {
+                    password: options.encrypted ? options.password : undefined,
+                  });
+                  const snapshot = await workspaceSnapshot(runtime.node, {
+                    includeCredentials: options.includeCredentials,
+                  });
                   source = await WorkspaceStorage.create(
                     handle.files,
                     snapshot.workspace,
                     snapshot.entries,
+                    snapshot.connectionCredential,
                   );
                   await workspaceRouter.mount(
                     source,
@@ -294,6 +370,8 @@ export function WorkspaceFileSettings({ runtime }: { runtime: AppRuntime }) {
                     snapshot.excludedKeys,
                   );
                   await handle.remember(runtime.profile.workspaceId);
+                  runtime.profile.storage = "file";
+                  await saveProfile(runtime.profile);
                   setNotice(
                     `Workspace writes now go directly to ${handle.label}. Keep the ${kind} available while the workspace is open.`,
                   );

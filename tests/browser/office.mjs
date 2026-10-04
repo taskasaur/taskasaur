@@ -3,7 +3,11 @@ import JSZip from "jszip";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { navigate } from "./navigation-helpers.mjs";
+import {
+  createWorkspace,
+  leaveWorkspace,
+  navigate,
+} from "./navigation-helpers.mjs";
 import { reviewInventory } from "./inventory-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const directory = await mkdtemp(path.join(tmpdir(), "taskasaur-office-"));
@@ -26,9 +30,7 @@ try {
     console.log("Request failed", r.url(), r.failure()?.errorText),
   );
   await page.goto(process.env.TEST_APP_URL ?? "http://127.0.0.1:4177");
-  await page
-    .getByRole("button", { name: "Create workspace", exact: true })
-    .click();
+  await createWorkspace(page);
   const row = page
     .getByRole("row")
     .filter({ has: page.getByText("Office Editor", { exact: true }) });
@@ -204,12 +206,51 @@ try {
     expect(String(await inspect(kind, false))).toContain(String(expected));
     await page.getByRole("button", { name: "Office", exact: true }).click();
   }
+  await context.setOffline(false);
+  await leaveWorkspace(page);
+  await createWorkspace(page, "Empty office workspace");
+  const newOffice = page
+    .getByRole("row")
+    .filter({ has: page.getByText("Office Editor", { exact: true }) });
+  await newOffice.getByRole("button", { name: "Install", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm install", exact: true })
+    .click();
+  await newOffice
+    .getByRole("button", { name: "Disable", exact: true })
+    .waitFor();
+  await navigate(page, "Office");
+  await expect(
+    page.getByRole("button", {
+      name: /^Untitled (document|spreadsheet|presentation)\./,
+    }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("navigation", { name: "Current page" }),
+  ).toContainText("Empty office workspace");
+  await navigate(page, "Office");
+  await expect(
+    page.getByRole("button", {
+      name: /^Untitled (document|spreadsheet|presentation)\./,
+    }),
+  ).toHaveCount(0);
+  await leaveWorkspace(page);
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.getByLabel("Open internal workspace", { exact: true }).click();
+  await page.getByRole("option", { name: "My workspace", exact: true }).click();
+  await navigate(page, "Office");
+  await expect(
+    page.getByRole("button", {
+      name: /^Untitled (document|spreadsheet|presentation)\./,
+    }),
+  ).toHaveCount(3);
   expect(
     await page.locator(".ql-editor,[data-custom-office-editor]").count(),
   ).toBe(0);
   expect(errors).toEqual([]);
   console.log(
-    "Upstream LibreOffice ODT, ODS formula, ODP, durable core saves, exports and cold offline reopen passed.",
+    "Upstream LibreOffice ODT, ODS formula, ODP, durable core saves, exports, cold offline reopen and separate workspace contents passed.",
   );
 } finally {
   await browser.close();

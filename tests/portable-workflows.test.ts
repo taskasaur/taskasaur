@@ -4,7 +4,6 @@ import { DeviceCore } from "../packages/core/device";
 import { MemoryStorage } from "../packages/storage";
 import { PortableWorkflows } from "../packages/core/workflows";
 import { deviceRecordId } from "../packages/core/records";
-import { exportBackup, restoreBackup } from "../packages/core/backup";
 import { LocalState } from "../packages/core/local-state";
 const graph = {
   nodes: [
@@ -97,35 +96,6 @@ it("does not execute a replicated job document without a device-local accepted i
   );
   await engine.tick();
   expect(node.records.all().length).toBe(0);
-});
-it("restores encrypted identity and data, refuses wrong passwords and nonempty stores", async () => {
-  const core = await DeviceCore.open(new MemoryStorage(), "Laptop"),
-    node = await core.createWorkspace("Backup");
-  await node.records.put("variables", {
-    name: "Saved",
-    value: "private",
-    value_type: "text",
-  });
-  const backup = await exportBackup(
-    core.storage,
-    "correct horse battery staple",
-  );
-  expect(backup).not.toContain("private");
-  const target = new MemoryStorage();
-  await expect(
-    restoreBackup(target, backup, "wrong passphrase"),
-  ).rejects.toThrow();
-  expect(await target.keys("")).toEqual([]);
-  await restoreBackup(target, backup, "correct horse battery staple");
-  const restored = await DeviceCore.open(target, "Restored");
-  expect(restored.identity.id).toBe(core.identity.id);
-  expect(
-    (await restored.workspace(node.replica.workspaceId)).records.all()[0].data
-      .value,
-  ).toBe("private");
-  await expect(
-    restoreBackup(target, backup, "correct horse battery staple"),
-  ).rejects.toThrow("empty");
 });
 it("stops an interrupted external step rather than executing it again", async () => {
   const core = await DeviceCore.open(new MemoryStorage(), "Phone"),

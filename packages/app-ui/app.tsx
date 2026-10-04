@@ -1,7 +1,6 @@
 import { StoragePlacementView } from "./storage-placement";
 ("use client");
 
-import { SharedTextarea } from "../ui/html-controls";
 import {
   useEffect,
   useState,
@@ -14,16 +13,8 @@ import {
 } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ThemeProvider, useTheme } from "next-themes";
-import { CheckSquare, ArrowLeft } from "lucide-react";
-import {
-  AppRuntime,
-  createLocalWorkspace,
-  profiles,
-  saveProfile,
-  joinWorkspace,
-  browserDevice,
-  type WorkspaceProfile,
-} from "./runtime";
+import { ArrowLeft } from "lucide-react";
+import { AppRuntime, profiles, type WorkspaceProfile } from "./runtime";
 import { RecordTable } from "./record-table";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import { WorkspaceNavigation } from "./workspace-navigation";
@@ -37,9 +28,9 @@ import { ChoiceSelect } from "../ui/choice-select";
 import { ReferenceOptionsContext, FieldInput } from "../ui/fields";
 import { field } from "@taskasaur/platform/field-types";
 import { SyncConflicts } from "./sync-conflicts";
-import { RestoreBackup } from "./restore-backup";
-import { OpenWorkspaceFile, WorkspaceFileSettings } from "./workspace-files";
-import { download } from "./download";
+import { Welcome, activeWorkspaceKey } from "./welcome";
+import { useWorkspacePassword } from "./workspace-password";
+import { WorkspaceFileSettings } from "./workspace-files";
 import { catalog, isRequiredCore } from "@taskasaur/platform/core/catalog";
 import {
   Dialog,
@@ -74,6 +65,7 @@ export default function Application() {
   );
 }
 function WorkspaceApp() {
+  const { requestPassword, dialog } = useWorkspacePassword();
   const [runtime, setRuntime] = useState<AppRuntime | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
@@ -83,11 +75,18 @@ function WorkspaceApp() {
     void (async () => {
       try {
         const saved = await profiles();
-        if (saved[0]) {
-          current = await new AppRuntime(saved[0]).initialize();
-          if (!disposed) setRuntime(current);
+        if (disposed) return;
+        const selected = saved.find(
+          (profile) => profile.id === localStorage.getItem(activeWorkspaceKey),
+        );
+        if (selected) {
+          current = new AppRuntime(selected);
+          await current.initialize(requestPassword);
+          if (disposed) await current.close();
+          else setRuntime(current);
         }
       } catch (e) {
+        await current?.close().catch(() => {});
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!disposed) setLoading(false);
@@ -99,163 +98,51 @@ function WorkspaceApp() {
     };
   }, []);
   async function open(profile: WorkspaceProfile) {
+    const next = new AppRuntime(profile);
     try {
       await runtime?.close();
-      const next = await new AppRuntime(profile).initialize();
+      await next.initialize(requestPassword);
+      localStorage.setItem(activeWorkspaceKey, profile.id);
+      location.hash = "";
       setRuntime(next);
       setError("");
     } catch (e) {
+      await next.close().catch(() => {});
       setError(e instanceof Error ? e.message : String(e));
+      throw e;
     }
   }
   if (loading)
-    return <div className="boot-screen">Opening your workspace…</div>;
-  if (!runtime) return <Welcome onOpen={open} error={error} />;
+    return (
+      <>
+        <div className="boot-screen">Opening your workspace…</div>
+        {dialog}
+      </>
+    );
+  if (!runtime)
+    return (
+      <>
+        <Welcome onOpen={open} error={error} />
+        {dialog}
+      </>
+    );
   return (
     <Shell
       key={runtime.profile.id}
       runtime={runtime}
       onSwitch={() => {
-        void runtime.close();
-        setRuntime(null);
+        localStorage.removeItem(activeWorkspaceKey);
+        location.hash = "";
+        setLoading(true);
+        void runtime
+          .close()
+          .catch((error) => setError(String(error)))
+          .finally(() => {
+            setRuntime(null);
+            setLoading(false);
+          });
       }}
     />
-  );
-}
-function Welcome({
-  onOpen,
-  error: externalError,
-}: {
-  onOpen: (profile: WorkspaceProfile) => Promise<void>;
-  error: string;
-}) {
-  const [name, setName] = useState("My workspace"),
-    [invitation, setInvitation] = useState(""),
-    [request, setRequest] = useState(""),
-    [joining, setJoining] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(externalError);
-  async function create() {
-    setBusy(true);
-    try {
-      await onOpen(await createLocalWorkspace(name || "My workspace"));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <main className="welcome-shell">
-      <div className="welcome-card">
-        <img src="/taskasaur_icon.png" width="52" height="52" alt="Taskasaur" />
-        <p className="eyebrow mt-6">YOUR WORK, TOGETHER</p>
-        <h1>
-          A workspace that
-          <br />
-          goes with you.
-        </h1>
-        <p className="text-muted-foreground my-5">
-          Your workspace lives on this device. Work offline and synchronize
-          directly with your approved devices.
-        </p>
-        {!joining ? (
-          <>
-            <label className="field-row">
-              Workspace name
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-            <div className="flex gap-3 mt-6">
-              <Button disabled={busy} onClick={() => void create()}>
-                Create workspace
-              </Button>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    setRequest((await browserDevice()).pairingRequest());
-                    setJoining(true);
-                  } catch (e) {
-                    setError(String(e));
-                  }
-                }}
-              >
-                Join workspace
-              </Button>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm">
-              Send this device request to the workspace owner. In Devices, they
-              can approve it and return an encrypted invitation for this device.
-            </p>
-            <label className="field-row">
-              Device request
-              <SharedTextarea
-                className="core-input min-h-20"
-                value={request}
-                readOnly
-              />
-            </label>
-            <Button
-              variant="outline"
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(request)
-                  .catch((e) => setError(String(e)))
-              }
-            >
-              Copy device request
-            </Button>
-            <label className="field-row">
-              Workspace invitation
-              <SharedTextarea
-                className="core-input min-h-28"
-                value={invitation}
-                onChange={(e) => setInvitation(e.target.value)}
-              />
-            </label>
-            <div className="flex gap-2">
-              <Button
-                disabled={busy || !invitation}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await onOpen(await joinWorkspace(invitation));
-                  } catch (e) {
-                    setError(String(e));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                Join and save local copy
-              </Button>
-              <Button variant="ghost" onClick={() => setJoining(false)}>
-                Back
-              </Button>
-            </div>
-          </div>
-        )}
-        <RestoreBackup onOpen={onOpen} />
-        {error && (
-          <p role="alert" className="error-banner mt-4">
-            {error}
-          </p>
-        )}
-        <OpenWorkspaceFile onOpen={onOpen} />
-      </div>
-      <div className="welcome-art">
-        <div className="orbit one" />
-        <div className="orbit two" />
-        <div className="orbit three" />
-        <div className="orbit-center">
-          <CheckSquare size={48} />
-        </div>
-        <div className="art-caption">One place. Your pace.</div>
-      </div>
-    </main>
   );
 }
 function Shell({

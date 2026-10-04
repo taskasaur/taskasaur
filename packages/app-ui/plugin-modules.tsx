@@ -60,12 +60,14 @@ export function pluginWorkspace(
   manifest: PluginManifest,
   grants: string[],
 ) {
-  const active = () =>
+  const active = () => {
+    runtime.assertActive();
     invariant(
       runtime.registry.enabled(manifest.id),
       "FEATURE_DISABLED",
       "Plugin is disabled",
     );
+  };
   const service = (id: string) => {
     active();
     const declaration = manifest.sharedServices.find((s) => s.id === id);
