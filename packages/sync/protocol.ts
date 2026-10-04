@@ -15,7 +15,11 @@ import {
   unbase64,
   digest,
 } from "../core/crypto";
-import { currentPolicy, type Policy } from "../core/identity";
+import {
+  currentPolicy,
+  type Policy,
+  type DeviceDelegation,
+} from "../core/identity";
 import type { Replica, SignedChange } from "../core/replica";
 import { ReplicaFiles } from "../core/files";
 import { invariant } from "@taskasaur/platform/core/errors";
@@ -29,6 +33,7 @@ export interface PeerPacket {
   policies: Policy[];
   ciphertext: string;
   signature: string;
+  delegations?: DeviceDelegation[];
 }
 export interface PeerRequest {
   kind:
@@ -64,6 +69,8 @@ export type CommandHandler = (
   context: { deviceId: string; requestId: string },
 ) => Promise<unknown>;
 export class PeerProtocol {
+  private closed = false;
+  private pending = new Set<Promise<PeerPacket>>();
   readonly files: ReplicaFiles;
   readonly storage: StoragePlacement;
   private nonces = new Map<string, number>();
@@ -82,6 +89,7 @@ export class PeerProtocol {
     input: unknown,
     requestId: string = crypto.randomUUID(),
   ) {
+    invariant(!this.closed, "WORKSPACE_CLOSED", "This workspace is closed");
     return this.handle(
       { kind: "rpc", command, input, requestId },
       this.replica.identity.id,
@@ -100,6 +108,9 @@ export class PeerProtocol {
       nonce,
       issuedAt: Date.now(),
       policies: this.replica.access.policies,
+      ...(this.replica.access.delegations?.length
+        ? { delegations: this.replica.access.delegations }
+        : {}),
       ciphertext: await encrypt(
         this.replica.access.keys[String(policy.epoch)],
         utf8.encode(canonical(value)),
@@ -127,6 +138,8 @@ export class PeerProtocol {
     );
     if (packet.policies.length > this.replica.access.policies.length)
       await this.replica.setPolicies(packet.policies);
+    if (packet.delegations?.length)
+      await this.replica.setDelegations(packet.delegations);
     const member = currentPolicy(this.replica.access).members[packet.from];
     invariant(member, "PERMISSION_DENIED", "Peer is not an approved member");
     const { signature, ...body } = packet;
@@ -153,6 +166,23 @@ export class PeerProtocol {
     return value as T;
   }
   async receive(packet: PeerPacket, address?: string): Promise<PeerPacket> {
+    invariant(!this.closed, "WORKSPACE_CLOSED", "This workspace is closed");
+    const result = this.receiveActive(packet, address);
+    this.pending.add(result);
+    void result.finally(() => this.pending.delete(result)).catch(() => {});
+    return result;
+  }
+  async close() {
+    this.closed = true;
+    await Promise.allSettled([...this.pending]);
+    await this.commands;
+    this.execute = undefined;
+    this.connections.clear();
+  }
+  private async receiveActive(
+    packet: PeerPacket,
+    address?: string,
+  ): Promise<PeerPacket> {
     const request = await this.unpack<PeerRequest>(packet);
     if (address)
       for (const listener of this.connections) listener(packet.from, address);

@@ -16,6 +16,16 @@ export interface Member {
   identity: PublicIdentity;
   userId: string;
   role: Role;
+  portable?: boolean;
+  delegatedBy?: string;
+}
+export interface DeviceDelegation {
+  workspaceId: string;
+  issuer: string;
+  identity: PublicIdentity;
+  userId: string;
+  role: "editor" | "viewer";
+  signature: string;
 }
 export interface PolicyBody {
   workspaceId: string;
@@ -34,9 +44,101 @@ export interface Policy extends PolicyBody {
 export interface WorkspaceAccess {
   policies: Policy[];
   keys: Record<string, string>;
+  delegations?: DeviceDelegation[];
+  /** Local access credential, exported only through the explicit credentials option. */
+  credential?: Identity;
 }
 export function currentPolicy(access: WorkspaceAccess) {
-  return access.policies.at(-1)!;
+  const base = access.policies.at(-1)!;
+  if (!access.delegations?.length) return base;
+  const members = { ...base.members };
+  for (const delegation of access.delegations) {
+    const member = memberAt(access, base.epoch, delegation.identity.id);
+    if (member) members[delegation.identity.id] = member;
+  }
+  return { ...base, members };
+}
+export function memberAt(
+  access: WorkspaceAccess,
+  epoch: number,
+  id: string,
+): Member | undefined {
+  const policy = access.policies[epoch - 1];
+  if (!policy || policy.revoked[id]) return;
+  if (policy.members[id]) return policy.members[id];
+  const grant = access.delegations?.find((d) => d.identity.id === id),
+    issuer = grant && policy.members[grant.issuer];
+  if (
+    !grant ||
+    !issuer?.portable ||
+    issuer.userId !== grant.userId ||
+    (issuer.role === "viewer" && grant.role !== "viewer")
+  )
+    return;
+  return {
+    identity: grant.identity,
+    userId: grant.userId,
+    role: grant.role,
+    delegatedBy: grant.issuer,
+  };
+}
+export async function validateDelegations(
+  policies: Policy[],
+  delegations: DeviceDelegation[],
+) {
+  invariant(
+    delegations.length <= 1000 &&
+      new Set(delegations.map((d) => d.identity?.id)).size ===
+        delegations.length,
+    "INVALID_CREDENTIAL",
+    "Invalid workspace connection grants",
+  );
+  for (const grant of delegations) {
+    const issuer = policies
+      .map((p) => p.members[grant.issuer])
+      .find((m) => m?.portable);
+    const { signature, ...body } = grant;
+    invariant(
+      issuer &&
+        grant.workspaceId === policies[0].workspaceId &&
+        grant.userId === issuer.userId &&
+        ["editor", "viewer"].includes(grant.role) &&
+        (issuer.role !== "viewer" || grant.role === "viewer") &&
+        (await keyId(grant.identity.publicKey)) === grant.identity.id &&
+        (await verify(issuer.identity.publicKey, body, signature)),
+      "INVALID_CREDENTIAL",
+      "Invalid workspace connection grant",
+    );
+    const direct = policies.at(-1)!.members[grant.identity.id];
+    invariant(
+      !direct ||
+        (direct.role === grant.role &&
+          direct.userId === grant.userId &&
+          canonical(direct.identity) === canonical(grant.identity)),
+      "INVALID_CREDENTIAL",
+      "A connection grant cannot replace an existing member",
+    );
+  }
+}
+export async function delegateDevice(
+  credential: Identity,
+  access: WorkspaceAccess,
+  identity: PublicIdentity,
+): Promise<DeviceDelegation> {
+  const issuer = currentPolicy(access).members[credential.id];
+  invariant(
+    issuer?.portable && issuer.role !== "owner",
+    "INVALID_CREDENTIAL",
+    "This credential cannot connect another device",
+  );
+  const body = {
+    workspaceId: currentPolicy(access).workspaceId,
+    issuer: credential.id,
+    identity,
+    userId: issuer.userId,
+    role: issuer.role as "editor" | "viewer",
+  };
+  return { ...body, signature: await sign(credential.privateKey, body) };
 }
 export async function policyHash(policy: Policy) {
   const { digest, utf8 } = await import("./crypto");
@@ -137,6 +239,7 @@ export async function approveMember(
   request: PublicIdentity,
   role: Role = "editor",
   userId?: string,
+  portable = false,
 ) {
   const prior = currentPolicy(access);
   invariant(
@@ -172,7 +275,7 @@ export async function approveMember(
       workspaceId: prior.workspaceId,
       name: prior.name,
       epoch: prior.epoch + 1,
-      previous: await policyHash(prior),
+      previous: await policyHash(access.policies.at(-1)!),
       owner: prior.owner,
       members: {
         ...prior.members,
@@ -180,13 +283,14 @@ export async function approveMember(
           identity: request,
           userId: userId ?? prior.members[owner.id].userId,
           role,
+          ...(portable ? { portable: true } : {}),
         },
       },
       revoked: prior.revoked,
     },
     keys,
   );
-  return { policies: [...access.policies, policy], keys };
+  return { ...access, policies: [...access.policies, policy], keys };
 }
 export async function revokeMember(
   access: WorkspaceAccess,
@@ -204,6 +308,12 @@ export async function revokeMember(
   );
   const members = { ...prior.members };
   delete members[deviceId];
+  const revoked = { ...prior.revoked, [deviceId]: acceptedChanges };
+  for (const [id, member] of Object.entries(members))
+    if (member.delegatedBy === deviceId) {
+      delete members[id];
+      revoked[id] = acceptedChanges;
+    }
   const keys = { ...access.keys, [String(prior.epoch + 1)]: randomKey() };
   const policy = await issuePolicy(
     owner,
@@ -211,19 +321,21 @@ export async function revokeMember(
       workspaceId: prior.workspaceId,
       name: prior.name,
       epoch: prior.epoch + 1,
-      previous: await policyHash(prior),
+      previous: await policyHash(access.policies.at(-1)!),
       owner: prior.owner,
       members,
-      revoked: { ...prior.revoked, [deviceId]: acceptedChanges },
+      revoked,
     },
     keys,
   );
-  return { policies: [...access.policies, policy], keys };
+  return { ...access, policies: [...access.policies, policy], keys };
 }
 export async function acceptPolicies(
   identity: Identity,
   policies: Policy[],
   previous?: WorkspaceAccess,
+  credential: Identity | undefined = previous?.credential,
+  delegations: DeviceDelegation[] = previous?.delegations ?? [],
 ): Promise<WorkspaceAccess> {
   invariant(
     policies.length > 0 && policies.length <= 10000,
@@ -245,16 +357,24 @@ export async function acceptPolicies(
     "Membership history cannot go backwards",
   );
   const policy = policies.at(-1)!;
+  await validateDelegations(policies, delegations);
+  const access = { policies, delegations, credential, keys: {} };
+  const member = memberAt(access, policy.epoch, identity.id);
+  invariant(member, "REVOKED", "This device is not a member of the workspace");
+  const recipient = policy.sealedKeys[identity.id] ? identity : credential;
   invariant(
-    policy.members[identity.id],
-    "REVOKED",
-    "This device is not a member of the workspace",
+    recipient &&
+      (recipient.id === identity.id ||
+        (member.delegatedBy === recipient.id &&
+          policy.members[recipient.id]?.portable)),
+    "INVALID_CREDENTIAL",
+    "Workspace connection credentials are missing",
   );
   const keys = (await unseal(
-    identity,
+    recipient,
     policy.owner,
-    policy.sealedKeys[identity.id],
+    policy.sealedKeys[recipient.id],
     `${policy.workspaceId}:${policy.epoch}`,
   )) as Record<string, string>;
-  return { policies, keys };
+  return { policies, keys, delegations, ...(credential ? { credential } : {}) };
 }

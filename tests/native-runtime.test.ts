@@ -340,3 +340,40 @@ it("reopens linked workspaces as a storage-only peer without creating a SQL proj
     await rm(directory, { recursive: true, force: true });
   }
 });
+it("activates only the selected desktop workspace and closes its peer handler on switching", async () => {
+  const { startNativeRuntime } =
+    await import("../packages/platform-node/runtime");
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "taskasaur-selected-peer-"),
+  );
+  let runtime: Awaited<ReturnType<typeof startNativeRuntime>> | undefined;
+  try {
+    const setup = await DeviceCore.open(
+      new FileStorage(path.join(directory, "replicas")),
+      "Desktop",
+    );
+    const a = await setup.createWorkspace("A"),
+      b = await setup.createWorkspace("B");
+    const aId = a.replica.workspaceId,
+      bId = b.replica.workspaceId;
+    await setup.close();
+    runtime = await startNativeRuntime({
+      directory,
+      activeWorkspaces: [],
+      storageOnly: true,
+      network: { listen: ["/ip4/127.0.0.1/tcp/0/ws"] },
+    });
+    expect(runtime.core.workspaces.size).toBe(0);
+    await runtime.selectWorkspace(aId);
+    const selected = runtime.core.workspaces.get(aId)!;
+    const packet = await selected.protocol.pack({ kind: "capabilities" });
+    await runtime.selectWorkspace(bId);
+    expect([...runtime.core.workspaces.keys()]).toEqual([bId]);
+    await expect(selected.protocol.receive(packet)).rejects.toThrow("closed");
+    await runtime.selectWorkspace();
+    expect(runtime.core.protocols.size).toBe(0);
+  } finally {
+    await runtime?.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

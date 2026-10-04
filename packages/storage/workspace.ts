@@ -2,6 +2,7 @@ import type { DurableStorage } from "./index";
 import { canonical, digest, utf8, text } from "../core/crypto";
 import { invariant } from "@taskasaur/platform/core/errors";
 import type { LinkedWorkspace } from "../core/device";
+import type { Identity } from "../core/crypto";
 
 export interface WorkspaceManifest {
   format: "taskasaur-workspace-v1";
@@ -10,6 +11,7 @@ export interface WorkspaceManifest {
   history: "signed-automerge-changes-v1";
   workspace: LinkedWorkspace;
   entries: Record<string, { hash: string; size: number }>;
+  connectionCredential?: Identity;
 }
 export interface WorkspaceFiles {
   read(path: string): Promise<Uint8Array | undefined>;
@@ -26,6 +28,7 @@ export interface WorkspaceFiles {
 }
 export const sharedWorkspaceKey = (workspaceId: string, key: string) =>
   key === `workspace/${workspaceId}/access` ||
+  key === `workspace/${workspaceId}/delegations` ||
   new RegExp(`^workspace/${workspaceId}/(?:changes|blobs)/[a-f0-9]{64}$`).test(
     key,
   );
@@ -90,6 +93,7 @@ export class WorkspaceStorage implements DurableStorage {
     files: WorkspaceFiles,
     workspace: LinkedWorkspace,
     entries: Record<string, Uint8Array>,
+    connectionCredential?: Identity,
   ) {
     invariant(
       !(await files.read("workspace.json")),
@@ -103,6 +107,7 @@ export class WorkspaceStorage implements DurableStorage {
       history: "signed-automerge-changes-v1",
       workspace: structuredClone(workspace),
       entries: {},
+      ...(connectionCredential ? { connectionCredential } : {}),
     };
     const additions: Record<string, Uint8Array> = {};
     for (const [key, bytes] of Object.entries(entries)) {
@@ -198,6 +203,8 @@ export class WorkspaceStorage implements DurableStorage {
       next.entries[key] = { hash, size: copy.length };
       if (key.endsWith("/access"))
         next.workspace.policies = JSON.parse(text.decode(copy));
+      if (key.endsWith("/delegations"))
+        next.workspace.delegations = JSON.parse(text.decode(copy));
       await this.commit(next, { [`data/${hash}.bin`]: copy });
       await this.release(previous);
     });
@@ -222,7 +229,12 @@ export class WorkspaceStorage implements DurableStorage {
       );
       if (canonical(workspace) === canonical(this.manifest.workspace)) return;
       const next = structuredClone(this.manifest);
-      next.workspace = structuredClone(workspace);
+      next.workspace = structuredClone({
+        ...workspace,
+        peers: workspace.peers.filter(
+          (address) => !address.startsWith("local:"),
+        ),
+      });
       await this.commit(next);
     });
   }
@@ -334,5 +346,15 @@ export class WorkspaceRouter implements DurableStorage {
     await this.queue;
     for (const mount of this.mounts.values()) await mount.close();
     await this.local.close?.();
+  }
+  async closeWorkspace(id: string) {
+    await this.queue;
+    const mount = this.mounts.get(id);
+    if (mount) {
+      await mount.close();
+      this.mounts.delete(id);
+      this.blocked.add(id);
+    }
+    await this.local.closeWorkspace?.(id);
   }
 }

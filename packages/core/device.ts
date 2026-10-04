@@ -16,6 +16,7 @@ import {
   currentPolicy,
   type Policy,
   type Role,
+  type DeviceDelegation,
 } from "./identity";
 import { Replica } from "./replica";
 import { ReplicaRecords, deviceRecordId } from "./records";
@@ -33,6 +34,7 @@ export interface LinkedWorkspace {
   name: string;
   policies: Policy[];
   peers: string[];
+  delegations?: DeviceDelegation[];
 }
 export class WorkspaceNode {
   readonly records: ReplicaRecords;
@@ -51,6 +53,7 @@ export class WorkspaceNode {
   >();
   private synchronization?: Promise<void>;
   private commandQueue?: Promise<void>;
+  private closed = false;
   constructor(
     readonly replica: Replica,
     public link: LinkedWorkspace,
@@ -83,6 +86,7 @@ export class WorkspaceNode {
     });
   }
   async synchronize() {
+    if (this.closed) return;
     if (this.synchronization) return this.synchronization;
     const work = async () => {
       if (!this.sync) {
@@ -155,6 +159,7 @@ export class WorkspaceNode {
     targetDeviceId?: string,
     requestId: string = crypto.randomUUID(),
   ) {
+    invariant(!this.closed, "WORKSPACE_CLOSED", "This workspace is closed");
     if (
       targetDeviceId === this.replica.identity.id ||
       targetDeviceId === deviceRecordId(this.replica.identity.id)
@@ -221,6 +226,7 @@ export class WorkspaceNode {
       });
   }
   async flushCommands() {
+    if (this.closed) return;
     if (this.commandQueue) return this.commandQueue;
     this.commandQueue = (async () => {
       const store = new LocalState(this.replica, "outgoing-commands");
@@ -261,6 +267,15 @@ export class WorkspaceNode {
       this.commandQueue = undefined;
     });
     return this.commandQueue;
+  }
+  async stop() {
+    this.closed = true;
+    await Promise.allSettled([this.synchronization, this.commandQueue]);
+    await this.protocol.close();
+    await this.replica.flush();
+    this.sync = undefined;
+    this.peerDevices.clear();
+    this.replica.deactivate();
   }
 }
 export class DeviceCore {
@@ -303,7 +318,16 @@ export class DeviceCore {
     }
     const link = this.links.find((l) => l.id === id);
     invariant(link, "NOT_FOUND", "Workspace is not linked to this device");
-    const access = await acceptPolicies(this.identity, link.policies);
+    const storedCredential = await this.storage.get(
+      `workspace/${id}/local/connection-credential`,
+    );
+    const access = await acceptPolicies(
+      this.identity,
+      link.policies,
+      undefined,
+      storedCredential ? JSON.parse(text.decode(storedCredential)) : undefined,
+      link.delegations,
+    );
     const replica = await new Replica(
       this.identity,
       access,
@@ -323,6 +347,7 @@ export class DeviceCore {
     if (this.transport) node.sync = new PeerSync(node.protocol, this.transport);
     replica.policyListeners.add(() => {
       link.policies = replica.access.policies;
+      link.delegations = replica.access.delegations ?? [];
       void this.persistLinks().catch((error) => {
         replica.error = String(error);
       });
@@ -389,23 +414,42 @@ export class DeviceCore {
       ].filter((address) => address !== "local:desktop"),
     });
   }
-  async join(invitation: string) {
+  async join(invitation: string, credential?: Identity) {
     const parsed = JSON.parse(invitation) as {
       format: string;
       policies: Policy[];
       peers: string[];
+      delegations?: DeviceDelegation[];
     };
     invariant(
       parsed.format === "taskasaur-pairing-v1",
       "INVALID_INVITATION",
       "Invalid pairing invitation",
     );
-    const access = await acceptPolicies(this.identity, parsed.policies),
+    const storedCredential = await this.storage.get(
+      `workspace/${parsed.policies.at(-1)?.workspaceId}/local/connection-credential`,
+    );
+    credential ??= storedCredential
+      ? JSON.parse(text.decode(storedCredential))
+      : undefined;
+    const access = await acceptPolicies(
+        this.identity,
+        parsed.policies,
+        undefined,
+        credential,
+        parsed.delegations,
+      ),
       policy = currentPolicy(access);
+    if (credential)
+      await this.storage.set(
+        `workspace/${policy.workspaceId}/local/connection-credential`,
+        utf8.encode(canonical(credential)),
+      );
     const existing = this.links.find((l) => l.id === policy.workspaceId);
     if (existing) {
       const node = await this.workspace(existing.id);
       await node.replica.setPolicies(parsed.policies);
+      await node.replica.setDelegations(parsed.delegations ?? []);
       existing.peers = [...new Set([...existing.peers, ...parsed.peers])];
     } else
       this.links.push({
@@ -413,6 +457,7 @@ export class DeviceCore {
         name: policy.name,
         policies: parsed.policies,
         peers: parsed.peers,
+        delegations: parsed.delegations ?? [],
       });
     await this.persistLinks();
     return this.workspace(policy.workspaceId);
@@ -430,7 +475,12 @@ export class DeviceCore {
         deviceId,
         node.replica
           .entries()
-          .filter((c) => c.author === deviceId)
+          .filter(
+            (c) =>
+              c.author === deviceId ||
+              currentPolicy(node.replica.access).members[c.author]
+                ?.delegatedBy === deviceId,
+          )
           .map((c) => c.hash),
       );
     await node.replica.setPolicies(access.policies);
@@ -440,6 +490,15 @@ export class DeviceCore {
     this.transport = transport;
     for (const node of this.workspaces.values())
       node.sync = new PeerSync(node.protocol, transport);
+  }
+  async closeWorkspace(id: string) {
+    const node = this.workspaces.get(id);
+    this.protocols.delete(id);
+    if (node) {
+      await node.stop();
+      this.workspaces.delete(id);
+    }
+    await this.storage.closeWorkspace?.(id);
   }
   async close() {
     for (const node of this.workspaces.values()) await node.replica.flush();

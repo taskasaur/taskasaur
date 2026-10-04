@@ -19,9 +19,12 @@ export async function startNativeRuntime(
     createWorkspace?: string;
     workspaceFolder?: string;
     workspaceFile?: string;
+    workspacePassword?: string;
     storage?: DurableStorage;
     syncIntervalMs?: number;
     documentCache?: number;
+    /** Desktop opens only the selected workspace; headless defaults to every linked workspace. */
+    activeWorkspaces?: string[];
   },
 ) {
   if (options.workspaceFile && options.workspaceFolder)
@@ -53,7 +56,11 @@ export async function startNativeRuntime(
     );
     if (options.workspaceFile || options.workspaceFolder) {
       const files = options.workspaceFile
-        ? await openNodeWorkspaceArchive(options.workspaceFile)
+        ? await openNodeWorkspaceArchive(
+            options.workspaceFile,
+            false,
+            options.workspacePassword,
+          )
         : await NodeWorkspaceFiles.open(options.workspaceFolder!);
       try {
         const workspace = await WorkspaceStorage.open(files);
@@ -84,7 +91,7 @@ export async function startNativeRuntime(
       background: options.background ?? false,
       plugins: options.plugins ?? false,
     });
-    await services.initialize();
+    await services.initialize(options.activeWorkspaces);
     const device = core;
     const transport = await createPeerTransport(
       storage,
@@ -92,11 +99,13 @@ export async function startNativeRuntime(
       options.network ?? { listen: ["/ip4/127.0.0.1/tcp/0/ws"] },
     );
     core.attachTransport(transport);
+    let changing = false,
+      selection: Promise<void> = Promise.resolve();
     let scheduled = false;
     let stopping = false,
       pending: Promise<void> = Promise.resolve();
     const tick = () => {
-      if (scheduled || stopping) return;
+      if (scheduled || stopping || changing) return;
       scheduled = true;
       pending = pending
         .then(async () => {
@@ -123,9 +132,26 @@ export async function startNativeRuntime(
       core,
       services,
       addresses: () => transport.addresses(),
+      selectWorkspace(id?: string) {
+        selection = selection
+          .catch(() => {})
+          .then(async () => {
+            changing = true;
+            try {
+              await pending;
+              for (const active of [...device.workspaces.keys()])
+                if (active !== id) await services!.detachWorkspace(active);
+              if (id) await services!.attachWorkspace(id);
+            } finally {
+              changing = false;
+            }
+          });
+        return selection;
+      },
       async close() {
         stopping = true;
         clearInterval(timer);
+        await selection.catch(() => {});
         await pending;
         try {
           try {

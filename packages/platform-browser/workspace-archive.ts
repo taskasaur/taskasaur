@@ -46,6 +46,7 @@ export async function pickWorkspaceFile(create: boolean) {
 export async function openBrowserWorkspaceArchive(
   handle: FileSystemFileHandle,
   create = false,
+  password?: string,
 ) {
   if (
     (await (handle as WritableHandle).queryPermission({
@@ -122,5 +123,6 @@ export async function openBrowserWorkspaceArchive(
       },
     },
     create,
+    password,
   );
 }

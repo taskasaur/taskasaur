@@ -19,6 +19,9 @@ import {
   currentPolicy,
   type WorkspaceAccess,
   type Policy,
+  memberAt,
+  validateDelegations,
+  type DeviceDelegation,
 } from "./identity";
 import { invariant } from "@taskasaur/platform/core/errors";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
@@ -48,6 +51,16 @@ export interface ReplicaStatus {
 }
 /** One replica per workspace/device. Changes are signed individually so untrusted relays cannot forge forwarded edits. */
 export class Replica {
+  private active = true;
+  deactivate() {
+    this.active = false;
+    this.listeners.clear();
+    this.outgoing.clear();
+    this.policyListeners.clear();
+  }
+  private assertActive() {
+    invariant(this.active, "WORKSPACE_CLOSED", "This workspace is closed");
+  }
   wantsDocument: (id: string, deviceId?: string) => boolean = () => true;
   private evicted = new Set<string>();
   private coldDocuments = new Map<string, Uint8Array>();
@@ -76,11 +89,23 @@ export class Replica {
     return `workspace/${this.workspaceId}/`;
   }
   private serial<T>(work: () => Promise<T>): Promise<T> {
+    this.assertActive();
     const next = this.queue.then(work);
     this.queue = next.catch(() => {});
     return next;
   }
   async open() {
+    const grants = await this.storage.get(this.prefix() + "delegations");
+    if (grants) {
+      const delegations = JSON.parse(text.decode(grants)) as DeviceDelegation[];
+      const merged = new Map(
+        [...(this.access.delegations ?? []), ...delegations].map((grant) => [
+          grant.identity.id,
+          grant,
+        ]),
+      );
+      this.access.delegations = [...merged.values()];
+    }
     const saved = await this.storage.get(this.prefix() + "access");
     if (saved)
       this.access = await acceptPolicies(
@@ -93,6 +118,10 @@ export class Replica {
         this.prefix() + "access",
         utf8.encode(canonical(this.access.policies)),
       );
+    await validateDelegations(
+      this.access.policies,
+      this.access.delegations ?? [],
+    );
     for (const key of await this.storage.keys(this.prefix() + "evicted/"))
       this.evicted.add(key.slice((this.prefix() + "evicted/").length));
     for (const key of await this.storage.keys(this.prefix() + "changes/")) {
@@ -122,6 +151,7 @@ export class Replica {
     return this;
   }
   private document(id: string) {
+    this.assertActive();
     let doc = this.documents.get(id);
     const cold = this.coldDocuments.get(id);
     if (!doc && cold) {
@@ -211,6 +241,7 @@ export class Replica {
     };
   }
   ids(prefix = "") {
+    this.assertActive();
     return [
       ...new Set([...this.documents.keys(), ...this.coldDocuments.keys()]),
     ].filter((id) => id.startsWith(prefix));
@@ -363,13 +394,17 @@ export class Replica {
       "Change exceeds the document limits",
     );
     const policy = this.access.policies[entry.epoch - 1],
-      member = policy?.members[entry.author];
+      member = memberAt(this.access, entry.epoch, entry.author);
     invariant(
       member && member.role !== "viewer",
       "PERMISSION_DENIED",
       "Change author was not permitted to write",
     );
-    const cutoff = currentPolicy(this.access).revoked[entry.author];
+    const cutoff =
+      currentPolicy(this.access).revoked[entry.author] ??
+      (member?.delegatedBy
+        ? currentPolicy(this.access).revoked[member.delegatedBy]
+        : undefined);
     invariant(
       !cutoff || cutoff.includes(entry.hash),
       "REVOKED",
@@ -724,6 +759,40 @@ export class Replica {
   }
   hashes() {
     return [...this.changes.keys()];
+  }
+  async setDelegations(incoming: DeviceDelegation[]) {
+    invariant(
+      Array.isArray(incoming) && incoming.length <= 1000,
+      "INVALID_CREDENTIAL",
+      "Too many workspace connection grants",
+    );
+    return this.serial(async () => {
+      const grants = new Map(
+        (this.access.delegations ?? []).map((grant) => [
+          grant.identity.id,
+          grant,
+        ]),
+      );
+      for (const grant of incoming) {
+        const previous = grants.get(grant.identity.id);
+        invariant(
+          !previous || canonical(previous) === canonical(grant),
+          "INVALID_CREDENTIAL",
+          "Conflicting device connection grants",
+        );
+        grants.set(grant.identity.id, grant);
+      }
+      const delegations = [...grants.values()];
+      await validateDelegations(this.access.policies, delegations);
+      if (canonical(delegations) === canonical(this.access.delegations ?? []))
+        return;
+      await this.storage.set(
+        this.prefix() + "delegations",
+        utf8.encode(canonical(delegations)),
+      );
+      this.access.delegations = delegations;
+      for (const listener of this.policyListeners) listener();
+    });
   }
   async setPolicies(policies: Policy[]) {
     return this.serial(async () => {

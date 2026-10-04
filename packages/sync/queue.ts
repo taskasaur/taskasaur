@@ -4,6 +4,10 @@ export class SyncQueue {
   private running?: Promise<void>;
   private requested = false;
 
+  async idle() {
+    await this.running;
+  }
+
   run(pass: () => Promise<void>): Promise<void> {
     this.requested = true;
     if (!this.running) {

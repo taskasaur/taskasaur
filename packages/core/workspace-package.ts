@@ -13,8 +13,23 @@ import { ReplicaFiles } from "./files";
 import { StoragePlacement, type StorageCatalog } from "./storage-placement";
 import type { DeviceCore, WorkspaceNode, LinkedWorkspace } from "./device";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
-import { acceptPolicies, validatePolicy } from "./identity";
-import { canonical, utf8 } from "./crypto";
+import {
+  acceptPolicies,
+  validatePolicy,
+  validateDelegations,
+  currentPolicy,
+  approveMember,
+  delegateDevice,
+  memberAt,
+} from "./identity";
+import {
+  canonical,
+  utf8,
+  text,
+  createIdentity,
+  publicIdentity,
+  type Identity,
+} from "./crypto";
 import { invariant } from "@taskasaur/platform/core/errors";
 
 export class MemoryWorkspaceFiles implements WorkspaceFiles {
@@ -43,6 +58,7 @@ export async function validateWorkspaceHistory(workspace: LinkedWorkspace) {
       "Workspace history belongs to another workspace",
     );
   }
+  await validateDelegations(workspace.policies, workspace.delegations ?? []);
 }
 async function verifySnapshot(
   node: Pick<WorkspaceNode, "replica">,
@@ -133,7 +149,46 @@ async function verifySnapshot(
       await files.read(item.item.id);
   return memory.snapshot();
 }
-export async function workspaceSnapshot(node: WorkspaceNode) {
+export async function workspaceSnapshot(
+  node: WorkspaceNode,
+  options: { includeCredentials?: boolean } = {},
+) {
+  let connectionCredential: Identity | undefined;
+  if (options.includeCredentials) {
+    const secrets = await node.vault.exportableSecrets();
+    const key = `workspace/${node.replica.workspaceId}/local/export-credential`;
+    const stored = await node.replica.storage.get(key);
+    connectionCredential =
+      node.replica.access.credential ??
+      (stored ? JSON.parse(text.decode(stored)) : undefined);
+    if (
+      !connectionCredential ||
+      !currentPolicy(node.replica.access).members[connectionCredential.id]
+        ?.portable
+    ) {
+      invariant(
+        currentPolicy(node.replica.access).owner.id ===
+          node.replica.identity.id,
+        "PERMISSION_DENIED",
+        "The workspace owner must create the first file with connection credentials",
+      );
+      connectionCredential = await createIdentity("Workspace file access");
+      const access = await approveMember(
+        node.replica.access,
+        node.replica.identity,
+        publicIdentity(connectionCredential),
+        "editor",
+        node.replica.member.userId,
+        true,
+      );
+      await node.replica.setPolicies(access.policies);
+      await node.replica.storage.set(
+        key,
+        utf8.encode(canonical(connectionCredential)),
+      );
+    }
+    await node.vault.grantExport(connectionCredential!, secrets);
+  }
   await node.replica.flush();
   invariant(
     node.replica.storage.snapshot,
@@ -149,18 +204,39 @@ export async function workspaceSnapshot(node: WorkspaceNode) {
   );
   const workspace = structuredClone({
     ...node.link,
+    peers: [
+      ...new Set([
+        ...node.link.peers,
+        ...(node.sync?.transport.addresses() ?? []),
+      ]),
+    ].filter((address) => !address.startsWith("local:")),
     policies: node.replica.access.policies,
+    delegations: node.replica.access.delegations ?? [],
   });
-  return { workspace, entries, excludedKeys };
+  return { workspace, entries, excludedKeys, connectionCredential };
 }
-export async function exportWorkspace(node: WorkspaceNode) {
-  const { workspace, entries } = await workspaceSnapshot(node);
+export async function exportWorkspace(
+  node: WorkspaceNode,
+  options: { includeCredentials?: boolean; password?: string } = {},
+) {
+  const { workspace, entries, connectionCredential } = await workspaceSnapshot(
+    node,
+    options,
+  );
   const files = new MemoryWorkspaceFiles();
-  await WorkspaceStorage.create(files, workspace, entries);
-  return encodeWorkspaceArchive(files.values);
+  await WorkspaceStorage.create(
+    files,
+    workspace,
+    entries,
+    connectionCredential,
+  );
+  return encodeWorkspaceArchive(files.values, options.password);
 }
-export async function openWorkspaceArchive(bytes: Uint8Array) {
-  const values = await decodeWorkspaceArchive(bytes);
+export async function openWorkspaceArchive(
+  bytes: Uint8Array,
+  password?: string,
+) {
+  const values = await decodeWorkspaceArchive(bytes, password);
   const files = new MemoryWorkspaceFiles();
   for (const [name, data] of values) await files.write(name, data);
   const source = await WorkspaceStorage.open(files);
@@ -177,9 +253,25 @@ export async function importWorkspace(
   await validateWorkspaceHistory(workspace);
   let policies = workspace.policies,
     peers = workspace.peers;
+  let delegations = workspace.delegations ?? [];
+  const storedCredential = await device.storage.get(
+    `workspace/${workspace.id}/local/connection-credential`,
+  );
+  let credential: Identity | undefined = storedCredential
+    ? JSON.parse(text.decode(storedCredential))
+    : source.manifest.connectionCredential;
   const existing = device.profiles().find((p) => p.id === workspace.id);
   if (existing && existing.policies.length > policies.length)
     policies = existing.policies;
+  if (existing?.delegations)
+    delegations = [
+      ...new Map(
+        [...delegations, ...existing.delegations].map((grant) => [
+          grant.identity.id,
+          grant,
+        ]),
+      ).values(),
+    ];
   if (invitation) {
     const approved = JSON.parse(invitation);
     invariant(
@@ -198,18 +290,57 @@ export async function importWorkspace(
       "POLICY_FORK",
       "The approval and workspace file have different membership histories",
     );
+  if (
+    !memberAt(
+      { policies, keys: {}, delegations },
+      policies.at(-1)!.epoch,
+      device.identity.id,
+    ) &&
+    credential
+  ) {
+    const portable = await acceptPolicies(
+      credential,
+      policies,
+      undefined,
+      undefined,
+      delegations,
+    );
+    const grant = await delegateDevice(
+      credential,
+      portable,
+      publicIdentity(device.identity),
+    );
+    delegations = [
+      ...delegations.filter((item) => item.identity.id !== grant.identity.id),
+      grant,
+    ];
+  }
   invariant(
-    policies.at(-1)?.members[device.identity.id],
+    memberAt(
+      { policies, keys: {}, delegations },
+      policies.at(-1)!.epoch,
+      device.identity.id,
+    ),
     "APPROVAL_REQUIRED",
     "Approve this device on the workspace owner's computer, then paste its invitation",
   );
-  const access = await acceptPolicies(device.identity, policies);
+  const access = await acceptPolicies(
+    device.identity,
+    policies,
+    undefined,
+    credential,
+    delegations,
+  );
   const staging = new MemoryStorage();
   for (const [key, bytes] of Object.entries(await source.snapshot()))
     await staging.set(key, bytes);
   await staging.set(
     `workspace/${workspace.id}/access`,
     utf8.encode(canonical(policies)),
+  );
+  await staging.set(
+    `workspace/${workspace.id}/delegations`,
+    utf8.encode(canonical(delegations)),
   );
   let replica = await new Replica(device.identity, access, staging).open();
   invariant(
@@ -222,7 +353,13 @@ export async function importWorkspace(
     if (!verified[key]) await staging.delete(key);
   replica = await new Replica(device.identity, access, staging).open();
   const node = await device.join(
-    JSON.stringify({ format: "taskasaur-pairing-v1", policies, peers }),
+    JSON.stringify({
+      format: "taskasaur-pairing-v1",
+      policies,
+      peers,
+      delegations,
+    }),
+    credential,
   );
   // Keep the original authors and Automerge change hashes: later peer sync merges the same history.
   for (const change of replica.entries()) await node.replica.accept(change);

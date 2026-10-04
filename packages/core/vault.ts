@@ -1,4 +1,4 @@
-import { seal, unseal, publicIdentity } from "./crypto";
+import { seal, unseal, publicIdentity, type Identity } from "./crypto";
 import { currentPolicy } from "./identity";
 import type { Replica } from "./replica";
 import { ReplicaRecords } from "./records";
@@ -24,6 +24,72 @@ export class CredentialVault {
     ) => Promise<void>,
   ) {
     this.records = new ReplicaRecords(replica);
+  }
+  private recipient(value: VaultValue) {
+    if (value.recipients[this.replica.identity.id])
+      return this.replica.identity;
+    const credential = this.replica.access.credential;
+    if (
+      credential &&
+      this.replica.member.delegatedBy === credential.id &&
+      currentPolicy(this.replica.access).members[credential.id]?.portable &&
+      value.recipients[credential.id]
+    )
+      return credential;
+    return undefined;
+  }
+  private canRefresh(value: VaultValue) {
+    return (
+      value.sender.id === this.replica.identity.id ||
+      Boolean(
+        this.replica.access.credential &&
+        this.recipient(value) &&
+        value.owner === this.replica.member.userId,
+      )
+    );
+  }
+  async exportableSecrets() {
+    const secrets: Array<{ id: string; secret: Secret; recipients: string[] }> =
+      [];
+    for (const record of this.records
+      .all()
+      .filter(
+        (row) =>
+          !row.deletedAt &&
+          row.collection === "credentials" &&
+          row.data.status === "ready",
+      )) {
+      const value = this.replica.read<VaultValue>("vault/" + record.id);
+      invariant(
+        record.ownerId === this.replica.member.userId &&
+          value &&
+          !value.revoked &&
+          this.recipient(value),
+        "CREDENTIAL_UNAVAILABLE",
+        "Grant this device access to all workspace credentials before exporting them",
+      );
+      const secret = (await unseal(
+        this.recipient(value)!,
+        value.sender,
+        value.recipients[this.recipient(value)!.id],
+        `${this.replica.workspaceId}:${record.id}:${value.version}`,
+      )) as Secret;
+      secrets.push({
+        id: record.id,
+        secret,
+        recipients: Object.keys(value.recipients).filter(
+          (id) => currentPolicy(this.replica.access).members[id],
+        ),
+      });
+    }
+    return secrets;
+  }
+  async grantExport(
+    identity: Identity,
+    secrets: Awaited<ReturnType<CredentialVault["exportableSecrets"]>>,
+  ) {
+    for (const item of secrets)
+      await this.set(item.id, item.secret, [...item.recipients, identity.id]);
   }
   async set(
     id: string,
@@ -89,7 +155,8 @@ export class CredentialVault {
       "PERMISSION_DENIED",
       "Credential does not allow this destination",
     );
-    const ciphertext = value.recipients[this.replica.identity.id];
+    const recipient = this.recipient(value);
+    const ciphertext = recipient && value.recipients[recipient.id];
     invariant(
       ciphertext,
       "CREDENTIAL_UNAVAILABLE",
@@ -101,7 +168,7 @@ export class CredentialVault {
       "Credential issuer has been revoked",
     );
     const secret = (await unseal(
-      this.replica.identity,
+      recipient!,
       value.sender,
       ciphertext,
       `${this.replica.workspaceId}:${id}:${value.version}`,
@@ -117,7 +184,7 @@ export class CredentialVault {
     let authorized = await this.authorized(id, pluginId, destination);
     const expiry = authorized.secret.expires_at ?? authorized.secret.expiresAt;
     if (expiry && Date.parse(expiry) <= Date.now() + 30000) {
-      if (authorized.value.sender.id === this.replica.identity.id)
+      if (this.canRefresh(authorized.value))
         await this.refresh(id, pluginId, destination);
       else {
         invariant(
@@ -145,7 +212,7 @@ export class CredentialVault {
   async refresh(id: string, pluginId: string, destination: string) {
     const authorized = await this.authorized(id, pluginId, destination);
     invariant(
-      authorized.value.sender.id === this.replica.identity.id,
+      this.canRefresh(authorized.value),
       "WRONG_EXECUTION_TARGET",
       "Refresh must run on the credential authority",
     );

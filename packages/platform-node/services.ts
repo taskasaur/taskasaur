@@ -132,7 +132,7 @@ export class NativeServices {
         : []),
     ];
   }
-  async initialize() {
+  async initialize(workspaceIds = this.core.profiles().map((p) => p.id)) {
     if (this.options.storageOnly) {
       invariant(
         !this.options.plugins &&
@@ -142,8 +142,7 @@ export class NativeServices {
         "INVALID_CONFIG",
         "Turn off storage-only mode before enabling native execution services",
       );
-      for (const profile of this.core.profiles())
-        await this.core.workspace(profile.id);
+      for (const id of workspaceIds) await this.core.workspace(id);
       return this;
     }
     process.env.PLUGIN_PATH = path.join(this.options.directory, "plugins");
@@ -157,8 +156,7 @@ export class NativeServices {
       (p) => p.manifest.provides.commands,
     );
     await migrate(this.db);
-    for (const profile of this.core.profiles())
-      await this.attachWorkspace(profile.id);
+    for (const id of workspaceIds) await this.attachWorkspace(id);
     await this.project();
     return this;
   }
@@ -167,6 +165,20 @@ export class NativeServices {
       this.execute(id, command, input, context),
     );
     await this.project();
+  }
+  async detachWorkspace(id: string) {
+    const node = this.core.workspaces.get(id);
+    if (!node) return;
+    // Refuse new network commands, then let acknowledged work finish before closing storage.
+    this.core.protocols.delete(id);
+    await node.protocol.close();
+    await this.engines.get(id)?.stop();
+    this.engines.delete(id);
+    this.terminal.sweep((workspaceId) => workspaceId !== id);
+    for (const [key, operations] of this.itemOperations)
+      if (key.startsWith(id + ":")) await Promise.allSettled([...operations]);
+    await this.core.closeWorkspace(id);
+    this.projected.delete("presence:" + id);
   }
   actor(
     workspaceId: string,

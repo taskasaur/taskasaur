@@ -11,6 +11,7 @@ import { atomicWorkspaceWrite } from "./workspace-files";
 export async function openNodeWorkspaceArchive(
   filename: string,
   create = false,
+  password?: string,
 ) {
   let target = path.resolve(filename);
   try {
@@ -43,5 +44,6 @@ export async function openNodeWorkspaceArchive(
       close: release,
     },
     create,
+    password,
   );
 }

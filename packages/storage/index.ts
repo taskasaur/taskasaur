@@ -6,6 +6,7 @@ export interface DurableStorage {
   keys(prefix: string): Promise<string[]>;
   snapshot?(prefix?: string): Promise<Record<string, Uint8Array>>;
   close?(): Promise<void> | void;
+  closeWorkspace?(id: string): Promise<void> | void;
 }
 export class MemoryStorage implements DurableStorage {
   readonly data = new Map<string, Uint8Array>();
@@ -46,6 +47,10 @@ export function snapshotStorage(source: DurableStorage): DurableStorage {
       await queue;
       await source.close?.();
     },
+    closeWorkspace: (id) =>
+      serial(async () => {
+        await source.closeWorkspace?.(id);
+      }),
     snapshot: (prefix = "") =>
       serial(async () => {
         if (source.snapshot)

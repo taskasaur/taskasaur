@@ -2,6 +2,11 @@ import JSZip from "jszip";
 import { digest } from "../core/crypto";
 import { invariant } from "@taskasaur/platform/core/errors";
 import { parseWorkspaceManifest, type WorkspaceFiles } from "./workspace";
+import {
+  encryptWorkspace,
+  decryptWorkspace,
+  encryptedWorkspace,
+} from "../core/workspace-encryption";
 
 export const WORKSPACE_ARCHIVE_LIMIT = 1024 * 1024 * 1024;
 const changed =
@@ -24,13 +29,16 @@ export async function assertArchiveUnchanged(
     changed,
   );
 }
-export async function decodeWorkspaceArchive(bytes: Uint8Array) {
+export async function decodeWorkspaceArchive(
+  bytes: Uint8Array,
+  password?: string,
+) {
   invariant(
     bytes.length <= WORKSPACE_ARCHIVE_LIMIT,
     "PAYLOAD_TOO_LARGE",
     "Workspace files are limited to 1 GB",
   );
-  const zip = await JSZip.loadAsync(bytes);
+  const zip = await JSZip.loadAsync(await decryptWorkspace(bytes, password));
   const expanded = (name: string) =>
     Number(
       (zip.files[name] as unknown as { _data?: { uncompressedSize?: number } })
@@ -76,7 +84,10 @@ export async function decodeWorkspaceArchive(bytes: Uint8Array) {
   }
   return values;
 }
-export async function encodeWorkspaceArchive(values: Map<string, Uint8Array>) {
+export async function encodeWorkspaceArchive(
+  values: Map<string, Uint8Array>,
+  password?: string,
+) {
   invariant(
     [...values.values()].reduce((size, bytes) => size + bytes.length, 0) <=
       WORKSPACE_ARCHIVE_LIMIT,
@@ -94,7 +105,13 @@ export async function encodeWorkspaceArchive(values: Map<string, Uint8Array>) {
     "PAYLOAD_TOO_LARGE",
     "Workspace files are limited to 1 GB",
   );
-  return bytes;
+  const output = password ? await encryptWorkspace(bytes, password) : bytes;
+  invariant(
+    output.length <= WORKSPACE_ARCHIVE_LIMIT,
+    "PAYLOAD_TOO_LARGE",
+    "Workspace files are limited to 1 GB",
+  );
+  return output;
 }
 
 /** Existing exported ZIPs become live containers, with one atomic replacement per durable commit. */
@@ -103,9 +120,12 @@ export class ArchiveWorkspaceFiles implements WorkspaceFiles {
   private expectedHash?: string;
   private closed = false;
   private queue: Promise<unknown> = Promise.resolve();
-  private constructor(readonly io: WorkspaceArchiveIO) {}
-  static async open(io: WorkspaceArchiveIO, create = false) {
-    const files = new ArchiveWorkspaceFiles(io);
+  private constructor(
+    readonly io: WorkspaceArchiveIO,
+    private password?: string,
+  ) {}
+  static async open(io: WorkspaceArchiveIO, create = false, password?: string) {
+    const files = new ArchiveWorkspaceFiles(io, create ? password : undefined);
     try {
       const bytes = await io.read();
       files.expectedHash = bytes ? await digest(bytes) : undefined;
@@ -115,7 +135,8 @@ export class ArchiveWorkspaceFiles implements WorkspaceFiles {
           "WORKSPACE_EXISTS",
           "Choose a new file; use Open workspace file to edit an existing workspace",
         );
-        files.values = await decodeWorkspaceArchive(bytes);
+        files.values = await decodeWorkspaceArchive(bytes, password);
+        if (encryptedWorkspace(bytes)) files.password = password;
         await io.lock?.(
           parseWorkspaceManifest(files.values.get("workspace.json")!).packageId,
         );
@@ -199,7 +220,7 @@ export class ArchiveWorkspaceFiles implements WorkspaceFiles {
       next.set(name, additions[name] ? bytes.slice() : bytes);
     }
     await this.io.lock?.(manifest.packageId);
-    const encoded = await encodeWorkspaceArchive(next);
+    const encoded = await encodeWorkspaceArchive(next, this.password);
     const hash = await digest(encoded);
     await this.io.replace(encoded, this.expectedHash);
     this.values = next;
@@ -221,6 +242,8 @@ export class ArchiveWorkspaceFiles implements WorkspaceFiles {
     await this.queue;
     if (this.closed) return;
     this.closed = true;
+    this.password = undefined;
+    this.values.clear();
     await this.io.close?.();
   }
 }
