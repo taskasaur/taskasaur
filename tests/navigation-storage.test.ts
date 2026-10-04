@@ -82,16 +82,17 @@ it("replicates independent plugin tables and validates custom fields on the shar
   await expect(
     records.resolve(first.id, "custom_fields", { budget: "not numeric" }),
   ).rejects.toThrow();
-  await expect(
-    records.put(
-      "tables",
-      {
-        ...table.data,
-        columns: columns.filter((f) => f.id !== "budget") as unknown as Value,
-      },
-      table.id,
-    ),
-  ).rejects.toThrow();
+  await records.put(
+    "tables",
+    {
+      ...table.data,
+      columns: columns.filter((f) => f.id !== "budget") as unknown as Value,
+    },
+    table.id,
+  );
+  expect(records.get(first.id)?.data.custom_fields).toEqual({
+    budget: "12345678901234567890.12",
+  });
   for (const change of a.entries()) await b.accept(change);
   const replica = new ReplicaRecords(b);
   expect(replica.get(table.id)?.managedBy).toBe("tasks");

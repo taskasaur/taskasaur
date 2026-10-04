@@ -4,7 +4,7 @@ export interface DurableStorage {
   set(key: string, bytes: Uint8Array): Promise<void>;
   delete(key: string): Promise<void>;
   keys(prefix: string): Promise<string[]>;
-  snapshot?(): Promise<Record<string, Uint8Array>>;
+  snapshot?(prefix?: string): Promise<Record<string, Uint8Array>>;
   close?(): Promise<void> | void;
 }
 export class MemoryStorage implements DurableStorage {
@@ -21,9 +21,11 @@ export class MemoryStorage implements DurableStorage {
   async keys(prefix: string) {
     return [...this.data.keys()].filter((k) => k.startsWith(prefix)).sort();
   }
-  async snapshot() {
+  async snapshot(prefix = "") {
     return Object.fromEntries(
-      [...this.data].map(([key, bytes]) => [key, bytes.slice()]),
+      [...this.data]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, bytes]) => [key, bytes.slice()]),
     );
   }
 }
@@ -44,11 +46,16 @@ export function snapshotStorage(source: DurableStorage): DurableStorage {
       await queue;
       await source.close?.();
     },
-    snapshot: () =>
+    snapshot: (prefix = "") =>
       serial(async () => {
-        if (source.snapshot) return source.snapshot();
+        if (source.snapshot)
+          return Object.fromEntries(
+            Object.entries(await source.snapshot(prefix)).filter(([key]) =>
+              key.startsWith(prefix),
+            ),
+          );
         const entries: Record<string, Uint8Array> = {};
-        for (const key of await source.keys("")) {
+        for (const key of await source.keys(prefix)) {
           const value = await source.get(key);
           if (value) entries[key] = value;
         }

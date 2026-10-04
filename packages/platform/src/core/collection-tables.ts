@@ -1,6 +1,7 @@
 import {
   field,
   validateRecord,
+  decodeField,
   type Field,
   type RecordSchema,
   type Value,
@@ -164,9 +165,13 @@ export function collectionColumns(
       "This column is reserved by core",
     );
     const base = fields.find((f) => f.id === column.id);
-    if (base)
+    if (base && (required.includes(base.id) || column.storage !== "custom"))
       invariant(
-        (Object.keys(base) as Array<keyof Field>)
+        (
+          [...new Set([...Object.keys(base), ...Object.keys(column)])] as Array<
+            keyof Field
+          >
+        )
           .filter((key) => !["label", "description"].includes(key))
           .every(
             (key) => JSON.stringify(column[key]) === JSON.stringify(base[key]),
@@ -177,18 +182,82 @@ export function collectionColumns(
   }
   return columns;
 }
+/** Template values remain user-owned. Mirror compatible values for standard/plugin interoperability. */
+export function templateValues(
+  schema: RecordSchema,
+  columns: unknown,
+  input: Record<string, Value>,
+  previous: Record<string, Value> = {},
+) {
+  const data = { ...input },
+    custom = { ...((input.custom_fields as Record<string, Value>) ?? {}) };
+  for (const column of collectionColumns(schema, columns)) {
+    if (column.storage !== "custom") continue;
+    const base = schema.fields.find((f) => f.id === column.id);
+    if (!base || base.pgType !== column.pgType || base.array !== column.array)
+      continue;
+    // Explicit plugin writes to a standard property also update its compatible template copy.
+    if (
+      Object.hasOwn(input, base.id) &&
+      (!Object.hasOwn(custom, base.id) ||
+        JSON.stringify(custom[base.id]) ===
+          JSON.stringify(
+            (previous.custom_fields as Record<string, Value> | undefined)?.[
+              base.id
+            ] ?? previous[base.id],
+          )) &&
+      JSON.stringify(input[base.id]) !== JSON.stringify(previous[base.id])
+    ) {
+      try {
+        custom[base.id] = decodeField(column, input[base.id]);
+      } catch {
+        /* Independent custom type/constraints. */
+      }
+    }
+    if (Object.hasOwn(custom, base.id)) {
+      try {
+        data[base.id] = decodeField(base, custom[base.id]);
+      } catch {
+        /* The custom value has no valid standard representation. */
+      }
+    }
+  }
+  data.custom_fields = custom;
+  return data;
+}
 export function customValues(
   schema: RecordSchema,
   columns: unknown,
   values: unknown,
+  original: Record<string, Value> = {},
 ) {
   const fields = collectionColumns(schema, columns).filter(
-    (f) => !schema.fields.some((base) => base.id === f.id),
+    (f) =>
+      f.storage === "custom" || !schema.fields.some((base) => base.id === f.id),
   );
-  return validateRecord(
-    { ...schema, fields, validate: undefined },
-    values ?? {},
+  const stored = values == null ? {} : (values as Record<string, Value>);
+  invariant(
+    typeof stored === "object" && !Array.isArray(stored),
+    "VALIDATION_FAILED",
+    "Custom fields must be an object",
   );
+  const selected = Object.fromEntries(
+    fields
+      .map((f) => [
+        f.id,
+        Object.prototype.hasOwnProperty.call(stored, f.id)
+          ? stored[f.id]
+          : f.storage === "custom"
+            ? (original[f.id] ?? undefined)
+            : undefined,
+      ])
+      .filter(([, v]) => v !== undefined),
+  );
+  // Removing a column hides it; it must not erase previously stored values.
+  return {
+    ...stored,
+    ...validateRecord({ ...schema, fields, validate: undefined }, selected),
+  };
 }
 export function generatedValues(
   schema: RecordSchema,

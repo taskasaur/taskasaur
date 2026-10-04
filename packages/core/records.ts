@@ -1,4 +1,5 @@
 import type { Replica } from "./replica";
+import { LocalState } from "./local-state";
 import type { ResourceRecord } from "@taskasaur/platform/plugin-sdk";
 import { getSchema } from "@taskasaur/platform/core/catalog";
 import {
@@ -18,19 +19,53 @@ import {
   collectionColumns,
   customValues,
   generatedValues,
+  templateValues,
 } from "@taskasaur/platform/core/collection-tables";
 export function deviceRecordId(identityId: string) {
   return `${identityId.slice(0, 8)}-${identityId.slice(8, 12)}-4${identityId.slice(13, 16)}-8${identityId.slice(17, 20)}-${identityId.slice(20, 32)}`;
 }
 export class ReplicaRecords {
+  private localRecords = new Map<string, ResourceRecord>();
   constructor(readonly replica: Replica) {}
+  private isLocal(row?: ResourceRecord) {
+    return row?.collection === "settings" && row.data.scope === "device";
+  }
+  async open() {
+    const storage = new LocalState(this.replica, "settings-records");
+    for (const id of await storage.ids()) {
+      const row = await storage.get<ResourceRecord>(id);
+      if (row && this.isLocal(row)) this.localRecords.set(id, row);
+    }
+    // Migrate old device-scoped settings only on a device that actually authored them.
+    const own = new Set(
+      this.replica
+        .entries()
+        .filter((c) => c.author === this.replica.identity.id)
+        .map((c) => c.documentId),
+    );
+    for (const id of this.replica.ids("record/")) {
+      const row = this.replica.read<ResourceRecord>(id)!;
+      if (this.isLocal(row) && own.has(id) && !this.localRecords.has(row.id)) {
+        await storage.set(row.id, row);
+        this.localRecords.set(row.id, row);
+      }
+    }
+  }
   get(id: string) {
-    return this.replica.read<ResourceRecord>("record/" + id);
+    const local = this.localRecords.get(id);
+    if (local) return structuredClone(local);
+    const row = this.replica.read<ResourceRecord>("record/" + id);
+    return this.isLocal(row) ? undefined : row;
   }
   all() {
-    return this.replica
+    const shared = this.replica
       .ids("record/")
-      .flatMap((id) => this.replica.read<ResourceRecord>(id) ?? []);
+      .flatMap((id) => this.replica.read<ResourceRecord>(id) ?? [])
+      .filter((row) => !this.isLocal(row));
+    return [
+      ...shared.filter((row) => !this.localRecords.has(row.id)),
+      ...[...this.localRecords.values()].map((row) => structuredClone(row)),
+    ];
   }
   list(collection: string, query: Query = {}) {
     return queryRecords(
@@ -56,9 +91,29 @@ export class ReplicaRecords {
     } = {},
   ) {
     const schema = getSchema(collection),
-      old = this.get(id),
-      data = validateRecord(schema, generatedValues(schema, input, old?.data));
-    invariant(this.canWrite(), "PERMISSION_DENIED", "Workspace is read only");
+      old = this.get(id);
+    let prepared = generatedValues(schema, input, old?.data);
+    const definition =
+      schema.tables && prepared.table_id
+        ? this.get(String(prepared.table_id))
+        : undefined;
+    if (
+      definition?.collection === "tables" &&
+      definition.data.collection_id === collection
+    )
+      prepared = templateValues(
+        schema,
+        definition.data.columns,
+        prepared,
+        old?.data,
+      );
+    const data = validateRecord(schema, prepared);
+    const local = collection === "settings" && data.scope === "device";
+    invariant(
+      local || this.canWrite(),
+      "PERMISSION_DENIED",
+      "Workspace is read only",
+    );
     invariant(
       !old || old.collection === collection,
       "PERMISSION_DENIED",
@@ -114,6 +169,22 @@ export class ReplicaRecords {
       deletedAt: null,
       data,
     };
+    if (local) {
+      invariant(
+        !old || this.isLocal(old),
+        "SCOPE_CHANGE",
+        "Create a new device setting instead of changing a shared setting's scope",
+      );
+      await new LocalState(this.replica, "settings-records").set(id, record);
+      this.localRecords.set(id, record);
+      for (const listener of this.replica.listeners) listener("record/" + id);
+      return structuredClone(record);
+    }
+    invariant(
+      !old || !this.isLocal(old),
+      "SCOPE_CHANGE",
+      "Create a new shared setting instead of changing a device setting's scope",
+    );
     await this.replica.update(
       "record/" + id,
       record as unknown as Record<string, unknown>,
@@ -124,6 +195,17 @@ export class ReplicaRecords {
   async delete(id: string, eventId?: string) {
     const old = this.get(id);
     invariant(old, "NOT_FOUND", "Record not found");
+    if (this.isLocal(old)) {
+      const row = {
+        ...old,
+        deletedAt: new Date().toISOString(),
+        revision: old.revision + 1,
+      };
+      await new LocalState(this.replica, "settings-records").set(id, row);
+      this.localRecords.set(id, row);
+      for (const listener of this.replica.listeners) listener("record/" + id);
+      return;
+    }
     if (old.collection === "tables") {
       invariant(
         !old.data.is_default,
@@ -173,8 +255,16 @@ export class ReplicaRecords {
         (r) =>
           !r.deletedAt && r.collection === target.id && r.data.table_id === id,
       ))
-        customValues(target, data.columns, row.data.custom_fields);
+        customValues(target, data.columns, row.data.custom_fields, row.data);
     }
+    if (collection === "tables" && !data.collection_id)
+      for (const row of this.all().filter(
+        (r) =>
+          !r.deletedAt &&
+          r.collection === "table_rows" &&
+          r.data.table_id === id,
+      ))
+        validateTableValues(data.columns, row.data.values);
     if (schema.tables) {
       const definition = data.table_id
         ? this.get(String(data.table_id))
@@ -193,6 +283,7 @@ export class ReplicaRecords {
           schema,
           definition.data.columns,
           data.custom_fields,
+          data,
         );
       else
         invariant(
@@ -208,7 +299,10 @@ export class ReplicaRecords {
         "NOT_FOUND",
         "Table definition was not found",
       );
-      data.values = validateTableValues(definition.data.columns, data.values);
+      data.values = validateTableValues(definition.data.columns, {
+        ...((old?.data.values as Record<string, Value>) ?? {}),
+        ...(data.values as Record<string, Value>),
+      });
     }
   }
   private async event(

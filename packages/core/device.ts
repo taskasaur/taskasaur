@@ -316,6 +316,7 @@ export class DeviceCore {
       handler,
     );
     this.workspaces.set(id, node);
+    await node.records.open();
     await node.protocol.files.initialize();
     await node.protocol.storage.bootstrap();
     this.protocols.set(id, node.protocol);

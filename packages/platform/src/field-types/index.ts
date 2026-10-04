@@ -29,6 +29,15 @@ export const fieldDescriptor = z.object({
   required: z.boolean().default(false),
   nullable: z.boolean().default(true),
   array: z.boolean().default(false),
+  inputMode: z.enum(["single", "select", "multiselect", "list"]).optional(),
+  options: z
+    .array(z.union([z.string(), z.number().finite(), z.boolean()]))
+    .max(1000)
+    .optional(),
+  minItems: z.number().int().min(0).optional(),
+  maxItems: z.number().int().positive().optional(),
+  visibility: z.enum(["editable", "viewable", "hidden", "addable"]).optional(),
+  storage: z.literal("custom").optional(),
   length: z.number().int().positive().optional(),
   precision: z.number().int().min(1).max(1000).optional(),
   scale: z.number().int().min(0).max(1000).optional(),
@@ -72,7 +81,10 @@ export function field(
   pgType: PgType = "text",
   options: Partial<Field> = {},
 ): Field {
-  return fieldDescriptor.parse({ id, label, pgType, ...options });
+  // Descriptors are persisted as JSON. Optional, unset properties must be absent.
+  return JSON.parse(
+    JSON.stringify(fieldDescriptor.parse({ id, label, pgType, ...options })),
+  ) as Field;
 }
 export function sqlIdentifier(value: string) {
   invariant(
@@ -140,10 +152,36 @@ export function decodeField(f: Field, value: unknown): Value {
   }
   if (f.array) {
     if (!Array.isArray(value)) fail(f, "expected a list");
-    return value.map((v) =>
-      decodeField({ ...f, array: false, nullable: false }, v),
+    if (f.minItems !== undefined && value.length < f.minItems)
+      fail(f, "too few values");
+    if (f.maxItems !== undefined && value.length > f.maxItems)
+      fail(f, "too many values");
+    const values = value.map((v) =>
+      decodeField(
+        {
+          ...f,
+          array: false,
+          inputMode: f.inputMode === "multiselect" ? "select" : "single",
+          nullable: false,
+        },
+        v,
+      ),
     );
+    if (
+      f.inputMode === "multiselect" &&
+      new Set(values.map((v) => JSON.stringify(v))).size !== values.length
+    )
+      fail(f, "choose each option once");
+    return values;
   }
+  if (
+    f.inputMode === "select" &&
+    f.options &&
+    !f.options.some(
+      (option) => JSON.stringify(option) === JSON.stringify(value),
+    )
+  )
+    fail(f, "choose a declared option");
   if (f.pgType === "jsonb") return validateJson(value);
   if (f.pgType === "boolean") {
     if (typeof value !== "boolean") fail(f, "expected true or false");

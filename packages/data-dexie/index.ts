@@ -4,6 +4,7 @@ import {
   generatedValues,
   collectionColumns,
   customValues,
+  templateValues,
 } from "@taskasaur/platform/core/collection-tables";
 import type {
   Mutation,
@@ -176,14 +177,8 @@ export class LocalDatabase extends Dexie {
             "READ_ONLY",
             "Cache projections are ingestion-only",
           );
-          const data = validateRecord(
-            schema,
-            generatedValues(
-              schema,
-              input,
-              (await this.records.get(resourceId))?.data,
-            ),
-          );
+          const old = (await this.records.get(resourceId))?.data;
+          let prepared = generatedValues(schema, input, old);
           if (this.replicaBridge) {
             await authorize();
             const managedBy =
@@ -192,8 +187,20 @@ export class LocalDatabase extends Dexie {
               principal.pluginId !== "core"
                 ? principal.pluginId
                 : undefined;
-            return this.replicaBridge.put(id, data, resourceId, managedBy);
+            return this.replicaBridge.put(id, prepared, resourceId, managedBy);
           }
+          const table =
+            schema.tables && prepared.table_id
+              ? await this.records.get(String(prepared.table_id))
+              : undefined;
+          if (table?.data.collection_id === id)
+            prepared = templateValues(
+              schema,
+              table.data.columns,
+              prepared,
+              old,
+            );
+          const data = validateRecord(schema, prepared);
           const now = new Date().toISOString();
           return this.transaction(
             "rw",
@@ -226,7 +233,12 @@ export class LocalDatabase extends Dexie {
                   .equals(target.id)
                   .filter((r) => !r.deletedAt && r.data.table_id === resourceId)
                   .toArray())
-                  customValues(target, data.columns, row.data.custom_fields);
+                  customValues(
+                    target,
+                    data.columns,
+                    row.data.custom_fields,
+                    row.data,
+                  );
               }
               if (schema.tables && data.table_id) {
                 const definition = await this.records.get(
@@ -244,6 +256,7 @@ export class LocalDatabase extends Dexie {
                   schema,
                   definition.data.columns,
                   data.custom_fields,
+                  data,
                 );
               }
               if (schema.tables && !data.table_id)

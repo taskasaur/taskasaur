@@ -10,9 +10,9 @@ import {
 import { invariant } from "./errors";
 export function tableFields(value: unknown): Field[] {
   invariant(
-    Array.isArray(value) && value.length > 0 && value.length <= 128,
+    Array.isArray(value) && value.length <= 128,
     "VALIDATION_FAILED",
-    "A table requires between 1 and 128 columns",
+    "A table requires between 0 and 128 columns",
   );
   const fields = value.map((v) => fieldDescriptor.parse(v));
   invariant(
@@ -25,19 +25,80 @@ export function tableFields(value: unknown): Field[] {
     "VALIDATION_FAILED",
     "Store secrets through Credentials, not user tables",
   );
+  for (const f of fields) {
+    invariant(
+      !f.inputMode || f.array === ["list", "multiselect"].includes(f.inputMode),
+      "VALIDATION_FAILED",
+      "Input count must match the field list type",
+    );
+    invariant(
+      f.minItems === undefined ||
+        f.maxItems === undefined ||
+        f.minItems <= f.maxItems,
+      "VALIDATION_FAILED",
+      "Minimum inputs cannot exceed maximum inputs",
+    );
+    invariant(
+      f.array || (f.minItems === undefined && f.maxItems === undefined),
+      "VALIDATION_FAILED",
+      "Input limits require a list",
+    );
+    invariant(
+      !["select", "multiselect"].includes(f.inputMode ?? "") ||
+        Boolean(f.options?.length),
+      "VALIDATION_FAILED",
+      "Selection fields require options",
+    );
+    invariant(
+      !f.options ||
+        new Set(f.options.map((option) => JSON.stringify(option))).size ===
+          f.options.length,
+      "VALIDATION_FAILED",
+      "Selection options must be unique",
+    );
+    invariant(
+      !f.required ||
+        !["hidden", "viewable"].includes(f.visibility ?? "") ||
+        f.default !== undefined ||
+        Boolean(f.generated),
+      "VALIDATION_FAILED",
+      "Required fields that cannot be edited need a default value",
+    );
+    if (f.default !== undefined) decodeField(f, f.default);
+    if (f.options)
+      for (const option of f.options)
+        decodeField(
+          { ...f, array: false, inputMode: "single", nullable: false },
+          option,
+        );
+  }
   return fields;
 }
 export function validateTableValues(columns: unknown, values: unknown) {
-  return validateRecord(
-    {
-      id: "values",
-      name: "Values",
-      pluginId: "tables",
-      version: 1,
-      fields: tableFields(columns),
-    },
-    values,
+  const fields = tableFields(columns),
+    stored = decodeField(field("values", "Values", "jsonb"), values);
+  invariant(
+    stored && typeof stored === "object" && !Array.isArray(stored),
+    "VALIDATION_FAILED",
+    "Table values must be an object",
   );
+  return {
+    ...stored,
+    ...validateRecord(
+      {
+        id: "values",
+        name: "Values",
+        pluginId: "tables",
+        version: 1,
+        fields,
+      },
+      Object.fromEntries(
+        Object.entries(stored).filter(([key]) =>
+          fields.some((f) => f.id === key),
+        ),
+      ),
+    ),
+  };
 }
 export function validateDynamicData(
   collection: string,
