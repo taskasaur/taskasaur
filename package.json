@@ -130,6 +130,7 @@
   },
   "build": {
     "appId": "com.taskasaur.app",
+    "artifactName": "Taskasaur-${version}-${os}-${arch}.${ext}",
     "productName": "Taskasaur",
     "icon": "build/icon.png",
     "files": [

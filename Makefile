@@ -17,6 +17,8 @@ help:
 	@echo "  make build-all       Build macOS, Windows, Linux, iOS, and Android"
 	@echo "  make release version=1.1.1"
 	@echo "                       Tag a version and publish native builds with GitHub Actions"
+	@echo "  make release version=dev"
+	@echo "                       Publish a dated SemVer development prerelease"
 	@echo "  make sync-ios        Sync the web build into the Capacitor iOS shell"
 	@echo "  make sync-android    Sync the web build into the Capacitor Android shell"
 	@echo "  make open-ios        Open the iOS project in Xcode"

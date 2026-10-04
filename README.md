@@ -67,6 +67,10 @@ The `edge` image follows verified `main` builds; pin a published `sha-…` tag o
 
 See [self-hosting](docs/self-hosting.md), [replication and recovery](docs/distributed.md), and the [plugin specification](docs/plugins/README.md). Save everything shared as a [portable, live workspace file](docs/workspace-files.md), preserving Automerge history without cloning a device identity. Workspace files include credentials and access to reconnect from another device automatically, with optional password encryption. Optional column templates use the [shared type and input model](docs/plugins/columns.md). The Office plugin embeds the [full upstream LibreOffice suite](docs/office-engine.md), and Dashboard provides active work plus the shared search/command interface.
 
+## Releases
+
+Run `make release version=dev` for a dated development prerelease, or `make release version=0.4.0` for a stable release. The existing release pipeline publishes desktop, mobile, web and Docker downloads with checksums. The [website](https://taskasaur.net/#downloads) discovers the newest dev build automatically. See [release instructions and signing limits](docs/releases.md).
+
 ## Build and verify
 
 ```sh

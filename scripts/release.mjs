@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { releaseVersion, nextNativeBuild } from "./release-version.mjs";
 
-const version = process.argv[2]?.trim();
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const match = version?.match(semverPattern);
-
-if (!match) {
-  console.error("Usage: make release version=1.1.1");
-  console.error("The version must use major.minor.patch format.");
+const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+let release;
+try {
+  release = releaseVersion(process.argv[2]?.trim(), packageJson.version);
+} catch (error) {
+  console.error("Usage: make release version=dev (or version=1.1.1)");
+  console.error(error.message);
   process.exit(1);
 }
+const { version, tag, nativeVersion } = release;
 
 function git(...args) {
   return execFileSync("git", args, {
@@ -18,7 +20,15 @@ function git(...args) {
   }).trim();
 }
 
-if (git("status", "--porcelain")) {
+// These local planning documents are deliberately outside release source control.
+const changes = git("status", "--porcelain", "--untracked-files=all")
+  .split("\n")
+  .filter(
+    (line) =>
+      line &&
+      !/^\?\? docs\/(rebuild-plan|implementation-status)\.md$/.test(line),
+  );
+if (changes.length) {
   console.error("The working tree must be clean before creating a release.");
   console.error("Commit or stash your changes, then run the command again.");
   process.exit(1);
@@ -46,7 +56,6 @@ if (localHead !== upstreamHead) {
   process.exit(1);
 }
 
-const tag = `v${version}`;
 if (
   git("tag", "--list", tag) ||
   git("ls-remote", "--tags", "origin", `refs/tags/${tag}`)
@@ -56,9 +65,8 @@ if (
 }
 
 execFileSync("npm", ["test"], { stdio: "inherit" });
-execFileSync("npm", ["run", "build:web"], { stdio: "inherit" });
+execFileSync("npm", ["run", "build"], { stdio: "inherit" });
 
-const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 packageJson.version = version;
 writeFileSync("package.json", `${JSON.stringify(packageJson, null, 2)}\n`);
 
@@ -69,22 +77,26 @@ if (packageLock.packages?.[""]) {
 }
 writeFileSync("package-lock.json", `${JSON.stringify(packageLock, null, 2)}\n`);
 
-const [major, minor, patch] = match.slice(1).map(Number);
-const buildNumber = major * 1_000_000 + minor * 1_000 + patch;
-
 const androidPath = "android/app/build.gradle";
+const iosPath = "ios/App/App.xcodeproj/project.pbxproj";
+const buildNumber = nextNativeBuild(
+  readFileSync(androidPath, "utf8"),
+  readFileSync(iosPath, "utf8"),
+);
 const androidBuild = readFileSync(androidPath, "utf8")
   .replace(/versionCode\s+\d+/, `versionCode ${buildNumber}`)
   .replace(/versionName\s+"[^"]+"/, `versionName "${version}"`);
 writeFileSync(androidPath, androidBuild);
 
-const iosPath = "ios/App/App.xcodeproj/project.pbxproj";
 const iosProject = readFileSync(iosPath, "utf8")
   .replace(
     /CURRENT_PROJECT_VERSION = \d+;/g,
     `CURRENT_PROJECT_VERSION = ${buildNumber};`,
   )
-  .replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
+  .replace(
+    /MARKETING_VERSION = [^;]+;/g,
+    `MARKETING_VERSION = ${nativeVersion};`,
+  );
 writeFileSync(iosPath, iosProject);
 
 execFileSync(
@@ -101,5 +113,5 @@ execFileSync("git", ["push", "--atomic", "origin", branch, tag], {
 });
 
 console.log(
-  `Pushed ${tag}. GitHub Actions will build and publish the release.`,
+  `Pushed ${tag}. GitHub Actions will build and publish the ${release.prerelease ? "prerelease" : "release"}. Track it with gh run list --workflow release.yml.`,
 );

@@ -141,7 +141,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ steps.registry.outputs.image }}:${{ github.event_name == 'push' && 'edge' || needs.verify.outputs.version }}
+            ${{ steps.registry.outputs.image }}:${{ github.event_name == 'push' && inputs.ref == '' && 'edge' || needs.verify.outputs.version }}
             ${{ steps.registry.outputs.image }}:sha-${{ needs.verify.outputs.revision }}
           build-args: |
             TASKASAUR_VERSION=${{ needs.verify.outputs.version }}
