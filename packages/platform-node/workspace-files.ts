@@ -2,6 +2,30 @@ import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type { WorkspaceFiles } from "../storage/workspace";
 import { lockDirectory } from "./lock";
+export async function atomicWorkspaceWrite(target: string, bytes: Uint8Array) {
+  const temp = target + "." + crypto.randomUUID() + ".tmp";
+  await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+  try {
+    const fd = await open(temp, "wx", 0o600);
+    try {
+      await fd.writeFile(bytes);
+      await fd.sync();
+    } finally {
+      await fd.close();
+    }
+    await rename(temp, target);
+    if (process.platform !== "win32") {
+      const dir = await open(path.dirname(target), "r");
+      try {
+        await dir.sync();
+      } finally {
+        await dir.close();
+      }
+    }
+  } finally {
+    await rm(temp, { force: true });
+  }
+}
 /** The same package layout as the browser's selected directory adapter. */
 export class NodeWorkspaceFiles implements WorkspaceFiles {
   private constructor(
@@ -26,30 +50,7 @@ export class NodeWorkspaceFiles implements WorkspaceFiles {
     }
   }
   async write(name: string, bytes: Uint8Array) {
-    const target = this.file(name),
-      temp = target + "." + crypto.randomUUID() + ".tmp";
-    await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
-    const fd = await open(temp, "wx", 0o600);
-    try {
-      await fd.writeFile(bytes);
-      await fd.sync();
-    } finally {
-      await fd.close();
-    }
-    try {
-      await rename(temp, target);
-    } catch (e) {
-      await rm(temp, { force: true });
-      throw e;
-    }
-    if (process.platform !== "win32") {
-      const dir = await open(path.dirname(target), "r");
-      try {
-        await dir.sync();
-      } finally {
-        await dir.close();
-      }
-    }
+    await atomicWorkspaceWrite(this.file(name), bytes);
   }
   async remove(name: string) {
     const target = this.file(name);

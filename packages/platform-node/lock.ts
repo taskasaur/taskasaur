@@ -4,8 +4,11 @@ import os from "node:os";
 /** One writer per native data directory. Management commands use the same lock. */
 export async function lockDirectory(directory: string) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const file = path.join(directory, "runtime.lock"),
-    token = crypto.randomUUID();
+  return lockFile(path.join(directory, "runtime.lock"));
+}
+/** A temporary sidecar lease is device-local and never part of the workspace. */
+export async function lockFile(file: string) {
+  const token = crypto.randomUUID();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       await writeFile(

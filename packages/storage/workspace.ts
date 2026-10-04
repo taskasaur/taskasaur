@@ -16,6 +16,12 @@ export interface WorkspaceFiles {
   /** Atomically replace a file; resolve only after its durable commit. */
   write(path: string, bytes: Uint8Array): Promise<void>;
   remove(path: string): Promise<void>;
+  /** Optional atomic package commit for a single-file container. */
+  commit?(
+    manifest: Uint8Array,
+    additions: Record<string, Uint8Array>,
+  ): Promise<void>;
+  refresh?(): Promise<void>;
   close?(): Promise<void>;
 }
 export const sharedWorkspaceKey = (workspaceId: string, key: string) =>
@@ -76,7 +82,7 @@ export class WorkspaceStorage implements DurableStorage {
     invariant(
       bytes,
       "INVALID_WORKSPACE",
-      "Select a Taskasaur workspace folder",
+      "Select a Taskasaur workspace file or folder",
     );
     return new WorkspaceStorage(files, parseWorkspaceManifest(bytes));
   }
@@ -88,7 +94,7 @@ export class WorkspaceStorage implements DurableStorage {
     invariant(
       !(await files.read("workspace.json")),
       "WORKSPACE_EXISTS",
-      "Choose a new workspace folder",
+      "Choose a new workspace file or folder",
     );
     const manifest: WorkspaceManifest = {
       format: "taskasaur-workspace-v1",
@@ -98,19 +104,27 @@ export class WorkspaceStorage implements DurableStorage {
       workspace: structuredClone(workspace),
       entries: {},
     };
+    const additions: Record<string, Uint8Array> = {};
     for (const [key, bytes] of Object.entries(entries)) {
       if (!sharedWorkspaceKey(workspace.id, key)) continue;
       const hash = await digest(bytes);
-      await files.write(`data/${hash}.bin`, bytes);
+      additions[`data/${hash}.bin`] = bytes;
       manifest.entries[key] = { hash, size: bytes.length };
     }
     // Publish only after all referenced bytes are durable.
-    await files.write("workspace.json", utf8.encode(canonical(manifest)));
+    const metadata = utf8.encode(canonical(manifest));
+    if (files.commit) await files.commit(metadata, additions);
+    else {
+      for (const [name, bytes] of Object.entries(additions))
+        await files.write(name, bytes);
+      await files.write("workspace.json", metadata);
+    }
     return new WorkspaceStorage(files, manifest);
   }
   /** Re-read an unopened/import source after approval may have updated its package. */
   refresh() {
     return this.serial(async () => {
+      await this.files.refresh?.();
       const bytes = await this.files.read("workspace.json");
       invariant(bytes, "INVALID_WORKSPACE", "Workspace manifest is missing");
       const current = parseWorkspaceManifest(bytes);
@@ -118,7 +132,7 @@ export class WorkspaceStorage implements DurableStorage {
         current.packageId === this.manifest.packageId &&
           current.workspace.id === this.manifest.workspace.id,
         "WORKSPACE_CHANGED",
-        "The selected folder was replaced by another workspace",
+        "The selected location was replaced by another workspace",
       );
       this.manifest = current;
     });
@@ -128,16 +142,25 @@ export class WorkspaceStorage implements DurableStorage {
     this.queue = next.catch(() => {});
     return next;
   }
-  private async commit(next: WorkspaceManifest) {
+  private async commit(
+    next: WorkspaceManifest,
+    additions: Record<string, Uint8Array> = {},
+  ) {
     const disk = await this.files.read("workspace.json");
     invariant(
       disk &&
         canonical(parseWorkspaceManifest(disk)) === canonical(this.manifest),
       "WORKSPACE_CHANGED",
-      "The workspace folder changed outside this session. Close and reopen it before writing.",
+      "The workspace changed outside this session. Close and reopen it before writing.",
     );
     next.revision++;
-    await this.files.write("workspace.json", utf8.encode(canonical(next)));
+    const metadata = utf8.encode(canonical(next));
+    if (this.files.commit) await this.files.commit(metadata, additions);
+    else {
+      for (const [name, bytes] of Object.entries(additions))
+        await this.files.write(name, bytes);
+      await this.files.write("workspace.json", metadata);
+    }
     this.manifest = next;
   }
   private async release(hash?: string) {
@@ -171,12 +194,11 @@ export class WorkspaceStorage implements DurableStorage {
       const hash = await digest(copy);
       const previous = this.manifest.entries[key]?.hash;
       if (this.manifest.entries[key]?.hash === hash) return;
-      await this.files.write(`data/${hash}.bin`, copy);
       const next = structuredClone(this.manifest);
       next.entries[key] = { hash, size: copy.length };
       if (key.endsWith("/access"))
         next.workspace.policies = JSON.parse(text.decode(copy));
-      await this.commit(next);
+      await this.commit(next, { [`data/${hash}.bin`]: copy });
       await this.release(previous);
     });
   }
@@ -222,7 +244,7 @@ export class WorkspaceStorage implements DurableStorage {
     await this.files.close?.();
   }
 }
-/** Local device state stays in its normal adapter while shared writes go straight to the selected folder. */
+/** Local device state stays in its normal adapter while shared writes go to the selected package. */
 export class WorkspaceRouter implements DurableStorage {
   readonly mounts = new Map<string, WorkspaceStorage>();
   readonly blocked = new Set<string>();
@@ -269,7 +291,7 @@ export class WorkspaceRouter implements DurableStorage {
     invariant(
       !this.blocked.has(id) || !sharedWorkspaceKey(id, key),
       "FOLDER_PERMISSION",
-      "Reconnect this workspace folder from the welcome screen before opening it.",
+      "Reconnect this workspace file or folder from the welcome screen before opening it.",
     );
     return mount && sharedWorkspaceKey(id, key) ? mount : this.local;
   }

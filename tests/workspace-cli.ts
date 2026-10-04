@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import assert from "node:assert/strict";
 import { DeviceCore } from "../packages/core/device";
 import { FileStorage } from "../packages/platform-node/storage";
+import { openNodeWorkspaceArchive } from "../packages/platform-node/workspace-archive";
 import { NodeWorkspaceFiles } from "../packages/platform-node/workspace-files";
 import { WorkspaceStorage } from "../packages/storage/workspace";
 import {
@@ -64,76 +65,84 @@ try {
     "--join",
     invitation,
   ]);
-  const exported = join(directory, "roundtrip.taskasaur");
-  await run([
-    "--data",
-    otherPath,
-    "--workspace-folder",
-    folder,
-    "--export-workspace",
-    exported,
-  ]);
-  const restored = await openWorkspaceArchive(
-    new Uint8Array(await readFile(exported)),
-  );
-  assert.equal(restored.manifest.workspace.id, id);
-  assert.equal(restored.manifest.workspace.policies.length, 2);
-  assert(
-    Object.keys(restored.manifest.entries).every(
-      (k) => !k.includes("/local/") && !k.includes("identity"),
-    ),
-  );
-  processUnderTest = spawn(
-    process.execPath,
-    [
-      entry,
+  for (const [option, location, kind] of [
+    ["--workspace-folder", folder, "folder"],
+    ["--workspace-file", archive, "file"],
+  ]) {
+    const exported = join(directory, `roundtrip-${kind}.taskasaur`);
+    await run([
       "--data",
       otherPath,
-      "--workspace-folder",
-      folder,
-      "--no-ui",
-      "--port",
-      "0",
-      "--peer-port",
-      "0",
-    ],
-    {
-      env: { ...process.env, TASKASAUR_STORAGE_ONLY: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  await new Promise<void>((resolve, reject) => {
-    let output = "",
-      error = "";
-    const timeout = setTimeout(
-      () => reject(Error("Headless folder startup timed out: " + error)),
-      45000,
+      option,
+      location,
+      "--export-workspace",
+      exported,
+    ]);
+    const restored = await openWorkspaceArchive(
+      new Uint8Array(await readFile(exported)),
     );
-    processUnderTest!.stderr!.on("data", (chunk) => {
-      error += chunk;
-    });
-    processUnderTest!.stdout!.on("data", (chunk) => {
-      output += chunk;
-      if (output.includes('"workspaces"')) {
+    assert.equal(restored.manifest.workspace.id, id);
+    assert.equal(restored.manifest.workspace.policies.length, 2);
+    assert(
+      Object.keys(restored.manifest.entries).every(
+        (k) => !k.includes("/local/") && !k.includes("identity"),
+      ),
+    );
+    processUnderTest = spawn(
+      process.execPath,
+      [
+        entry,
+        "--data",
+        otherPath,
+        option,
+        location,
+        "--no-ui",
+        "--port",
+        "0",
+        "--peer-port",
+        "0",
+      ],
+      {
+        env: { ...process.env, TASKASAUR_STORAGE_ONLY: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    await new Promise<void>((resolve, reject) => {
+      let output = "",
+        error = "";
+      const timeout = setTimeout(
+        () => reject(Error("Headless folder startup timed out: " + error)),
+        45000,
+      );
+      processUnderTest!.stderr!.on("data", (chunk) => {
+        error += chunk;
+      });
+      processUnderTest!.stdout!.on("data", (chunk) => {
+        output += chunk;
+        if (output.includes('"workspaces"')) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+      processUnderTest!.once("exit", (code) => {
         clearTimeout(timeout);
-        resolve();
-      }
+        reject(Error("Headless folder exited " + code + ": " + error));
+      });
     });
-    processUnderTest!.once("exit", (code) => {
-      clearTimeout(timeout);
-      reject(Error("Headless folder exited " + code + ": " + error));
-    });
-  });
-  const exited = new Promise<void>((resolve) =>
-    processUnderTest!.once("exit", () => resolve()),
-  );
-  processUnderTest.kill("SIGTERM");
-  await exited;
-  processUnderTest = undefined;
-  const reopened = await NodeWorkspaceFiles.open(folder);
-  await reopened.close();
+    const exited = new Promise<void>((resolve) =>
+      processUnderTest!.once("exit", () => resolve()),
+    );
+    processUnderTest.kill("SIGTERM");
+    await exited;
+    processUnderTest = undefined;
+    const reopened =
+      kind === "file"
+        ? await openNodeWorkspaceArchive(location)
+        : await NodeWorkspaceFiles.open(location);
+    await reopened.close();
+  }
   console.log(
-    "Compiled CLI approval, import, live-folder export, headless startup and graceful writer-lock release passed.",
+    "Compiled CLI approval, import, live-file and live-folder export, headless startup and graceful writer-lock release passed.",
   );
 } finally {
   processUnderTest?.kill("SIGTERM");

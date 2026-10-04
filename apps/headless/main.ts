@@ -12,6 +12,7 @@ import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 import { FileStorage } from "../../packages/platform-node/storage";
 import { NodeWorkspaceFiles } from "../../packages/platform-node/workspace-files";
+import { openNodeWorkspaceArchive } from "../../packages/platform-node/workspace-archive";
 import {
   WorkspaceStorage,
   WorkspaceRouter,
@@ -28,6 +29,7 @@ const { values } = parseArgs({
     name: { type: "string" },
     workspace: { type: "string" },
     "workspace-folder": { type: "string" },
+    "workspace-file": { type: "string" },
     "export-workspace": { type: "string" },
     "import-workspace": { type: "string" },
     port: { type: "string" },
@@ -55,13 +57,19 @@ const { values } = parseArgs({
 });
 if (values.help) {
   console.log(
-    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --workspace-folder <folder> (live shared workspace; --data keeps device identity)\n  --import-workspace <file.taskasaur> [--join invitation.json]\n  --export-workspace <file.taskasaur> --workspace-id <id>\n  --plugin <id> --workspace-id <id>",
+    "Taskasaur peer\n  --data <directory> --name <device name> --workspace <name>\n  --port 8080 --peer-port 8787 --host 127.0.0.1 --no-ui --server --relay\n  --plugins --terminal --automation --trusted-code --background (explicit opt-ins)\n  --pairing-request --output request.json\n  --approve request.json --workspace-id <id> --output invitation.json\n  --join invitation.json\n  --workspace-file <file.taskasaur> (live shared workspace; --data keeps device identity)\n  --workspace-folder <folder> (existing directory layout)\n  --import-workspace <file.taskasaur> [--join invitation.json]\n  --export-workspace <file.taskasaur> --workspace-id <id>\n  --plugin <id> --workspace-id <id>",
   );
   process.exit(0);
 }
 const directory = path.resolve(
   values.data ?? process.env.TASKASAUR_DATA ?? ".taskasaur/peer",
 );
+const workspaceFile =
+  values["workspace-file"] ?? process.env.TASKASAUR_WORKSPACE_FILE;
+const workspaceFolder =
+  values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER;
+if (workspaceFile && workspaceFolder)
+  throw Error("Choose one workspace file or folder");
 if (values.backup || values.restore) {
   if (
     !values["passphrase-file"] ||
@@ -102,10 +110,10 @@ if (values["export-workspace"] || values["import-workspace"]) {
     storage = snapshotStorage(router);
   const core = await DeviceCore.open(storage, values.name ?? os.hostname());
   try {
-    const folder =
-      values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER;
-    if (folder) {
-      const files = await NodeWorkspaceFiles.open(folder);
+    if (workspaceFile || workspaceFolder) {
+      const files = workspaceFile
+        ? await openNodeWorkspaceArchive(workspaceFile)
+        : await NodeWorkspaceFiles.open(workspaceFolder!);
       try {
         const source = await WorkspaceStorage.open(files);
         const node = await importWorkspace(
@@ -190,8 +198,8 @@ const host = values.host ?? process.env.TASKASAUR_HOST ?? "127.0.0.1",
   );
 const runtime = await startNativeRuntime({
   directory,
-  workspaceFolder:
-    values["workspace-folder"] ?? process.env.TASKASAUR_WORKSPACE_FOLDER,
+  workspaceFolder,
+  workspaceFile,
   name: values.name ?? process.env.TASKASAUR_NAME,
   createWorkspace:
     values.workspace ??

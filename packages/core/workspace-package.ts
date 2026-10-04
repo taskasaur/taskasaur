@@ -1,10 +1,12 @@
-import JSZip from "jszip";
+import {
+  decodeWorkspaceArchive,
+  encodeWorkspaceArchive,
+} from "../storage/workspace-archive";
 import { MemoryStorage } from "../storage";
 import {
   WorkspaceStorage,
   type WorkspaceFiles,
   sharedWorkspaceKey,
-  parseWorkspaceManifest,
 } from "../storage/workspace";
 import { Replica } from "./replica";
 import { ReplicaFiles } from "./files";
@@ -155,50 +157,14 @@ export async function exportWorkspace(node: WorkspaceNode) {
   const { workspace, entries } = await workspaceSnapshot(node);
   const files = new MemoryWorkspaceFiles();
   await WorkspaceStorage.create(files, workspace, entries);
-  const zip = new JSZip();
-  for (const [name, bytes] of files.values) zip.file(name, bytes);
-  return zip.generateAsync({ type: "uint8array", compression: "STORE" });
+  return encodeWorkspaceArchive(files.values);
 }
 export async function openWorkspaceArchive(bytes: Uint8Array) {
-  invariant(
-    bytes.length <= 1024 * 1024 * 1024,
-    "PAYLOAD_TOO_LARGE",
-    "Use a workspace folder for archives larger than 1 GB",
-  );
-  const zip = await JSZip.loadAsync(bytes);
-  const metadata = zip.file("workspace.json");
-  invariant(metadata, "INVALID_WORKSPACE", "Workspace manifest is missing");
-  const expanded = (name: string) =>
-    Number(
-      (zip.files[name] as unknown as { _data?: { uncompressedSize?: number } })
-        ?._data?.uncompressedSize ?? 0,
-    );
-  invariant(
-    expanded("workspace.json") <= 64 * 1024 * 1024,
-    "PAYLOAD_TOO_LARGE",
-    "Workspace manifest is too large",
-  );
-  const manifestBytes = await metadata.async("uint8array"),
-    manifest = parseWorkspaceManifest(manifestBytes);
-  await validateWorkspaceHistory(manifest.workspace);
-  let total = 0;
+  const values = await decodeWorkspaceArchive(bytes);
   const files = new MemoryWorkspaceFiles();
-  await files.write("workspace.json", manifestBytes);
-  for (const entry of Object.values(manifest.entries)) {
-    const name = `data/${entry.hash}.bin`,
-      file = zip.file(name);
-    total += entry.size;
-    invariant(
-      file && expanded(name) === entry.size && total <= 1024 * 1024 * 1024,
-      "INVALID_WORKSPACE",
-      "Workspace data is missing or exceeds archive limits",
-    );
-    if (!files.values.has(name))
-      await files.write(name, await file.async("uint8array"));
-  }
+  for (const [name, data] of values) await files.write(name, data);
   const source = await WorkspaceStorage.open(files);
-  // Verify all archive entry checksums before accepting any application writes.
-  await source.snapshot();
+  await validateWorkspaceHistory(source.manifest.workspace);
   return source;
 }
 export async function importWorkspace(

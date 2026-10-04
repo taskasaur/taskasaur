@@ -1,5 +1,6 @@
 import { WorkspaceRouter, WorkspaceStorage } from "../storage/workspace";
 import { NodeWorkspaceFiles } from "./workspace-files";
+import { openNodeWorkspaceArchive } from "./workspace-archive";
 import { importWorkspace, workspaceSnapshot } from "../core/workspace-package";
 import path from "node:path";
 import os from "node:os";
@@ -17,11 +18,14 @@ export async function startNativeRuntime(
     network?: NetworkOptions;
     createWorkspace?: string;
     workspaceFolder?: string;
+    workspaceFile?: string;
     storage?: DurableStorage;
     syncIntervalMs?: number;
     documentCache?: number;
   },
 ) {
+  if (options.workspaceFile && options.workspaceFolder)
+    throw Error("Choose one workspace file or folder");
   const interval = options.syncIntervalMs ?? 5000,
     documentCache = options.documentCache ?? 512;
   if (
@@ -47,8 +51,10 @@ export async function startNativeRuntime(
       options.name ?? os.hostname(),
       () => services?.capabilities() ?? [],
     );
-    if (options.workspaceFolder) {
-      const files = await NodeWorkspaceFiles.open(options.workspaceFolder);
+    if (options.workspaceFile || options.workspaceFolder) {
+      const files = options.workspaceFile
+        ? await openNodeWorkspaceArchive(options.workspaceFile)
+        : await NodeWorkspaceFiles.open(options.workspaceFolder!);
       try {
         const workspace = await WorkspaceStorage.open(files);
         const node = await importWorkspace(core, workspace);
@@ -64,6 +70,7 @@ export async function startNativeRuntime(
     }
     if (
       !options.workspaceFolder &&
+      !options.workspaceFile &&
       !core.profiles().length &&
       options.createWorkspace
     )
