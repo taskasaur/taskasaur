@@ -1,6 +1,6 @@
 {
   "name": "taskasaur",
-  "version": "0.3.0",
+  "version": "0.3.0-dev.20261004192509",
   "description": "Taskasaur distributed workspace: local replicas, peer synchronization, desktop, mobile and headless",
   "author": {
     "name": "Taskasaur Contributors",
