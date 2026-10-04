@@ -148,6 +148,20 @@ export async function startNativeRuntime(
           });
         return selection;
       },
+      deleteWorkspace(id: string) {
+        selection = selection
+          .catch(() => {})
+          .then(async () => {
+            changing = true;
+            try {
+              await pending;
+              await services!.deleteWorkspace(id);
+            } finally {
+              changing = false;
+            }
+          });
+        return selection;
+      },
       async close() {
         stopping = true;
         clearInterval(timer);

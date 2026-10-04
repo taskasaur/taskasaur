@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
       ipcRenderer.invoke("replica:set", key, value),
     delete: (key: string) => ipcRenderer.invoke("replica:delete", key),
     keys: (prefix: string) => ipcRenderer.invoke("replica:keys", prefix),
+    deleteWorkspace: (id: string) =>
+      ipcRenderer.invoke("replica:delete-workspace", id),
   },
   workspace: {
     choose: (kind: "file" | "folder", create: boolean, password?: string) =>
@@ -15,6 +17,8 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
     resume: (workspaceId: string, password?: string) =>
       ipcRenderer.invoke("workspace:resume", workspaceId, password),
     list: () => ipcRenderer.invoke("workspace:list"),
+    forget: (workspaceId: string) =>
+      ipcRenderer.invoke("workspace:forget", workspaceId),
     read: (id: string, path: string) =>
       ipcRenderer.invoke("workspace:read", id, path),
     write: (id: string, path: string, bytes: Uint8Array) =>
@@ -36,6 +40,8 @@ contextBridge.exposeInMainWorld("taskasaurNative", {
       ipcRenderer.invoke("peer:request", address, packet),
     select: (workspaceId?: string) =>
       ipcRenderer.invoke("peer:select", workspaceId),
+    deleteWorkspace: (workspaceId: string) =>
+      ipcRenderer.invoke("peer:delete-workspace", workspaceId),
     join: (invitation: string, credential?: unknown) =>
       ipcRenderer.invoke("peer:join", invitation, credential),
     info: () => ipcRenderer.invoke("peer:info"),

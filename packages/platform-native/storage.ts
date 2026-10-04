@@ -5,6 +5,7 @@ import { base64, unbase64 } from "../core/crypto";
 const atomic = registerPlugin<{
   write(options: { path: string; data: string }): Promise<void>;
   read(options: { path: string }): Promise<{ data: string | null }>;
+  remove(options: { path: string }): Promise<void>;
 }>("ReplicaStorage");
 /** Native app-private files are independent of WebView cache eviction. */
 export class NativeStorage implements DurableStorage {
@@ -27,11 +28,7 @@ export class NativeStorage implements DurableStorage {
     await atomic.write({ path: this.path(key), data: base64(bytes) });
   }
   async delete(key: string) {
-    if (await this.get(key))
-      await Filesystem.deleteFile({
-        directory: Directory.Data,
-        path: this.path(key),
-      });
+    await atomic.remove({ path: this.path(key) });
   }
   async keys(prefix: string) {
     await Filesystem.mkdir({
@@ -58,8 +55,7 @@ export class NativeStorage implements DurableStorage {
             path + "/" + file.name,
             encoded + (file.name === "long" && !encoded ? "" : file.name),
           );
-        else if (!/\.(tmp|new)$/.test(file.name))
-          names.push(encoded + file.name.replace(/\.bak$/, ""));
+        else names.push(encoded + file.name.replace(/\.(bak|new|tmp)$/, ""));
       }
     };
     await walk(this.namespace);

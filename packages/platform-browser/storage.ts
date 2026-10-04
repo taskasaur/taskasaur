@@ -97,6 +97,12 @@ export class BrowserStorage implements DurableStorage {
     this.workspaces.delete(id);
     this.migrations.delete(id);
   }
+  async deleteWorkspace(id: string) {
+    await this.migrations.get(id);
+    this.closeWorkspace(id);
+    await this.values.where("key").startsWith(`workspace/${id}/`).delete();
+    await Dexie.delete(`${this.name}.workspace.${id}`);
+  }
   close() {
     this.closed = true;
     for (const scope of this.workspaces.values()) scope.db.close();

@@ -6,6 +6,58 @@ import { sqlIdentifier } from "@taskasaur/platform/field-types";
 import { encodeSqlField } from "./field-codecs";
 import { currentPolicy } from "../../core/identity";
 import { seedCorePlugins } from "./schema";
+export async function deleteWorkspaceProjection(db: Database, id: string) {
+  await db.transaction(async (tx) => {
+    await tx.query(
+      "DELETE FROM taskasaur.event_receipts WHERE event_id IN (SELECT id FROM taskasaur.plugin_events WHERE workspace_id=$1)",
+      [id],
+    );
+    await tx.query(
+      "DELETE FROM taskasaur.workflow_versions WHERE workflow_id IN (SELECT id FROM taskasaur.resources WHERE workspace_id=$1)",
+      [id],
+    );
+    const tables = await tx.query<{ tablename: string }>(
+      "SELECT tablename FROM pg_tables WHERE schemaname='taskasaur' AND left(tablename,2)='p_'",
+    );
+    const references: Array<[string, string]> = [
+      ...tables.rows.map(
+        ({ tablename }) => [tablename, "id"] as [string, string],
+      ),
+      ["grants", "resource_id"],
+      ["changes", "resource_id"],
+      ["secrets", "resource_id"],
+      ["file_versions", "file_id"],
+      ["device_keys", "device_id"],
+      ["job_leases", "job_id"],
+      ["scheduler_cursors", "resource_id"],
+      ["workflow_triggers", "workflow_id"],
+      ["workflow_hooks", "workflow_id"],
+      ["workflow_signals", "run_id"],
+    ];
+    for (const [table, column] of references)
+      await tx.query(
+        `DELETE FROM taskasaur.${sqlIdentifier(table)} WHERE ${sqlIdentifier(column)} IN (SELECT id FROM taskasaur.resources WHERE workspace_id=$1)`,
+        [id],
+      );
+    for (const table of [
+      "resources",
+      "memberships",
+      "plugins",
+      "mutations",
+      "audit",
+      "enrollments",
+      "stream_tickets",
+      "dispatches",
+      "plugin_events",
+      "changes",
+    ])
+      await tx.query(
+        `DELETE FROM taskasaur.${sqlIdentifier(table)} WHERE workspace_id=$1`,
+        [id],
+      );
+    await tx.query("DELETE FROM taskasaur.workspaces WHERE id=$1", [id]);
+  });
+}
 export async function projectRecord(db: Database, record: ResourceRecord) {
   const schema = schemaById.get(record.collection);
   if (!schema || (record.schemaVersion ?? 1) > schema.version) return;

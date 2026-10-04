@@ -61,8 +61,25 @@ class TaskasaurViewController: CAPBridgeViewController {
 public class ReplicaStoragePlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ReplicaStoragePlugin"
     public let jsName = "ReplicaStorage"
-    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise), CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise)]
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "write", returnType: CAPPluginReturnPromise), CAPPluginMethod(name: "read", returnType: CAPPluginReturnPromise), CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise)]
     private let io = DispatchQueue(label: "taskasaur.replica.storage")
+    @objc func remove(_ call: CAPPluginCall) {
+        guard let relative = call.getString("path"), relative.hasPrefix("replica/"), !relative.split(separator: "/").contains("..") else { call.reject("Invalid replica path"); return }
+        io.async {
+            do {
+                let root = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                let file = root.appendingPathComponent(relative)
+                if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
+                if FileManager.default.fileExists(atPath: file.deletingLastPathComponent().path) {
+                    let directory = Darwin.open(file.deletingLastPathComponent().path, O_RDONLY)
+                    guard directory >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                    let result = fsync(directory); Darwin.close(directory)
+                    guard result == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno)) }
+                }
+                call.resolve()
+            } catch { call.reject("Replica deletion failed", nil, error) }
+        }
+    }
     @objc func read(_ call: CAPPluginCall) {
         guard let relative = call.getString("path"), relative.hasPrefix("replica/"), !relative.split(separator: "/").contains("..") else { call.reject("Invalid replica path"); return }
         io.async {

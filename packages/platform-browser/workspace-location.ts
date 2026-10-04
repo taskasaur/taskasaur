@@ -4,6 +4,7 @@ import {
   pickWorkspaceFolder,
   rememberFolder,
   savedFolders,
+  forgetFolder,
   openSavedFolder,
 } from "./workspace-files";
 import { WorkspaceStorage, type WorkspaceFiles } from "../storage/workspace";
@@ -49,6 +50,11 @@ export const workspaceFolderAvailable = () =>
   Boolean(window.taskasaurNative?.workspace) || directoryPickerAvailable();
 export const workspaceFileAvailable = () =>
   Boolean(window.taskasaurNative?.workspace) || filePickerAvailable();
+export async function forgetWorkspaceLocation(id: string) {
+  if (window.taskasaurNative?.workspace)
+    await window.taskasaurNative.workspace.forget(id);
+  else await forgetFolder(id);
+}
 export interface WorkspaceOpenOptions {
   password?: string;
   requestPassword?: () => Promise<string>;

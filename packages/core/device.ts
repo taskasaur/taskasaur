@@ -1,4 +1,4 @@
-import type { DurableStorage } from "../storage";
+import { deleteWorkspaceData, type DurableStorage } from "../storage";
 import {
   createIdentity,
   canonical,
@@ -499,6 +499,12 @@ export class DeviceCore {
       this.workspaces.delete(id);
     }
     await this.storage.closeWorkspace?.(id);
+  }
+  async deleteWorkspace(id: string) {
+    await this.closeWorkspace(id);
+    await deleteWorkspaceData(this.storage, id);
+    this.links = this.links.filter((link) => link.id !== id);
+    await this.persistLinks();
   }
   async close() {
     for (const node of this.workspaces.values()) await node.replica.flush();

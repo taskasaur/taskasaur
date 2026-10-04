@@ -7,6 +7,17 @@ export interface DurableStorage {
   snapshot?(prefix?: string): Promise<Record<string, Uint8Array>>;
   close?(): Promise<void> | void;
   closeWorkspace?(id: string): Promise<void> | void;
+  deleteWorkspace?(id: string): Promise<void>;
+}
+/** Remove only app-owned data; file adapters override this to preserve external files. */
+export async function deleteWorkspaceData(storage: DurableStorage, id: string) {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  )
+    throw Error("Invalid workspace ID");
+  if (storage.deleteWorkspace) return storage.deleteWorkspace(id);
+  for (const key of await storage.keys(`workspace/${id}/`))
+    await storage.delete(key);
 }
 export class MemoryStorage implements DurableStorage {
   readonly data = new Map<string, Uint8Array>();
@@ -43,6 +54,7 @@ export function snapshotStorage(source: DurableStorage): DurableStorage {
     keys: (prefix) => source.keys(prefix),
     set: (key, bytes) => serial(() => source.set(key, bytes)),
     delete: (key) => serial(() => source.delete(key)),
+    deleteWorkspace: (id) => serial(() => deleteWorkspaceData(source, id)),
     close: async () => {
       await queue;
       await source.close?.();

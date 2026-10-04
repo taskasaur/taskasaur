@@ -118,6 +118,17 @@ app
       trusted(event);
       return info();
     });
+    ipcMain.handle("replica:delete-workspace", async (event, id: string) => {
+      trusted(event);
+      if (
+        typeof id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id,
+        )
+      )
+        throw Error("Invalid workspace ID");
+      await rendererStorage.deleteWorkspace(id);
+    });
     ipcMain.handle("peer:select", async (event, workspaceId?: string) => {
       trusted(event);
       if (
@@ -128,6 +139,13 @@ app
         throw Error("Unknown workspace");
       await runtime!.selectWorkspace(workspaceId);
     });
+    ipcMain.handle(
+      "peer:delete-workspace",
+      async (event, workspaceId: string) => {
+        trusted(event);
+        await runtime!.deleteWorkspace(workspaceId);
+      },
+    );
     ipcMain.handle(
       "peer:join",
       async (event, invitation: string, credential?: Identity) => {

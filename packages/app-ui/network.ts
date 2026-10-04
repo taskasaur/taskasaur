@@ -58,10 +58,12 @@ declare global {
         ): Promise<void>;
         refresh(id: string): Promise<void>;
         close(id: string): Promise<void>;
+        forget(workspaceId: string): Promise<void>;
       };
       peer: {
         request(address: string, packet: PeerPacket): Promise<PeerPacket>;
         select(workspaceId?: string): Promise<void>;
+        deleteWorkspace(workspaceId: string): Promise<void>;
         join(invitation: string, credential?: Identity): Promise<void>;
         info(): Promise<NativeInfo>;
         configure(options: NativeSettings): Promise<NativeInfo>;

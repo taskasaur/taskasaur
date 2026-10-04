@@ -112,6 +112,23 @@ export async function registerWorkspaceFolders(
       };
     });
   });
+  ipcMain.handle("workspace:forget", async (event, workspaceId: string) => {
+    trusted(event);
+    const value = locations[workspaceId];
+    if (!value) return;
+    const location = typeof value === "string" ? { path: value } : value;
+    const id = ids.get(location.path);
+    if (id) {
+      await opened.get(id)?.files.close?.();
+      opened.delete(id);
+      ids.delete(location.path);
+    }
+    const next = { ...locations };
+    delete next[workspaceId];
+    await writeFile(config + ".tmp", JSON.stringify(next), { mode: 0o600 });
+    await rename(config + ".tmp", config);
+    locations = next;
+  });
   ipcMain.handle(
     "workspace:resume",
     async (event, workspaceId: string, password?: string) => {

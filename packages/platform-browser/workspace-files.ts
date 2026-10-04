@@ -88,6 +88,14 @@ export async function savedFolders() {
     db.close();
   }
 }
+export async function forgetFolder(workspaceId: string) {
+  const db = new WorkspaceHandles();
+  try {
+    await db.table("folders").delete(workspaceId);
+  } finally {
+    db.close();
+  }
+}
 export const directoryPickerAvailable = () => "showDirectoryPicker" in window;
 export async function pickWorkspaceFolder() {
   const picker = (

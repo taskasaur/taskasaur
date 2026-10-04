@@ -1,4 +1,5 @@
 import path from "node:path";
+import { rm } from "node:fs/promises";
 import {
   requireExecution,
   executionRecord,
@@ -15,7 +16,11 @@ import { canonical, text, utf8, digest, base64 } from "../core/crypto";
 import { NativeTerminal } from "./terminal";
 import { openDatabase, type Database } from "./compat/database";
 import { migrate } from "./compat/schema";
-import { projectWorkspace, projectRecord } from "./compat/projection";
+import {
+  projectWorkspace,
+  projectRecord,
+  deleteWorkspaceProjection,
+} from "./compat/projection";
 import { Repository } from "./compat/repository";
 import { routerFor, registryFor } from "./compat/api";
 import { serverPluginHost } from "./compat/plugin-host";
@@ -179,6 +184,26 @@ export class NativeServices {
       if (key.startsWith(id + ":")) await Promise.allSettled([...operations]);
     await this.core.closeWorkspace(id);
     this.projected.delete("presence:" + id);
+  }
+  async deleteWorkspace(id: string) {
+    invariant(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        id,
+      ),
+      "INVALID_WORKSPACE",
+      "Invalid workspace ID",
+    );
+    await this.detachWorkspace(id);
+    if (!this.options.storageOnly) await deleteWorkspaceProjection(this.db, id);
+    for (const suffix of ["", "-wal", "-shm", "-journal"])
+      await rm(
+        path.join(this.options.directory, `workflow-${id}.sqlite${suffix}`),
+        { force: true },
+      );
+    await this.core.deleteWorkspace(id);
+    for (const key of this.projected.keys())
+      if (key === "presence:" + id || key.startsWith(id + ":"))
+        this.projected.delete(key);
   }
   actor(
     workspaceId: string,

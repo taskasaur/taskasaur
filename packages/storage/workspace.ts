@@ -1,4 +1,4 @@
-import type { DurableStorage } from "./index";
+import { deleteWorkspaceData, type DurableStorage } from "./index";
 import { canonical, digest, utf8, text } from "../core/crypto";
 import { invariant } from "@taskasaur/platform/core/errors";
 import type { LinkedWorkspace } from "../core/device";
@@ -356,5 +356,10 @@ export class WorkspaceRouter implements DurableStorage {
       this.blocked.add(id);
     }
     await this.local.closeWorkspace?.(id);
+  }
+  async deleteWorkspace(id: string) {
+    await this.closeWorkspace(id);
+    await this.serial(() => deleteWorkspaceData(this.local, id));
+    this.blocked.delete(id);
   }
 }

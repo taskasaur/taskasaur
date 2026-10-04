@@ -15,6 +15,25 @@ import java.io.FileOutputStream;
 public class ReplicaStoragePlugin extends Plugin {
     private final java.util.concurrent.ExecutorService io = java.util.concurrent.Executors.newSingleThreadExecutor();
     @Override protected void handleOnDestroy() { io.shutdown(); }
+    @PluginMethod public void remove(PluginCall call) {
+        String relative = call.getString("path");
+        if (relative == null || !relative.startsWith("replica/")) { call.reject("Invalid replica path"); return; }
+        io.execute(() -> {
+            try {
+                File root = getContext().getFilesDir(), file = new File(root, relative);
+                if (!file.getCanonicalPath().startsWith(new File(root, "replica").getCanonicalPath() + File.separator)) throw new IllegalArgumentException("Invalid storage path");
+                for (String suffix : new String[]{"", ".bak", ".new", ".tmp"}) {
+                    File part = new File(file.getPath() + suffix);
+                    if (part.exists() && !part.delete()) throw new java.io.IOException("Cannot delete replica data");
+                }
+                if (file.getParentFile().isDirectory()) {
+                    java.io.FileDescriptor dir = android.system.Os.open(file.getParent(), android.system.OsConstants.O_RDONLY, 0);
+                    try { android.system.Os.fsync(dir); } finally { android.system.Os.close(dir); }
+                }
+                call.resolve();
+            } catch (Exception error) { call.reject("Replica deletion failed", error); }
+        });
+    }
     @PluginMethod public void read(PluginCall call) {
         String relative = call.getString("path");
         if (relative == null || !relative.startsWith("replica/")) { call.reject("Invalid replica path"); return; }

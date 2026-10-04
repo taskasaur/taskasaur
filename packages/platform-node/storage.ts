@@ -65,6 +65,47 @@ export class FileStorage implements DurableStorage {
     if (encoded.length > 180 && encoded.length <= 255)
       await rm(path.join(this.directory, encoded), { force: true });
   }
+  async deleteWorkspace(id: string) {
+    const changed = new Set<string>();
+    const walk = async (folder: string, encoded = "") => {
+      let entries;
+      try {
+        entries = await readdir(folder, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+      for (const entry of entries) {
+        const file = path.join(folder, entry.name);
+        const name =
+          encoded +
+          (folder === this.directory && entry.name === "long"
+            ? ""
+            : entry.name);
+        if (entry.isDirectory()) await walk(file, name);
+        else if (entry.isFile()) {
+          const key = Buffer.from(
+            name.replace(/\.[0-9a-f-]{36}\.tmp$/, ""),
+            "base64url",
+          ).toString();
+          if (key.startsWith(`workspace/${id}/`)) {
+            await rm(file);
+            changed.add(folder);
+          }
+        }
+      }
+    };
+    await walk(this.directory);
+    if (process.platform !== "win32")
+      for (const folder of changed) {
+        const directory = await open(folder, "r");
+        try {
+          await directory.sync();
+        } finally {
+          await directory.close();
+        }
+      }
+  }
   async keys(prefix: string) {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const flat = (await readdir(this.directory, { withFileTypes: true }))
