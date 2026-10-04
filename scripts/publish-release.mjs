@@ -8,7 +8,13 @@ const { version } = JSON.parse(await readFile("package.json", "utf8"));
 const { tag, prerelease } = releaseVersion(version, version);
 if (tag !== process.env.RELEASE_TAG) throw Error("Version/tag mismatch");
 const directory = process.argv[2];
-const names = (await readdir(directory)).sort();
+const names = (await readdir(directory))
+  .filter(
+    (name) =>
+      name.startsWith(`Taskasaur-${version}-`) &&
+      /\.(dmg|zip|exe|AppImage|deb|apk|yaml)$/.test(name),
+  )
+  .sort();
 // Do not publish an apparently complete release with a missing platform.
 for (const suffix of [
   "-mac-arm64.dmg",

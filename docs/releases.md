@@ -24,6 +24,8 @@ The script runs tests and the full shared build, updates npm/native versions, in
 
 Every release includes `SHA256SUMS.txt`. Development builds use the same application IDs; export your workspaces before switching builds. Native platform limitations still apply, including WebView support for Office's WebAssembly threads and direct file access.
 
+If only publication failed, dispatch the Release workflow on `main` with its original `tag` and `artifact_run_id`. This reuses the successful build artifacts after checking the source run's commit against the tag and requiring every build, verification, and container publication job to have passed. It does not move the tag or rebuild binaries. Distribution artifacts are selected explicitly; Docker build records remain attached to CI rather than shipped as downloads.
+
 ## Android development signing
 
 Repository Actions secrets `TASKASAUR_DEV_ANDROID_KEYSTORE` (base64-encoded JKS) and `TASKASAUR_DEV_ANDROID_PASSWORD` hold a dedicated development key with alias `taskasaur-dev`. The key is deliberately separate from future production signing. Keep the same key across dev releases so Android permits updates. Never commit signing keys. The workflow fails if a dev key is missing rather than publishing an un-installable APK labeled as installable.

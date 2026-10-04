@@ -9,6 +9,10 @@ on:
         description: Existing stable or prerelease tag to build
         required: true
         type: string
+      artifact_run_id:
+        description: Optional completed build run to republish without rebuilding (all build jobs must have passed)
+        required: false
+        type: string
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -16,12 +20,14 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   verify:
+    if: inputs.artifact_run_id == ''
     name: Verify distributed core and plugin SDK
     runs-on: ubuntu-24.04
     steps:
@@ -196,6 +202,12 @@ jobs:
   publish:
     name: Publish GitHub release
     needs: [desktop, ios, android, web, container]
+    if: >-
+      always() && !cancelled() &&
+      ((needs.desktop.result == 'success' && needs.ios.result == 'success' &&
+      needs.android.result == 'success' && needs.web.result == 'success' &&
+      needs.container.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.artifact_run_id != ''))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -204,8 +216,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 26.10.0
+      - name: Validate previously built artifacts before republishing
+        if: inputs.artifact_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.artifact_run_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {execFileSync} from 'node:child_process';
+          const id=process.env.SOURCE_RUN;
+          if (!/^\d+$/.test(id)) throw Error('Invalid build run ID');
+          const api=(suffix)=>JSON.parse(execFileSync('gh',['api',`repos/${process.env.GITHUB_REPOSITORY}/actions/runs/${id}${suffix}`],{encoding:'utf8'}));
+          const run=api('');
+          const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+          if (run.head_sha!==sha || run.status!=='completed' || !run.path.startsWith('.github/workflows/release.yml')) throw Error('Build run does not match the selected release commit');
+          const jobs=api('/jobs?per_page=100').jobs;
+          for (const name of ['Verify distributed core and plugin SDK','macOS-arm64','macOS-x64','Windows-x64','Linux-x64','Linux-arm64','iOS device and simulator','Android','Web bundle and server Compose','Container / Build and exercise the distributed peer','Container / Publish verified amd64 and arm64 image'])
+            if (!jobs.some(job=>job.name===name && job.conclusion==='success')) throw Error(`Required build did not pass: ${name}`);
+          NODE
       - uses: actions/download-artifact@v4
         with:
+          pattern: taskasaur-*
+          run-id: ${{ inputs.artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
           path: artifacts
           merge-multiple: true
       - name: Publish complete release with checksums
