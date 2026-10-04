@@ -4,19 +4,33 @@ Settings → Workspace → **Export complete workspace** saves a `.taskasaur` ZI
 
 The archive includes tables and column definitions, records, plugin settings shared through core, file contents and immutable versions, encrypted credential records, sharing policies, peer addresses, and original signed Automerge changes. Keeping the original changes preserves their hashes, dependencies, authors and merge history, so opening an older export can synchronize with newer peers.
 
-Device signing/encryption keys, the current device identity, network private keys, local settings, folder paths and permissions, query/search indexes, UI caches, installed executable packages, native permissions, and execution checkpoints are excluded. Historical public device IDs remain in membership and signed history; they do not become the importing device's identity. Credential ciphertext is retained, but a new device still needs a credential grant before it can use a secret. Installing plugin code and enabling native execution remain separate local decisions.
+Device signing/encryption keys, the current device identity, network private keys, local settings, file paths and permissions, query/search indexes, UI caches, installed executable packages, native permissions, and execution checkpoints are excluded. Historical public device IDs remain in membership and signed history; they do not become the importing device's identity. Installing plugin code and enabling native execution remain separate local decisions.
 
-## Open on another computer
+## Create, join and open
 
-1. On the welcome screen, choose **Open workspace file** to work directly from a `.taskasaur` file. The archive input imports a separate local copy. Existing folders can still be opened.
-2. For a new device, copy its request to the workspace owner's Devices page. Paste the returned invitation into **Workspace file approval**. An already approved device can open directly.
-3. Open the workspace. The importing computer keeps its own identity. Saved peer addresses are restored, and available peers supply subsequent changes.
+The welcome screen has three choices:
 
-The owner may close after issuing approval; it does not need to stay online during import. This file is not a bearer credential: possession alone cannot approve a new computer, and the package does not contain the owner's private key. Prepare the invitation before taking the owner offline. The separate encrypted **device backup** flow includes an identity and is for recovering that same device, not moving a workspace to a new identity.
+- **Create**: name an internal workspace and use the connected arrow button, or choose **Create file workspace** and select a new `.taskasaur` file.
+- **Join**: send the single-line **Device request** to the owner and paste the returned **Workspace invitation**.
+- **Open**: choose an internal workspace from the dropdown, or use **Open file workspace**. Where direct file access is unavailable, the file picker imports an internal copy.
+
+Each browser workspace has a separate top-level IndexedDB database (`taskasaur-peer-v1.workspace.<workspace-id>`), plus its own query/UI projection. Existing prefixed storage is migrated only when that workspace is opened. Startup reopens only the selected workspace. **Switch workspace** closes its plugin runtime, storage handles and peer handler, then returns to the welcome screen. Desktop services also deactivate that workspace; headless peers continue to serve their configured workspaces. Opening a different workspace does not read another workspace's file contents.
+
+## Encryption and credentials
+
+**Encrypt workspace file** is optional. When selected, an eight-character minimum password encrypts the entire archive, including metadata and any exported credentials, with PBKDF2-SHA256 (600,000 iterations) and AES-256-GCM. Live saves remain encrypted. Passwords stay in memory while a file is open; they are not stored in profiles, caches or the workspace. Closing the workspace clears the adapter's password. Reopening an encrypted file asks for it again.
+
+**Include credentials** is an independent, explicit option. It can be used **without a password**. It includes access to plugin secrets owned by this workspace user and a workspace-scoped connection credential, so another device can open the file and reconnect to its saved peers without another invitation. Anyone able to open such a file can exercise that access. Without this option, credential ciphertext is preserved but no new secret or connection grant is issued; an unapproved device needs an invitation from the owner.
+
+The owner creates the first portable connection credential. It is an editor member named **Workspace file access**, never a copy of the owner's private identity. An importing installation keeps its existing physical identity and independent Automerge actor. The portable credential signs a public, workspace-scoped grant to that device; core transmits these grants with peer messages. Recipients validate signatures, user, role and workspace scope against the owner-signed membership history. Plugin permissions and allowed credential destinations still apply. All participating peers must support these connection grants. An imported device with this credential can export it again explicitly.
+
+In **Devices**, the owner can revoke **Workspace file access** to revoke its derived devices together. Revocation fences accepted history and rotates the workspace key. An offline exported copy remains readable; revoked access is rejected when communicating with updated peers. Files without credentials still open directly on a device already approved for that workspace. Saved peer addresses are restored, and available peers supply subsequent changes using the original Automerge history.
+
+There is one workspace file flow for plain and encrypted files. It does not restore or clone device identities, and does not require retiring the original computer.
 
 ## Work directly from a single file
 
-In Settings → Workspace, choose **Save and work from file** and select a new `.taskasaur` filename. Shared changes then go directly into that file before a save is acknowledged. On the welcome screen, **Open workspace file** opens an existing export for live editing without conversion. Remembered files reopen automatically when permission is still available; otherwise reconnect the file. Device identity, permissions, caches and execution state remain in the device's own store.
+In Settings → Workspace, choose **Save and work from file** and select a new `.taskasaur` filename. Shared changes then go directly into that file before a save is acknowledged. On the welcome screen, **Open → Open file workspace** opens an existing export for live editing without conversion. The selected file reopens when permission is still available, prompting for its password if encrypted; otherwise reconnect the file. Other saved files stay closed. Device identity, permissions, caches and execution state remain in the device's own store.
 
 The live file uses the same ZIP layout as an exported archive, including all original signed Automerge changes and encrypted file chunks. `ArchiveWorkspaceFiles` implements the existing storage interface with an atomic `commit(manifest, additions)` operation. New bytes and their manifest become visible together. Unreferenced bytes are removed in that same replacement. A write failure before replacement leaves the previous committed file intact. If durability cannot be confirmed, the app reports an error rather than acknowledging the save. No separate database or conversion is required.
 
@@ -26,29 +40,18 @@ Live writes currently replace the whole ZIP, so write time and temporary memory/
 
 Direct file editing is available in Electron, headless mode, and browsers with the read/write [File System Access API](https://developer.chrome.com/docs/capabilities/web-apis/file-system-access). Pickers are capability-detected. Other browsers and mobile WebViews use local storage with archive import/export. Browser-granted file permissions and handles stay local and never enter the workspace file.
 
-## Work directly from a folder
+## Package layout and adapters
 
-**Save and work from folder** creates the package layout below and switches shared writes to that directory. Changes are committed there before the app reports success; it is not a periodic export. The normal device store still holds identity, settings, execution state and caches. Reopening a remembered folder restores this routing. If file access has expired, the app requires reconnecting the folder instead of silently writing to an old local copy.
+Plain files are ZIP containers with `workspace.json` and `data/<sha256>.bin` entries. Encrypted files wrap the same archive in a versioned authenticated envelope. File contents remain immutable encrypted chunks, not table JSON or a bespoke office format. The Automerge journal remains authoritative.
 
-```text
-My workspace/
-  workspace.json       # Versioned manifest, peer links and membership history
-  data/
-    <sha256>.bin        # Encrypted, content-addressed changes and file chunks
-```
+`WorkspaceStorage` uses `WorkspaceFiles` (`read`, atomic `write`, `remove`, and optional atomic package `commit`). `WorkspaceRouter` routes shared keys to the mounted adapter while keeping private keys local. Existing folder bindings remain compatible; the directory adapter is available to headless deployments through `--workspace-folder`. The app's Create/Open flow uses `.taskasaur` files.
 
-An archive contains the same layout. Extract it into a folder to work directly from it. File contents are not embedded in table JSON or encoded as a bespoke office format. The existing Automerge journal and encrypted chunk store remain authoritative; adding a second SQLite/Turso database would duplicate that authority.
-
-The portable `WorkspaceStorage` adapter uses a `WorkspaceFiles` interface (`read`, atomic `write`, `remove`, and optional atomic package `commit`). `WorkspaceRouter` directs shared keys to the mounted adapter and keeps private keys local. Browser directories use File System Access handles, remembered in a local Dexie database. Electron uses a narrowly scoped native directory picker and filesystem adapter; headless peers use that same native adapter. Native writes use fsync and atomic replacement, with a directory writer lock. Referenced bytes are durable before the manifest changes. Removed unreferenced blobs are released after that commit.
-
-Use one active writer per folder. Native processes enforce a writer lock; manifest revisions also detect outside edits. Do not concurrently edit one directory through different applications or cloud-drive mounts. Give each running device its own directory and use Taskasaur peer synchronization between them. This preserves each Automerge actor and avoids conflicting filesystem writers.
-
-Direct directory access appears only where supported. Other browsers and mobile WebViews keep using their normal local storage and can import/export archives. Archive import is capped at 1 GB and verifies paths, sizes, SHA-256 hashes, membership signatures and Automerge dependencies before accepting application writes. Import/export currently stages a snapshot in memory; available device memory also limits package size. Normal mounted-folder updates write incremental chunks and changes.
+Archive import is capped at 1 GB and verifies paths, sizes, hashes, membership signatures, connection grants and Automerge dependencies before accepting application writes. Import/export stages a snapshot in memory; available memory may impose a lower limit.
 
 ## Headless use
 
 ```sh
-# Run directly from a .taskasaur file after approving this device.
+# Run directly from a .taskasaur file with included credentials or an approved device.
 npm run peer -- --data ./device-state --workspace-file ./workspace.taskasaur --no-ui
 
 # Export the current complete workspace, then use that file as the live store.
@@ -66,3 +69,5 @@ npm run peer -- --data ./device-state --import-workspace ./workspace.taskasaur -
 ```
 
 `TASKASAUR_WORKSPACE_FILE` selects a live file; `TASKASAUR_WORKSPACE_FOLDER` selects a live directory. Set only one. For Docker file mode, mount the enclosing directory and set the file path inside it (for example, mount `./workspaces:/workspaces` and set `TASKASAUR_WORKSPACE_FILE=/workspaces/home.taskasaur`). Do not bind-mount the file itself: atomic replacement needs to rename a sibling temporary file over it. With Docker, mount that directory separately and set this variable to its container path. Keep `/data` persistent for this computer's identity and local execution state. An export never replaces that device directory, and an existing output archive is not overwritten by the CLI.
+
+Use `--include-credentials` with `--export-workspace` to include portable access explicitly. Add `--passphrase-file <private-file>` to encrypt exports or unlock imports/live files; this is optional even when including credentials. `TASKASAUR_WORKSPACE_PASSWORD_FILE` accepts the same secret-file path for a running peer. In Compose, mount the password file as a secret and set that path. Protect the device-state directory separately; workspace exports intentionally exclude native execution state and installed packages.

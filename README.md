@@ -28,7 +28,7 @@ npm run peer -- --workspace Home  # http://127.0.0.1:8080; peer port 8787
 npm run electron:dev
 ```
 
-Create a workspace on the first device. On another device, choose **Join workspace**, copy its device request, and approve it in the first device’s **Devices** page. Return the encrypted invitation to the joining device. Add a reachable peer address and synchronize. The invitation is bound to that device’s public keys.
+Create a workspace on the first device. On another device, choose **Join**, copy its device request, and approve it in the first device’s **Devices** page. Return the encrypted invitation to the joining device. Add a reachable peer address and synchronize. The invitation is bound to that device’s public keys.
 
 A browser cannot accept an ordinary TCP listener. Connect it to a reachable native/headless peer or libp2p relay; WebRTC and relay transport are available. Internet browser connections need HTTPS/WSS. No public relay is silently selected. Approved peers keep their own selected copies; an always-on peer improves availability without becoming the authority for ordinary records.
 
@@ -65,7 +65,7 @@ docker compose --env-file .env.peer up -d             # Upgrade the image while 
 
 The `edge` image follows verified `main` builds; pin a published `sha-…` tag or digest for repeatable deployments. Release builds also publish version tags.
 
-See [self-hosting](docs/self-hosting.md), [replication and recovery](docs/distributed.md), and the [plugin specification](docs/plugins/README.md). Save everything shared as a [portable, live workspace file](docs/workspace-files.md), preserving Automerge history without cloning a device identity. Optional column templates use the [shared type and input model](docs/plugins/columns.md). The Office plugin embeds the [full upstream LibreOffice suite](docs/office-engine.md), and Dashboard provides active work plus the shared search/command interface.
+See [self-hosting](docs/self-hosting.md), [replication and recovery](docs/distributed.md), and the [plugin specification](docs/plugins/README.md). Save everything shared as a [portable, live workspace file](docs/workspace-files.md), preserving Automerge history without cloning a device identity. Workspace files support optional password encryption and an independent **Include credentials** option for reconnecting from another device. Optional column templates use the [shared type and input model](docs/plugins/columns.md). The Office plugin embeds the [full upstream LibreOffice suite](docs/office-engine.md), and Dashboard provides active work plus the shared search/command interface.
 
 ## Build and verify
 

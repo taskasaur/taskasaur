@@ -4,7 +4,7 @@
 
 `packages/core` is portable TypeScript using WebCrypto and Automerge. Each workspace has separate signed membership history, encryption epochs, records, file manifests, events and settings. `packages/sync` carries bounded encrypted messages over libp2p WebSockets, Noise and Yamux, with WebRTC and circuit-relay transports for browsers. Direct connections and relayed connections use the same application authorization.
 
-Browser replicas use a dedicated Dexie database. Mobile replicas use Capacitor app-private files; the WebView’s Dexie database is a query/UI projection. Desktop replicas use atomic files, with identity keys protected by Electron safeStorage and an unlocked OS keyring. Headless replicas use restricted filesystem permissions and encrypted workspace journals. Protect the headless data directory and its backups as you would a device identity.
+Browser replicas use a separate top-level Dexie database for each workspace and a separate device metadata database. Mobile replicas use Capacitor app-private files; the WebView’s Dexie database is a query/UI projection. Desktop replicas use atomic files, with identity keys protected by Electron safeStorage and an unlocked OS keyring. Headless replicas use restricted filesystem permissions and encrypted workspace journals. Protect the headless data directory and its backups as you would a device identity.
 
 Core shares workspace control metadata and lets devices select which records and file versions to retain, including data for plugins they have not installed. Installing code is a separate, per-device decision. Files use immutable versions and SHA-256 addressed 256 KiB chunks. Missing chunks resume after reconnection. A save is acknowledged only after its local journal/chunks are committed; “saved locally” does not mean another device has a backup. Files currently have a 512 MiB limit.
 
@@ -36,17 +36,9 @@ A [portable workspace archive or live folder](workspace-files.md) preserves shar
 
 ## Backup and rollback
 
-Devices offers a passphrase-encrypted backup of the portable device store, including its signing/encryption identity, membership, local execution checkpoints, records and downloaded file chunks. The backup uses PBKDF2-SHA256 (600,000 iterations) and AES-GCM. Keep the passphrase separately. Verify file-download completion before treating it as a full workspace backup.
+Settings offers complete `.taskasaur` workspace files with optional password encryption and an independent **Include credentials** option. A file with credentials can open on another installation without a new invitation; that installation keeps its own identity and Automerge actor. Plain credential-bearing files are supported explicitly. Without credentials, a new device needs owner approval. See [Workspace files](workspace-files.md) for live file editing, encryption and revocation.
 
-Restore into an empty profile using the welcome screen. Retire the old copy of that device identity first: two active writers must never use the same Automerge actor identity. Use pairing, rather than backup cloning, to add another device. Native directory backups must include workflow SQLite files and installed plugin state in addition to the portable store. Browser UI package caches are per-device and may need installation again after recovery.
-
-The local process lock and browser Web Lock prevent two writers opening one profile. Stop a native peer before CLI management/import/restore operations. Different devices must use different data directories. Never mount one native directory in two active containers.
-
-The former application’s downloaded Dexie records and local file versions are imported once into a replica, preserving the original database for rollback. Data that existed only in the old server is not inferred from a frontend cache. Export it from that installation before retiring it; the old server repository and volumes remain untouched.
-
-Mobile writes use a small native atomic-storage bridge (Swift on iOS and Java on Android); all replication and automation logic remains TypeScript. Android uses `AtomicFile` with fsync; iOS uses atomic replacement, fsync and app-private file protection. The iOS minimum is 16.4. Automatic OS identity cloning is excluded; use device pairing or the explicit encrypted recovery flow.
-
-The ordinary device presence handshake is ephemeral. Durable device records change when the name or capabilities change, avoiding an ever-growing heartbeat journal. Use `core.peers` for current online state. OAuth refresh runs on the credential issuer, is serialized per credential, requires the exact authorized HTTPS token endpoint and preserves the approved recipient list. Other devices need that issuer online when its token expires.
+Device-state recovery is separate from moving a workspace. Preserve a stopped native data directory if you need installed packages and workflow checkpoints. The app does not clone identities through a backup/restore screen. Query caches and plugin package caches remain local.
 
 ## Selected storage copies
 

@@ -54,7 +54,7 @@ The image includes the pinned full ZetaOffice / LibreOffice WASM engine. Install
 
 ## Recovery and webhooks
 
-With the peer stopped, export a portable encrypted backup using `npm run peer -- --data <directory> --backup device.json --passphrase-file <private-file>`. Restore with `--restore device.json` into an empty profile after retiring the original identity. Protect the passphrase file with operating-system permissions. Preserve the entire stopped data directory as well for native plugin installations and workflow SQLite checkpoints.
+With the peer stopped, export a complete workspace using `npm run peer -- --data <directory> --workspace-id <id> --export-workspace workspace.taskasaur`. Add `--include-credentials` for access that can reconnect from another installation, and optionally `--passphrase-file <private-file>` to encrypt the file. Import with `--import-workspace workspace.taskasaur` or run directly using `--workspace-file workspace.taskasaur`; include a password file for an encrypted workspace. The destination keeps its own identity. Preserve the entire stopped data directory separately for native plugin installations and workflow checkpoints. See [workspace files](workspace-files.md).
 
 Create a webhook in the automation editor on the workflow's selected native peer. Send JSON to that peer's returned `/api/automation/hooks/<workflow-id>` path with `Authorization: Bearer <token>` and a stable `Idempotency-Key`. Requests are limited to 1 MiB. Expose this endpoint through HTTPS when using it beyond loopback. Webhooks execute only on the selected device and require its automation capability to be enabled.
 

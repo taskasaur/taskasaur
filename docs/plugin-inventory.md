@@ -8,4 +8,4 @@ Set `PLUGIN_INVENTORY_URL` for native peers or build-time `VITE_PLUGIN_INVENTORY
 
 Native packages are stored under `<data>/plugins`; browser packages are in the device's local cache. Container updates preserve the `/data` volume. Use `npm run peer -- --data <directory> --plugin <id> --workspace-id <id>` with that peer stopped, or use an item’s **Execution settings** to install reviewed dependencies on its selected online computer. Enable remote installation locally in Devices. See [per-item execution](plugins/execution.md) for status, grants and signed handoff.
 
-Native plugin code is trusted in-process code. Back up the entire native data directory, including plugin packages, local workflow checkpoints and projections. Browser device backups retain workspace data and identity; reinstall reviewed UI packages after restoring into an empty profile.
+Native plugin code is trusted in-process code. Back up the entire native data directory, including plugin packages, local workflow checkpoints and projections. Workspace files retain shared data while keeping installation identities separate; reinstall reviewed UI packages on a new device.
