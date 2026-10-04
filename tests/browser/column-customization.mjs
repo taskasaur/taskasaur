@@ -1,5 +1,5 @@
 import { chromium, expect } from "@playwright/test";
-import { navigate } from "./navigation-helpers.mjs";
+import { navigate, addColumnTemplates } from "./navigation-helpers.mjs";
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 try {
   const page = await browser.newPage(),
@@ -69,6 +69,41 @@ try {
       .getByRole("checkbox", { name: "1", exact: true }),
   ).toBeDisabled();
   await click("Cancel");
+  await navigate(page, "Plugins");
+  const plugin = page
+    .getByRole("row")
+    .filter({ has: page.getByText("Tasks", { exact: true }) });
+  await plugin.getByRole("button", { name: "Install", exact: true }).click();
+  await click("Confirm install");
+  await plugin.getByRole("button", { name: "Disable", exact: true }).waitFor();
+  await addColumnTemplates(page, "Tasks", ["Title", "Status"]);
+  await click("Open plugins menu");
+  await click("Tasks pages");
+  await page
+    .getByRole("navigation", { name: "Workspace", exact: true })
+    .getByRole("button", { name: "Columns", exact: true })
+    .click();
+  await click("Edit Status column");
+  await choose("Base type", "integer");
+  await choose("Input mode", "One value");
+  await page
+    .getByRole("switch", { name: "Default value", exact: true })
+    .click();
+  await click("Save column");
+  await navigate(page, "Tasks");
+  await click("New entry");
+  await page.getByLabel("Title", { exact: true }).fill("Independent template");
+  await page.getByLabel("Status", { exact: true }).fill("7");
+  await click("Save");
+  const completion = page.getByRole("button", {
+    name: "Toggle task completion",
+    exact: true,
+  });
+  await completion.click();
+  await expect(completion).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('td[data-field="status"]')).toHaveText("7");
+  await completion.click();
+  await expect(completion).toHaveAttribute("aria-pressed", "false");
   expect(errors).toEqual([]);
   console.log(
     "Shared column editor, typed multiple inputs, count limits, removed-value preservation and read-only controls passed.",

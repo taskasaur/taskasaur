@@ -169,6 +169,12 @@ export function RecordTable({
   const rows = useLiveQuery(() => store.list(), [store]) ?? [];
   const managedRecords =
     useLiveQuery(() => runtime.db.records.toArray(), [runtime]) ?? [];
+  const canonicalRows = useMemo(
+    () => new Map(managedRecords.map((row) => [row.id, row])),
+    [managedRecords],
+  );
+  const actionRow = (row: ResourceRecord) =>
+    activeTable && !schemaOverride ? (canonicalRows.get(row.id) ?? row) : row;
   const managers = resourceManagers(managedRecords);
   const access = useLiveQuery(
     () =>
@@ -195,6 +201,7 @@ export function RecordTable({
   const key =
     "view." +
     (viewKey ?? (activeTable ? collection + "." + activeTable.id : collection));
+  const preferenceKey = `taskasaur.view.${runtime.profile.id}.${key}`;
   const [state, setState] = useState(() => normalizeView(defaultView, schema));
   const schemaFields = JSON.stringify(schema.fields);
   const current = useRef(state),
@@ -213,6 +220,14 @@ export function RecordTable({
     void runtime.db
       .getMetadata<Partial<CollectionViewState>>(key)
       .then(async (saved) => {
+        // View preferences are device-only. A synchronous mirror survives a
+        // reload that interrupts IndexedDB's pending write transaction.
+        try {
+          const local = localStorage.getItem(preferenceKey);
+          if (local) saved = JSON.parse(local);
+        } catch {
+          /* Use Dexie when localStorage is unavailable. */
+        }
         if (!saved && activeTable?.data.is_default)
           saved = await runtime.db.getMetadata<Partial<CollectionViewState>>(
             "view." + collection,
@@ -240,6 +255,11 @@ export function RecordTable({
   const change = (patch: Partial<CollectionViewState>) => {
     edits.current++;
     const next = normalizeView({ ...current.current, ...patch }, schema);
+    try {
+      localStorage.setItem(preferenceKey, JSON.stringify(next));
+    } catch {
+      /* Dexie remains the fallback. */
+    }
     current.current = next;
     setState(next);
     writeQueue.current = writeQueue.current
@@ -274,9 +294,10 @@ export function RecordTable({
   const update = async (row: ResourceRecord, patch: Record<string, Value>) => {
     try {
       if (!writable(row)) throw Error("This entry is read-only");
-      const latest = (await store.list()).find((r) => r.id === row.id);
+      const actionStore = activeTable && !schemaOverride ? source : store;
+      const latest = (await actionStore.list()).find((r) => r.id === row.id);
       if (!latest) throw Error("This entry is no longer available");
-      await store.put({ ...latest.data, ...patch }, row.id);
+      await actionStore.put({ ...latest.data, ...patch }, row.id);
       void runtime.synchronize().catch((e) => setError(e.message));
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -293,7 +314,7 @@ export function RecordTable({
           </span>
         )}
       <StorageCopiesButton runtime={runtime} record={row} />
-      {renderActions?.(row, {
+      {renderActions?.(actionRow(row), {
         writable: writable(row),
         update: (patch) => update(row, patch),
       })}
@@ -302,7 +323,7 @@ export function RecordTable({
           variant="ghost"
           size="icon-sm"
           aria-label="Execution settings"
-          onClick={() => setExecution(row)}
+          onClick={() => setExecution(actionRow(row))}
         >
           <Monitor />
         </Button>

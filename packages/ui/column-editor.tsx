@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import {
   field,
   pgTypes,
@@ -10,6 +10,7 @@ import { ChoiceSelect } from "./choice-select";
 import { Button } from "./primitives/button";
 import { Input } from "./primitives/input";
 import { Switch } from "./primitives/switch";
+import { Label } from "./primitives/label";
 export function ColumnEditor({
   initial,
   standard,
@@ -19,6 +20,7 @@ export function ColumnEditor({
   standard: boolean;
   onSave: (field: Field) => Promise<void>;
 }) {
+  const controlId = useId();
   const [id, setId] = useState(initial?.id ?? ""),
     [label, setLabel] = useState(initial?.label ?? ""),
     [type, setType] = useState(initial?.pgType ?? "text"),
@@ -170,14 +172,21 @@ export function ColumnEditor({
           </label>
         </div>
       )}
-      <label className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <Switch
+          id={controlId + "-required"}
+          aria-labelledby={controlId + "-required-label"}
           disabled={standard}
           checked={required}
           onCheckedChange={setRequired}
         />
-        Required
-      </label>
+        <Label
+          id={controlId + "-required-label"}
+          htmlFor={controlId + "-required"}
+        >
+          Required
+        </Label>
+      </div>
       <label className="field-row">
         Visibility
         <ChoiceSelect
@@ -193,14 +202,21 @@ export function ColumnEditor({
           onValueChange={(value) => setVisibility(value as typeof visibility)}
         />
       </label>
-      <label className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
         <Switch
+          id={controlId + "-default"}
+          aria-labelledby={controlId + "-default-label"}
           disabled={standard}
           checked={hasDefault}
           onCheckedChange={setHasDefault}
         />
-        Default value
-      </label>
+        <Label
+          id={controlId + "-default-label"}
+          htmlFor={controlId + "-default"}
+        >
+          Default value
+        </Label>
+      </div>
       {hasDefault && (
         <FieldInput
           definition={field("column_default", "Default value", type, {

@@ -45,6 +45,8 @@ Required hidden/read-only columns need a default or generated value. Every platf
 
 User columns live in `custom_fields`; generic table rows use `values`. `storage: "custom"` distinguishes an independently configurable template copy from a locked standard field. Core mirrors compatible values into the original optional standard property so existing plugin operations, calendars, reminders and APIs keep working. Explicit plugin updates also update a compatible template copy. A custom type or option without a valid standard representation stays in `custom_fields`; a plugin must not reinterpret it as a different standard value.
 
+Collection cells and forms use the configured display columns. Plugin action callbacks and execution controls receive the canonical record and write through core. A user changing the Status template to a numeric column therefore does not change the task completion operation or overwrite that numeric value.
+
 Removing a column hides it without erasing its stored values. Re-add its stable ID to expose those values again. Editing a table validates its existing rows; an incompatible type change is rejected instead of silently coercing data. The table definition itself replicates through Automerge. Selected table, view configuration and local search projections remain device state.
 
 Use `collectionColumns`, `customValues`, `templateValues` and `validateTableValues` from the SDK when adapting a legacy store. Ordinary plugins use core records and receive this validation automatically. Standard conditional requirements remain enforced independently of which optional templates the user has selected.
